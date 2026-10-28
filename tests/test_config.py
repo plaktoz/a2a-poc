@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,12 @@ ENV = {
 
 
 def base() -> dict:
-    return yaml.safe_load((REPO / "llm.yaml").read_text())
+    """The shipped llm.yaml with `enabled` pinned, so tests don't depend on which
+    workers are switched on in the file."""
+    data = yaml.safe_load((REPO / "llm.yaml").read_text())
+    for name, spec in data["workers"].items():
+        spec["enabled"] = name != "codex-gemini"
+    return data
 
 
 def write(tmp_path: Path, data: dict) -> Path:
@@ -38,16 +44,28 @@ def load(tmp_path: Path, data: dict, env: dict | None = None):
     return load_config(write(tmp_path, data), ENV if env is None else env)
 
 
+def default_cfg():
+    """base(): claude-agent-sdk and codex-gpt enabled, codex-gemini disabled."""
+    with tempfile.TemporaryDirectory() as d:
+        return load(Path(d), base())
+
+
 def test_shipped_config_loads():
+    # Loads the real file as-is; which workers are enabled is up to the user.
     cfg = load_config(REPO / "llm.yaml", ENV)
     assert cfg.llm.allowed_models == ["claude-test", "gpt-6.1-sol", "gemini-3.6-flash"]
-    assert [w.name for w in cfg.enabled_workers()] == ["claude-agent-sdk", "codex-gpt"]
+    assert set(cfg.workers) == {"claude-agent-sdk", "codex-gpt", "codex-gemini"}
     assert cfg.budgets.per_task_usd == 30
     assert cfg.budgets.per_day_usd is None
 
 
+def test_pinned_workers_are_enabled_as_expected():
+    cfg = default_cfg()
+    assert [w.name for w in cfg.enabled_workers()] == ["claude-agent-sdk", "codex-gpt"]
+
+
 def test_worker_inherits_and_overrides_globals():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     claude, gpt = cfg.worker("claude-agent-sdk"), cfg.worker("codex-gpt")
     assert (claude.base_url, claude.api_key_env) == ("https://gw.example.com", "ANTHROPIC_AUTH_TOKEN")
     assert (gpt.base_url, gpt.api_key_env, gpt.wire_api) == (
@@ -180,25 +198,25 @@ def test_missing_file_is_a_config_error(tmp_path):
 
 
 def test_check_request_defaults_and_accepts_listed_model():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     assert cfg.check_request("codex-gpt") == "gpt-6.1-sol"
     assert cfg.check_request("codex-gpt", "gpt-6.1-sol") == "gpt-6.1-sol"
 
 
 def test_check_request_rejects_model_outside_worker_list():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     with pytest.raises(ModelNotAllowed, match="not allowed for worker"):
         cfg.check_request("codex-gpt", "claude-test")
 
 
 def test_check_request_rejects_model_outside_allowlist():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     with pytest.raises(ModelNotAllowed, match="llm.allowed_models"):
         cfg.check_request("codex-gpt", "gpt-9")
 
 
 def test_check_request_rejects_disabled_and_unknown_workers():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     with pytest.raises(ModelNotAllowed, match="disabled"):
         cfg.check_request("codex-gemini")
     with pytest.raises(ModelNotAllowed, match="unknown worker"):
@@ -206,13 +224,13 @@ def test_check_request_rejects_disabled_and_unknown_workers():
 
 
 def test_reviewer_differs_from_author():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     assert cfg.reviewer_for("claude-test") == "gpt-6.1-sol"
     assert cfg.reviewer_for("gpt-6.1-sol") == "claude-test"
 
 
 def test_reviewer_skips_models_of_disabled_workers():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     # gemini is a candidate but its worker is disabled, so it is never picked.
     assert cfg.reviewer_for("claude-test") != "gemini-3.6-flash"
     assert cfg.reviewer_for("gpt-6.1-sol") != "gemini-3.6-flash"
@@ -222,7 +240,7 @@ def test_reviewer_skips_models_of_disabled_workers():
 
 
 def test_codex_argv_uses_flags_and_never_the_key():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     argv = codex_argv(cfg, "codex-gpt", "do the thing", cd="/tmp/wt")
     assert argv[:3] == ["codex", "exec", "--ignore-user-config"]
     assert argv[-2:] == ["--", "do the thing"]
@@ -236,7 +254,7 @@ def test_codex_argv_uses_flags_and_never_the_key():
 
 
 def test_codex_argv_rejects_wrong_harness_and_bad_model():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     with pytest.raises(ConfigError, match="not 'codex'"):
         codex_argv(cfg, "claude-agent-sdk", "x")
     with pytest.raises(ModelNotAllowed):
@@ -244,13 +262,13 @@ def test_codex_argv_rejects_wrong_harness_and_bad_model():
 
 
 def test_prompt_starting_with_dash_is_not_parsed_as_a_flag():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     argv = codex_argv(cfg, "codex-gpt", "--dangerously-bypass-approvals-and-sandbox")
     assert argv[-2] == "--"
 
 
 def test_claude_env():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     assert claude_env(cfg, "claude-agent-sdk", environ=ENV) == {
         "ANTHROPIC_BASE_URL": "https://gw.example.com",
         "ANTHROPIC_AUTH_TOKEN": "tok-claude",
@@ -259,7 +277,7 @@ def test_claude_env():
 
 
 def test_claude_env_rejects_wrong_harness_and_bad_model():
-    cfg = load_config(REPO / "llm.yaml", ENV)
+    cfg = default_cfg()
     with pytest.raises(ConfigError, match="not 'claude-agent-sdk'"):
         claude_env(cfg, "codex-gpt", environ=ENV)
     with pytest.raises(ModelNotAllowed):
