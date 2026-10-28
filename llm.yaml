@@ -1,0 +1,54 @@
+# LLM configuration for the software factory. Single source of truth for
+# endpoints, keys, allowed models, reviewer and budgets.
+#
+# - `api_key_env` is the NAME of an environment variable. Never put a key here.
+# - `${VAR}` is resolved from the environment at load time; an unset variable
+#   is a load error (except inside a disabled worker).
+# - A worker inherits base_url / api_key_env / wire_api from `llm` unless it
+#   sets its own.
+version: 1
+
+llm:
+  base_url: "${ANTHROPIC_BASE_URL}"
+  api_key_env: ANTHROPIC_AUTH_TOKEN
+  wire_api: anthropic-messages
+  allowed_models:                       # real IDs as exposed by the gateway
+    - "${ANTHROPIC_MODEL}"
+    - gpt-6.1-sol
+    - gemini-3.6-flash
+  default_model: "${ANTHROPIC_MODEL}"
+
+workers:
+  claude-agent-sdk:
+    enabled: true
+    harness: claude-agent-sdk
+    models: ["${ANTHROPIC_MODEL}"]
+    default_model: "${ANTHROPIC_MODEL}"
+
+  codex-gpt:
+    enabled: true
+    harness: codex
+    base_url: "${OPENAI_BASE_URL}"
+    api_key_env: OPENAI_API_KEY
+    wire_api: responses
+    models: [gpt-6.1-sol]
+    default_model: gpt-6.1-sol
+
+  codex-gemini:
+    enabled: false                      # flip to true to activate
+    harness: codex
+    base_url: "${GOOGLE_GEMINI_BASE_URL}"
+    api_key_env: GEMINI_API_KEY
+    wire_api: responses
+    models: [gemini-3.6-flash]
+    default_model: gemini-3.6-flash
+
+# Gate 5: the reviewer must use a different model than the author. Picks the
+# first candidate that is served by an enabled worker and is not the author's.
+reviewer:
+  candidates: [gpt-6.1-sol, "${ANTHROPIC_MODEL}", gemini-3.6-flash]
+  must_differ_from_author: true
+
+budgets:
+  per_task_usd: 30                      # hard stop
+  max_retries: 1
