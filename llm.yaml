@@ -35,7 +35,7 @@ workers:
     default_model: gpt-6.1-sol
 
   codex-gemini:
-    enabled: false                      # flip to true to activate
+    enabled: true                      # flip to true to activate
     harness: codex
     base_url: "${GOOGLE_GEMINI_BASE_URL}"
     api_key_env: GEMINI_API_KEY
