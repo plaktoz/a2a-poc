@@ -12,41 +12,51 @@ pipeline.yaml. The orchestrator owns the gates: after every stage it checks whic
 agent changed, and runs Vitest itself instead of trusting a reported count. A failure in
 stage 3 or 4 goes back to the developer, up to 1 + budgets.max_retries rounds.
 
-Usage (from the repo root):
-  uv run python src/sample/pipeline.py                     # interactive
-  uv run python src/sample/pipeline.py --yes               # accept the first spec without questions
-  uv run python src/sample/pipeline.py --spec PATH.json    # skip stage 1, reuse an accepted spec
-  uv run python src/sample/pipeline.py --brief "..."       # a different app
-  uv run python src/sample/pipeline.py --stages OTHER.yaml # other workers, models or urls
-  uv run python src/sample/pipeline.py --no-launch         # agents are already running
+Every app is built in its own directory, apps/<name>/, copied from templates/react-vite, and
+each run starts its own agents on free ports. Runs for different apps do not share files,
+ports or logs, so you can start several at once, each in its own terminal.
 
-Writes SPEC.json and src/ in the workdir (default src/sample/kanban-react), overwriting any
-previous run, and a run log in <workdir>/.factory/run.json.
+Usage (from the repo root):
+  uv run python src/sample/pipeline.py --app todo --brief "a todo app with due dates"
+  uv run python src/sample/pipeline.py --app todo --rebuild   # build over an existing app
+  uv run python src/sample/pipeline.py --app todo --yes       # accept the first spec without questions
+  uv run python src/sample/pipeline.py --app todo --spec PATH.json  # skip stage 1, reuse a spec
+  uv run python src/sample/pipeline.py --stages OTHER.yaml    # other workers, models or urls
+  uv run python src/sample/pipeline.py --no-launch            # agents are already running
+
+--app defaults to kanban-react for the default brief, and to a name made from --brief otherwise.
+Writes SPEC.json and src/ in apps/<name>/, and a run log and the agent logs in
+apps/<name>/.factory/. An app that already has a SPEC.json is only rebuilt with --rebuild, and
+two runs of the same app cannot overlap.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import fcntl
 import hashlib
 import json
 import re
+import shutil
 import socket
 import subprocess
 import sys
 import time
 import urllib.request
-from dataclasses import asdict, dataclass, field
+from urllib.parse import urlsplit
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from factory import ConfigError, load_config
 from factory.a2a_transport import StageFailed, call, fetch_card
 from pipeline_common import (
-    DEFAULT_STAGES, HERE, ROOT, STAGE_NAMES, TEST_FILE, Stage,
+    APPS, DEFAULT_STAGES, HERE, ROOT, STAGE_NAMES, TEMPLATE, TEST_FILE, Stage,
     check_spec, load_stages, run, spec_text, tail,
 )  # fmt: skip
 
-DEFAULT_WORKDIR = HERE / "kanban-react"
+DEFAULT_APP = "kanban-react"
+APP_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 DEFAULT_BRIEF = (
     "A project management kanban board web app. I can create tickets, and add new "
     "statuses (columns) to the board as I need them."
@@ -72,20 +82,24 @@ def step(msg: str) -> None:
 class Agents:
     """Starts the stage agents (unless they are already up) and sends them tasks over A2A."""
 
-    def __init__(self, stages: dict[str, Stage], stages_file: Path, launch: bool) -> None:
-        self.stages, self.stages_file, self.launch = stages, stages_file, launch
+    def __init__(self, stages: dict[str, Stage], stages_file: Path, launch: bool,
+                 log_dir: Path) -> None:  # fmt: skip
+        if launch:
+            # This run's own agents, each on a port nobody else holds, so runs do not collide.
+            stages = {k: replace(s, url=f"http://127.0.0.1:{free_port()}") for k, s in stages.items()}
+        self.stages, self.stages_file, self.launch, self.log_dir = stages, stages_file, launch, log_dir
         self.procs: list[subprocess.Popen] = []
         self.cards: dict[str, dict] = {}
 
     def __enter__(self) -> Agents:
-        logs = ROOT / ".factory" / "agents"
+        logs = self.log_dir
         logs.mkdir(parents=True, exist_ok=True)
         try:
             for s in self.stages.values():
                 if self.launch:
                     self.procs.append(subprocess.Popen(
                         [sys.executable, str(HERE / "stage_agents.py"), s.name,
-                         "--stages", str(self.stages_file)],
+                         "--stages", str(self.stages_file), "--port", str(urlsplit(s.url).port)],
                         stdin=subprocess.DEVNULL, stdout=(logs / f"{s.name}.log").open("w"),
                         stderr=subprocess.STDOUT,
                     ))  # fmt: skip
@@ -104,7 +118,7 @@ class Agents:
                 break
             except Exception as e:
                 if time.monotonic() > deadline:
-                    hint = f"see .factory/agents/{s.name}.log" if self.launch else "is it running?"
+                    hint = f"see {self.log_dir / (s.name + '.log')}" if self.launch else "is it running?"
                     raise RuntimeError(f"no A2A agent card at {s.url} for stage {s.name} ({hint}): {e}") from e
                 time.sleep(0.3)
         # The card must be the agent this stage is configured for, not something else on the port.
@@ -360,6 +374,40 @@ def reset_app(workdir: Path) -> None:
     (workdir / "src/App.css").write_text("")
 
 
+def open_app(name: str, rebuild: bool) -> tuple[Path, object]:
+    """Create apps/<name> from the template if new and lock it. Returns (workdir, lock).
+
+    The lock is held until the returned file object is closed or the process exits, so two
+    runs of the same app cannot overlap and a crashed run never leaves a stale lock.
+    """
+    if not APP_NAME.fullmatch(name):
+        raise ConfigError(f"app name {name!r} must be lowercase letters, digits and hyphens")
+    workdir = APPS / name
+    (workdir / ".factory").mkdir(parents=True, exist_ok=True)
+    lock = (workdir / ".factory" / "lock").open("w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        raise ConfigError(f"app {name!r} is already being built by another run") from None
+    if not (workdir / "package.json").exists():
+        shutil.copytree(TEMPLATE, workdir, dirs_exist_ok=True)
+        step(f"Created apps/{name} from {TEMPLATE.relative_to(ROOT)}")
+    elif (workdir / "SPEC.json").exists() and not rebuild:
+        lock.close()
+        raise ConfigError(
+            f"apps/{name} already has a built app; pass --rebuild to overwrite it, "
+            "or choose another --app"
+        )
+    return workdir, lock
+
+
+def default_app_name(brief: str) -> str:
+    if brief == DEFAULT_BRIEF:
+        return DEFAULT_APP
+    return "-".join(re.findall(r"[a-z0-9]+", brief.lower())[:4])[:40] or "app"
+
+
 def prepare_workdir(workdir: Path) -> None:
     if not (workdir / "node_modules").exists():
         step("Installing npm dependencies")
@@ -411,7 +459,8 @@ def develop(agents: Agents, spec: dict, workdir: Path, rounds: int, log: RunLog)
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--brief", default=DEFAULT_BRIEF, help="what to build (stage 1 input)")
-    ap.add_argument("--workdir", type=Path, default=DEFAULT_WORKDIR, help="Vite + Vitest project")
+    ap.add_argument("--app", help=f"app name, built in apps/<app> (default: {DEFAULT_APP} or from --brief)")
+    ap.add_argument("--rebuild", action="store_true", help="overwrite an app that is already built")
     ap.add_argument("--stages", type=Path, default=DEFAULT_STAGES,
                     help="YAML file naming the worker, model and A2A url of each stage")  # fmt: skip
     ap.add_argument("--spec", type=Path, help="reuse an accepted spec and skip stage 1")
@@ -422,11 +471,15 @@ def main() -> int:
     cfg = load_config(ROOT / "llm.yaml")
     stages_file = args.stages.resolve()
     stages = load_stages(cfg, stages_file)
-    workdir = args.workdir.resolve()
+    try:
+        workdir, lock = open_app(args.app or default_app_name(args.brief), args.rebuild)
+    except ConfigError as e:
+        sys.exit(f"error: {e}")
+    step(f"Building in {workdir.relative_to(ROOT)}")
     prepare_workdir(workdir)
     log = RunLog(stages, workdir)
 
-    with Agents(stages, stages_file, launch=not args.no_launch) as agents:
+    with Agents(stages, stages_file, not args.no_launch, workdir / ".factory" / "agents") as agents:
         step("A2A agents:")
         for name in STAGE_NAMES:
             step(f"  {name:<12} {agents.describe(name)}")

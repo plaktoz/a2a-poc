@@ -3,7 +3,10 @@
 Each agent wraps the LLM worker and model that pipeline.yaml names for its stage, and
 serves A2A at that stage's url. pipeline.py starts them itself; to run one by hand:
 
-  uv run python src/sample/stage_agents.py requirements [--stages PATH]
+  uv run python src/sample/stage_agents.py requirements [--stages PATH] [--port N]
+
+--port overrides the port in the stage's url. pipeline.py uses it to give every run its own
+agents, so several apps can be built at once.
 
 Requests and results are JSON (A2A data parts):
 
@@ -27,6 +30,7 @@ import functools
 import json
 import os
 import re
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -254,10 +258,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Serve one pipeline stage as an A2A agent.")
     ap.add_argument("stage", choices=STAGE_NAMES)
     ap.add_argument("--stages", type=Path, default=DEFAULT_STAGES, help="pipeline.yaml")
+    ap.add_argument("--port", type=int, help="serve on this port instead of the url's")
     args = ap.parse_args()
 
     cfg = load_config(ROOT / "llm.yaml")
     stage = load_stages(cfg, args.stages.resolve())[args.stage]
+    if args.port:
+        stage = replace(stage, url=f"http://{urlsplit(stage.url).hostname}:{args.port}")
     title, description = ROLES[stage.name]
     card = agent_card(
         name=f"{stage.name}-agent", description=description, url=stage.url,

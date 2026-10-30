@@ -14,6 +14,8 @@ from factory import ConfigError, FactoryError
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
+APPS = ROOT / "apps"  # one directory per built app, so builds never share files
+TEMPLATE = ROOT / "templates" / "react-vite"  # scaffold copied into each new app
 DEFAULT_STAGES = HERE / "pipeline.yaml"
 STAGE_NAMES = ("requirements", "tests", "implement", "verify")
 
