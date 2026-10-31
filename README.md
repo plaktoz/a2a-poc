@@ -70,7 +70,7 @@ Try a combination before running it with `uv run factory plan <runbook> --trait 
 
 The roles themselves are data in `roles.yaml`: each has a `title`, a `description`, a standing `prompt`, and capabilities (`edit`, `web`, `runs`, `asks`). Edit a prompt or a capability there, or add a block for a new role, and no code changes. The file is validated when it loads. Set `FACTORY_ROLES=/path/to/roles.yaml` to use another file; the agents the factory launches inherit it.
 
-`agents.yaml` says which worker (and optionally which model) from `llm.yaml` plays each role. A runbook can override this with its own `staff:`, and `--staff ROLE=WORKER[:MODEL]` overrides it for one run. A checker can't share its author's worker and model, so the reviewer differs from the writer and the verifier from the developer, and a plan that breaks this is refused.
+`agents.yaml` says which worker (and optionally which model) from `llm.yaml` plays each role. A runbook can override this with its own `staff:`, and `--staff ROLE=WORKER[:MODEL]` overrides it for one run. A checker can't share its author's worker and model, so the reviewer differs from the writer and from the architect, and the verifier from the developer, and a plan that breaks this is refused.
 
 Each run starts one A2A agent per role it needs (`python -m factory.agent ROLE --worker W --port N`) on free ports and checks their cards before sending work. Roles map to tool permissions: Claude `--allowedTools`, or the Codex sandbox (`read-only` / `workspace-write`, with network access for researchers).
 

@@ -6,7 +6,7 @@
 # launching one. Its card must advertise role:<role>, worker:<worker> and model:<model>.
 #
 # Independence (reviewer.must_differ_from_author in llm.yaml): the verifier must not use the
-# developer's model, nor the reviewer the writer's.
+# developer's model, nor the reviewer the writer's or the architect's.
 roles:
   triage:     {worker: claude-agent-sdk}
   analyst:    {worker: claude-agent-sdk}

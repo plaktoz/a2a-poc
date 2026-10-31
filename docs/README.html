@@ -156,7 +156,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
   <li><strong>api-design</strong> – turns a brief into a spec and an HTTP API contract, and a reviewer checks it.</li>
 </ul>
 
-<p>A checker must use a different model than the author. The reviewer differs from the writer. The verifier differs from the developer. The factory refuses a plan that breaks this rule.</p>
+<p>A checker must use a different model than the author. The reviewer differs from the writer and from the architect. The verifier differs from the developer. The factory refuses a plan that breaks this rule.</p>
 
 <p>Each run works in its own folder, <code>apps/&lt;name&gt;/</code>. Runs with different names do not share files or ports.</p>
 
@@ -252,7 +252,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>Budgets</code> – the cost and retry limits</td><td><code>src/factory/config.py</code></td><td>107</td></tr>
     <tr><td><code>Config</code> – the checked <code>llm.yaml</code></td><td><code>src/factory/config.py</code></td><td>128</td></tr>
     <tr><td><code>worker()</code> – finds a worker by name</td><td><code>src/factory/config.py</code></td><td>176</td></tr>
-    <tr><td><code>reviewer_for()</code> – picks a reviewer model</td><td><code>src/factory/config.py</code></td><td>212</td></tr>
+    <tr><td><code>reviewer_for()</code> – picks a reviewer model (no run uses it)</td><td><code>src/factory/config.py</code></td><td>212</td></tr>
     <tr><td><code>load_config()</code> – reads <code>llm.yaml</code> and fills the variables</td><td><code>src/factory/config.py</code></td><td>286</td></tr>
     <tr><td><code>MODELS</code> – the schema of each deliverable</td><td><code>src/factory/schemas.py</code></td><td>154</td></tr>
     <tr><td><code>SHAPES</code> – the reply format shown to an agent</td><td><code>src/factory/schemas.py</code></td><td>167</td></tr>
@@ -483,7 +483,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
   <li>Codex gets the sandbox <code>read-only</code>. A role with <code>edit</code> or a command gets <code>workspace-write</code>. The commands <code>search</code> and <code>curl</code> also open network access.</li>
 </ul>
 
-<p>The checker rule compares models. The reviewer must differ from the writer. The verifier must differ from the developer. The setting <code>reviewer.must_differ_from_author</code> turns the rule on. It is on by default.</p>
+<p>The checker rule compares models. The reviewer must differ from the writer and from the architect. The verifier must differ from the developer. The rule applies to a pair only when both roles are in the plan. The setting <code>reviewer.must_differ_from_author</code> turns the rule on. It is on by default.</p>
 
 <h3 id="h-3-6">3.6 Agents and the A2A transport</h3>
 
@@ -555,7 +555,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>workers.&lt;name&gt;.enabled</code></td><td><code>true</code> for all 3 workers</td><td>A disabled worker needs no variables</td></tr>
     <tr><td><code>workers.&lt;name&gt;.harness</code></td><td><code>claude-agent-sdk</code> or <code>codex</code></td><td>The command that runs the worker</td></tr>
     <tr><td><code>workers.&lt;name&gt;.models</code></td><td>one model each</td><td>The models that the worker serves</td></tr>
-    <tr><td><code>reviewer.candidates</code></td><td><code>gpt-6.1-sol</code>, <code>${ANTHROPIC_MODEL}</code>, <code>gemini-3.6-flash</code></td><td>Used by <code>reviewer_for()</code></td></tr>
+    <tr><td><code>reviewer.candidates</code></td><td><code>gpt-6.1-sol</code>, <code>${ANTHROPIC_MODEL}</code>, <code>gemini-3.6-flash</code></td><td>Read by <code>reviewer_for()</code> only. No run uses it.</td></tr>
     <tr><td><code>reviewer.must_differ_from_author</code></td><td><code>true</code></td><td>Turns on the checker rule</td></tr>
     <tr><td><code>budgets.per_task_usd</code></td><td><code>30</code></td><td>The cost limit of one Claude call</td></tr>
     <tr><td><code>budgets.per_day_usd</code></td><td>not set</td><td>No code reads it</td></tr>
@@ -680,7 +680,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
 <pre><code>uv run pytest
 uv run factory runbooks</code></pre>
 
-<p>The test run must print <code>125 passed</code>. The second command must list <code>api-design</code>, <code>code-audit</code>, <code>research</code> and <code>web-app</code>. Neither command calls an LLM.</p>
+<p>The test run must print <code>126 passed</code>. The second command must list <code>api-design</code>, <code>code-audit</code>, <code>research</code> and <code>web-app</code>. Neither command calls an LLM.</p>
 
 <h3 id="h-5-4">5.4 Run the factory</h3>
 
@@ -708,7 +708,7 @@ uv run factory run --runbook code-audit --target apps/kanban-react --brief &quot
 
 <p>Last line of the real run:</p>
 
-<pre><code>============================== 125 passed in 2.31s ==============================</code></pre>
+<pre><code>============================= 126 passed in 2.05s ==============================</code></pre>
 
 <p>The engine tests use fake agents. No test calls an LLM or the network.</p>
 

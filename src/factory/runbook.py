@@ -367,7 +367,7 @@ def _check_independence(plan: Plan, cfg: Config) -> None:
     if not cfg.reviewer.must_differ_from_author:
         return
     used = plan.roles()
-    for checker, author in (("reviewer", "writer"), ("verifier", "developer")):
+    for checker, author in (("reviewer", "writer"), ("reviewer", "architect"), ("verifier", "developer")):
         if checker in used and author in used and plan.staff[checker].model == plan.staff[author].model:
             raise ConfigError(
                 f"the {checker} and the {author} both use {plan.staff[author].model}; the {checker} "

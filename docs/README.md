@@ -23,7 +23,7 @@ The shipped runbooks are:
 - **code-audit** – reviews existing code through four lenses and writes a prioritized report.
 - **api-design** – turns a brief into a spec and an HTTP API contract, and a reviewer checks it.
 
-A checker must use a different model than the author. The reviewer differs from the writer. The verifier differs from the developer. The factory refuses a plan that breaks this rule.
+A checker must use a different model than the author. The reviewer differs from the writer and from the architect. The verifier differs from the developer. The factory refuses a plan that breaks this rule.
 
 Each run works in its own folder, `apps/<name>/`. Runs with different names do not share files or ports.
 
@@ -118,7 +118,7 @@ The line numbers apply to this version of the files. If a line number is differe
 | `Budgets` – the cost and retry limits | `src/factory/config.py` | 107 |
 | `Config` – the checked `llm.yaml` | `src/factory/config.py` | 128 |
 | `worker()` – finds a worker by name | `src/factory/config.py` | 176 |
-| `reviewer_for()` – picks a reviewer model | `src/factory/config.py` | 212 |
+| `reviewer_for()` – picks a reviewer model (no run uses it) | `src/factory/config.py` | 212 |
 | `load_config()` – reads `llm.yaml` and fills the variables | `src/factory/config.py` | 286 |
 | `MODELS` – the schema of each deliverable | `src/factory/schemas.py` | 154 |
 | `SHAPES` – the reply format shown to an agent | `src/factory/schemas.py` | 167 |
@@ -264,7 +264,7 @@ Every role can read files. The class `Role` maps its fields to tools:
 - Claude gets `--allowedTools`. The list holds `Read`, `Glob` and `Grep`. The field `edit` adds `Edit` and `Write`. The field `web` adds `WebFetch`. Each command adds `Bash(<command>:*)`.
 - Codex gets the sandbox `read-only`. A role with `edit` or a command gets `workspace-write`. The commands `search` and `curl` also open network access.
 
-The checker rule compares models. The reviewer must differ from the writer. The verifier must differ from the developer. The setting `reviewer.must_differ_from_author` turns the rule on. It is on by default.
+The checker rule compares models. The reviewer must differ from the writer and from the architect. The verifier must differ from the developer. The rule applies to a pair only when both roles are in the plan. The setting `reviewer.must_differ_from_author` turns the rule on. It is on by default.
 
 ### 3.6 Agents and the A2A transport
 
@@ -328,7 +328,7 @@ The file `llm.yaml` holds the endpoints, the workers, the allowed models and the
 | `workers.<name>.enabled` | `true` for all 3 workers | A disabled worker needs no variables |
 | `workers.<name>.harness` | `claude-agent-sdk` or `codex` | The command that runs the worker |
 | `workers.<name>.models` | one model each | The models that the worker serves |
-| `reviewer.candidates` | `gpt-6.1-sol`, `${ANTHROPIC_MODEL}`, `gemini-3.6-flash` | Used by `reviewer_for()` |
+| `reviewer.candidates` | `gpt-6.1-sol`, `${ANTHROPIC_MODEL}`, `gemini-3.6-flash` | Read by `reviewer_for()` only. No run uses it. |
 | `reviewer.must_differ_from_author` | `true` | Turns on the checker rule |
 | `budgets.per_task_usd` | `30` | The cost limit of one Claude call |
 | `budgets.per_day_usd` | not set | No code reads it |
@@ -438,7 +438,7 @@ uv run pytest
 uv run factory runbooks
 ```
 
-The test run must print `125 passed`. The second command must list `api-design`, `code-audit`, `research` and `web-app`. Neither command calls an LLM.
+The test run must print `126 passed`. The second command must list `api-design`, `code-audit`, `research` and `web-app`. Neither command calls an LLM.
 
 ### 5.4 Run the factory
 
@@ -469,7 +469,7 @@ uv run pytest
 Last line of the real run:
 
 ```
-============================== 125 passed in 2.31s ==============================
+============================= 126 passed in 2.05s ==============================
 ```
 
 The engine tests use fake agents. No test calls an LLM or the network.
