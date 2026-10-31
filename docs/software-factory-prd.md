@@ -1,6 +1,6 @@
 # PRD: Multi-Harness, LLM-Agnostic Software Factory
 
-**Status:** Draft v0.4
+**Status:** Draft v0.6
 **Date:** 2026-10-31
 **Owner:** TBD
 **Basis:** Design reasoning from a research discussion (Oct 2026). Items marked *Assumption* or *Open question* are not yet validated.
@@ -47,11 +47,11 @@ Build a software factory that turns reviewed specifications into merged pull req
 
 ### In scope (v1)
 - Orchestrator: task intake, routing, retries, budgets, state.
-- Worker interface over A2A, plus a direct-call adapter for workers owned in-house.
+- Worker interface over A2A. A direct-call adapter for workers owned in-house is optional. The saving is too small to measure, because an LLM call takes minutes and an agent starts in seconds.
 - At least two workers on different harnesses, one repo.
 - Shared quality gate pipeline.
 - Scorecard and observability.
-- Git-based integration: one branch or worktree per task.
+- Git-based integration: one branch and one worktree per feature. See section 8.3 and `docs/p10-plan.md`.
 - Workflows defined as runbooks (YAML data in `runbooks/`): software builds (`web-app`), research (`research`), code audit (`code-audit`) and API design (`api-design`).
 - A triage step that picks the runbook and its traits from a brief, with the user approving the plan before a run starts.
 - Worker adapters for the `claude` and `codex` command-line tools, with per-role tool permissions.
@@ -98,26 +98,26 @@ OpenTelemetry trace ID passed through every hop
 
 ### 8.1 Intake and specs
 - **FR-1:** A task must reference an approved spec before dispatch.
-- **FR-2:** The spec template includes goal, acceptance criteria, constraints, risk level and affected areas.
+- **FR-2:** The spec template includes goal, acceptance criteria and constraints. Risk level and affected areas are deferred until a routing table or a PR rule reads them. The run records whether a person or `--yes` approved each checkpoint.
 - **FR-3:** The orchestrator rejects tasks with missing or ambiguous acceptance criteria and returns them to the author.
 
 ### 8.2 Orchestration and routing
 - **FR-4:** Route by rules table (task type, language, risk) in v1.
 - **FR-5:** Record every outcome per task type and worker.
-- **FR-6:** Shift routing weights from recorded outcomes once sample size is sufficient. *Assumption:* at least 30 tasks per task type before automated shifting.
-- **FR-7:** If a worker fails gates twice, retry once with a different worker. Enforce a retry cap and a per-task cost cap.
+- **FR-6:** Shift routing weights from recorded outcomes once sample size is sufficient. *Assumption:* at least 30 tasks per task type before automated shifting. Deferred. A read-only `factory runs` command comes first (runs, first-pass rate, rounds, cost per model).
+- **FR-7:** On the last retry of a step, switch to a different allowed worker. Enforce a retry cap. A per-task cost cap applies to one Claude call (`budgets.per_task_usd`).
 - **FR-8:** Allow per-task manual override of the worker.
 
 ### 8.3 Worker interface
-- **FR-9:** Every worker exposes a standard contract: accept task (spec reference, repo, branch), report status, return a PR or diff plus a run summary.
+- **FR-9:** Every worker exposes a standard contract: accept task (spec reference, repo, branch), report status, return a PR or diff plus a run summary. The factory delivers this in 2 slices. Slice 1 makes a worktree on a branch named from the brief and commits the change. It does not push. Slice 2 pushes the branch and opens a pull request, only on an explicit `--pr` request with an approval.
 - **FR-10:** Workers publish capabilities (languages, task types, supported models) for routing.
-- **FR-11:** Each worker runs in its own sandbox with its own git worktree and scoped, short-lived credentials.
+- **FR-11:** Each worker runs in its own sandbox with its own git worktree and scoped, short-lived credentials. The worktree lives in a scratch folder outside the repo, `~/factory-scratch/<repo>/<feature>` (set `FACTORY_SCRATCH` to change the root). The lock is per repo and feature, so several features of one repo run together. *Open question:* the `claude` worker has no OS sandbox. Its limits are the working folder and a tool allowlist.
 
 ### 8.4 Quality gates (identical for all workers)
 1. Build and tests pass, and new behavior ships with new tests.
-2. Static analysis, secret scan and security scan.
-3. Dependency check: packages exist, licenses acceptable, no new unreviewed dependencies.
-4. Diff-size limit; oversized changes are split.
+2. Static analysis, secret scan and security scan. Next: the secret scan and lint. The security scanner is deferred.
+3. Dependency check: packages exist, licenses acceptable, no new unreviewed dependencies. Next: the check that each named package exists. Licences are deferred.
+4. Diff-size limit; oversized changes are split. Deferred until a run edits an existing repo.
 5. Independent review by a reviewer agent using a different model than the author.
 6. Human approval, with stricter rules for high-risk areas.
 
@@ -125,10 +125,10 @@ OpenTelemetry trace ID passed through every hop
 - **FR-13:** Gate configuration is versioned and identical across workers.
 
 ### 8.5 Observability and scorecard
-- **FR-14:** Propagate one trace ID across orchestrator, worker, tool and gateway calls.
-- **FR-15:** Emit OpenTelemetry traces and metrics (tokens, latency, cost, errors).
+- **FR-14:** Propagate one trace ID across orchestrator, worker, tool and gateway calls. Next: a run ID in each request and each log line.
+- **FR-15:** Emit OpenTelemetry traces and metrics (tokens, latency, cost, errors). Deferred until an observability backend exists. Every LLM call already logs its model, tokens and cost in `run.json`.
 - **FR-16:** Scorecard per worker and task type: first-pass gate rate, rework rounds, issue density, cost per merged PR, cycle time.
-- **FR-17:** Redact sensitive data in prompts and responses; apply retention limits.
+- **FR-17:** Redact sensitive data in prompts and responses; apply retention limits. Deferred. A regex redactor gives false comfort. The secret scan (gate 2) and the clean worker environment cover more.
 
 ### 8.6 Gateway
 - **FR-18:** Use an off-the-shelf gateway unless a documented requirement forces a custom build. Build only if monthly volume, custom routing or compliance justifies it (*Assumption:* review at roughly 1B tokens per month).
@@ -154,8 +154,8 @@ The factory command line has two kinds of user: a person and an agent that runs 
 - **Security:** Workers are non-human identities with least-privilege, short-lived credentials. No worker can push to protected branches. Agents running locally must not bypass the factory's tool controls.
 - **Isolation:** Sandboxed execution per task; no shared mutable state except git.
 - **Portability:** Orchestrator must not depend on any single vendor SDK. Vendor-specific code lives only in worker adapters.
-- **Reliability:** Failed or hung workers time out and release resources; tasks are resumable or restartable.
-- **Cost control:** Per-task and per-day budgets with hard stops.
+- **Reliability:** Failed or hung workers time out and release resources; tasks are resumable or restartable. Next: `factory run --resume` skips the steps that `run.json` records as accepted.
+- **Cost control:** Every LLM call logs its model, tokens and cost. The owner chose logging only for now. A per-task cap covers one Claude call. A budget for a run or a day, with a hard stop, is deferred.
 - **Auditability:** Every PR links to its spec, trace, worker, model and gate results.
 - **Cross-platform:** *Open question:* confirm whether workers must run on Windows hosts as well as Linux.
 
@@ -176,7 +176,7 @@ Targets are placeholders until baselines exist.
 
 | Phase | Deliverable | Exit criteria |
 |-------|-------------|---------------|
-| 1 | Orchestrator plus one worker (direct call), spec intake, git worktree flow | End-to-end spec to PR on one repo |
+| 1 | Orchestrator plus one worker, spec intake, git worktree flow (slice 1: commit on a branch; slice 2: PR) | End-to-end spec to PR on one repo |
 | 2 | Gate pipeline and scorecard | All six gates enforced; baselines captured |
 | 3 | Second worker (different harness) behind A2A, with tracing across the boundary | Same gates; side-by-side scorecard |
 | 4 | Gateway for model routing and cost attribution | Model swap is a config change |
@@ -199,7 +199,8 @@ No public benchmark compares these setups on your code. Run your own:
 | Benchmark claims mislead selection | Wrong harness chosen | Use own-repo validation plan |
 | AI code has more defects and security issues | Quality and security incidents | Uniform gates, independent reviewer model, human approval |
 | Hallucinated dependencies | Supply-chain risk | Dependency existence and license gate |
-| A2A overhead or immaturity for in-house workers | Slower delivery | Use direct calls where both sides are owned |
+| A2A overhead or immaturity for in-house workers | Slower delivery | Measured as small: an agent starts in seconds and an LLM call takes minutes. Direct calls stay optional. |
+| A `claude` worker writes outside its worktree | Changes reach the original checkout | Check `git status` after each step and revert changes outside the worktree. Confirm what the `claude` CLI allows outside its working folder. |
 | Telemetry conventions still changing | Re-instrumentation | Adopt OpenTelemetry GenAI conventions now, isolate in one module |
 | Custom components replaced by better off-the-shelf tools | Wasted effort | Prefer existing gateway and tracing tools |
 | Review bottleneck as agent output grows | Slower merges | Diff-size limits, reviewer agent, risk-based review rules |
@@ -220,10 +221,11 @@ No public benchmark compares these setups on your code. Run your own:
 2. Does each chosen harness allow redirecting its model endpoint to the gateway?
 3. Must workers run on Windows hosts, or Linux only?
 4. What regulatory or data-residency constraints apply to code and prompts?
-5. What are the budget caps per task and per day?
+5. What are the budget caps per task and per day? Deferred. Cost is logged only.
 6. Which repositories and risk tiers are in the pilot?
 7. Who owns the scorecard and routing decisions?
 8. **Resolved in v0.4.** A checkpoint needs a person, and FR-25 says commands never prompt. A run that reaches a checkpoint stops and saves its state as `awaiting: approval`, with the command that answers it, such as `factory approve <run>`. An agent can approve a checkpoint with `--yes`, which is an explicit choice. The run must record whether a person or `--yes` approved each checkpoint. The approve command and this record are not built yet.
+9. **Decided by the owner (2026-10-31), not built.** Triage can answer "none" with a reason, and the run stops before any work. The user sees a disclaimer that there is no runbook for the request. Before this, triage had to choose a runbook, and a choice outside the catalog was rejected. A catch-all runbook would hide the gap.
 
 ## 16. Assumptions
 
@@ -240,6 +242,8 @@ No public benchmark compares these setups on your code. Run your own:
 | v0.2 | 2026-10-31 | Non-code workflows, the runbook format, triage and the command-line worker adapters moved into v1 scope (section 6). Non-goals in section 4 updated to match. Phase 6 narrowed to what is still undecided. Status and implementation gaps are tracked in `docs/code-review.md`, not here. |
 | v0.3 | 2026-10-31 | Added goal G6, the scope item and section 8.7 (FR-20 to FR-29): the command line follows the 10 AXI principles. Added open question 8. |
 | v0.4 | 2026-10-31 | Resolved open question 8: a run waits at a checkpoint with `awaiting: approval`, and `--yes` is the explicit approval for an agent. |
+| v0.6 | 2026-10-31 | Recorded the owner decision on question 9: triage can answer "none" with a reason, and the run stops before any work. The user sees a disclaimer that there is no runbook for the request. Not built. Tracked as P17 in `docs/code-review.md` and as issue 4 on GitHub. |
+| v0.5 | 2026-10-31 | Moved to `docs/`. Recorded the owner decisions on the gaps: cost is logged only (NFR cost control, question 5); the real-repo flow in 2 slices with a scratch worktree (FR-9, FR-11); failover on the last retry (FR-7); the direct-call adapter is optional; risk fields, OpenTelemetry, redaction, weight shifting, the security scanner, licences and diff-size are deferred. Added open question 9 and a risk for the `claude` worker. |
 
 ## 18. Evidence Notes
 
