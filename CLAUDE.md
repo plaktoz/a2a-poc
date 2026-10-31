@@ -6,3 +6,4 @@
 - For a task with no open questions and no blockers, ask for the go-ahead early. Do not wait until its dependencies are done to ask. Once the go-ahead is given, start the task as soon as its dependencies are complete.
 - The most important rule is the second one: keep the README current before every commit.
 - Do not write outside the worktree.
+- Always commit once per task, as soon as the task is done, so that no change is lost. Do not batch several tasks into one commit. Do not push unless asked.
