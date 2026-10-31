@@ -1,6 +1,6 @@
 # PRD: Multi-Harness, LLM-Agnostic Software Factory
 
-**Status:** Draft v0.6
+**Status:** Draft v0.9
 **Date:** 2026-10-31
 **Owner:** TBD
 **Basis:** Design reasoning from a research discussion (Oct 2026). Items marked *Assumption* or *Open question* are not yet validated.
@@ -89,7 +89,7 @@ OpenTelemetry trace ID passed through every hop
 | Process | Spec-driven development | Reviewed spec precedes every agent task |
 
 **Design notes**
-- A2A does not provide multiple LLMs. Model diversity comes from the harness mix plus the gateway for harnesses that permit a base-URL swap. *Open question:* confirm per harness whether the endpoint can be redirected.
+- A2A does not provide multiple LLMs. Model diversity comes from the harness mix. Each agent is configured to use a `claude` or a `codex` endpoint (question 2).
 - A2A does not share a workspace. Git is the integration surface.
 - A2A wrapping hides worker internals; the orchestrator sees tasks and results, not tool calls. Use A2A where agents are independently owned, and direct calls where both sides are owned.
 - No official A2A wrapper for the Claude Agent SDK was verified. *Open question:* build and test a thin adapter in Phase 1.
@@ -128,7 +128,7 @@ OpenTelemetry trace ID passed through every hop
 - **FR-14:** Propagate one trace ID across orchestrator, worker, tool and gateway calls. Next: a run ID in each request and each log line.
 - **FR-15:** Emit OpenTelemetry traces and metrics (tokens, latency, cost, errors). Deferred until an observability backend exists. Every LLM call already logs its model, tokens and cost in `run.json`.
 - **FR-16:** Scorecard per worker and task type: first-pass gate rate, rework rounds, issue density, cost per merged PR, cycle time.
-- **FR-17:** Redact sensitive data in prompts and responses; apply retention limits. Deferred. A regex redactor gives false comfort. The secret scan (gate 2) and the clean worker environment cover more.
+- **FR-17:** Redact sensitive data in prompts and responses; apply retention limits. Not required (owner, 2026-10-31; question 4). Deferred. A regex redactor gives false comfort. The secret scan (gate 2) and the clean worker environment cover more.
 
 ### 8.6 Gateway
 - **FR-18:** Use an off-the-shelf gateway unless a documented requirement forces a custom build. Build only if monthly volume, custom routing or compliance justifies it (*Assumption:* review at roughly 1B tokens per month).
@@ -157,7 +157,7 @@ The factory command line has two kinds of user: a person and an agent that runs 
 - **Reliability:** Failed or hung workers time out and release resources; tasks are resumable or restartable. Next: `factory run --resume` skips the steps that `run.json` records as accepted.
 - **Cost control:** Every LLM call logs its model, tokens and cost. The owner chose logging only for now. A per-task cap covers one Claude call. A budget for a run or a day, with a hard stop, is deferred.
 - **Auditability:** Every PR links to its spec, trace, worker, model and gate results.
-- **Cross-platform:** *Open question:* confirm whether workers must run on Windows hosts as well as Linux.
+- **Cross-platform:** Workers run on Linux and macOS. Windows is deferred (decided, question 3). The code is Unix-only today (`fcntl` lock, `.venv/bin/...` paths). Tracked as P18.
 
 ## 10. Success Metrics
 
@@ -217,13 +217,13 @@ No public benchmark compares these setups on your code. Run your own:
 
 ## 15. Open Questions
 
-1. Which harnesses and models are in the first two workers?
-2. Does each chosen harness allow redirecting its model endpoint to the gateway?
-3. Must workers run on Windows hosts, or Linux only?
-4. What regulatory or data-residency constraints apply to code and prompts?
+1. **Decided by the owner (2026-10-31).** The first workers are the `claude` and `codex` harnesses, with the models in `llm.yaml`. The worker layer must be a plugin design, so a new harness or use case needs no change to the engine. The owner chose a module path that `llm.yaml` names, loaded at start, not a package entry point. Tracked as P19.
+2. **Decided by the owner (2026-10-31).** The endpoint is not overridden. Each agent is configured to use a `claude` or a `codex` endpoint, and the owner has provided both in `llm.yaml`. The live run is still not done.
+3. **Decided by the owner (2026-10-31): no Windows support for now.** Workers run on Linux and macOS. Revisit later; the Unix-only code is listed in `docs/code-review.md`, item P18.
+4. **Decided by the owner (2026-10-31).** The gateway may receive the code and prompts. Redaction is not required.
 5. What are the budget caps per task and per day? Deferred. Cost is logged only.
-6. Which repositories and risk tiers are in the pilot?
-7. Who owns the scorecard and routing decisions?
+6. **Not required for now (owner, 2026-10-31).** No pilot repository or risk tier is chosen.
+7. **Decided by the owner (2026-10-31).** The owner of the factory owns the scorecard and the routing decisions (`agents.yaml`).
 8. **Resolved in v0.4.** A checkpoint needs a person, and FR-25 says commands never prompt. A run that reaches a checkpoint stops and saves its state as `awaiting: approval`, with the command that answers it, such as `factory approve <run>`. An agent can approve a checkpoint with `--yes`, which is an explicit choice. The run must record whether a person or `--yes` approved each checkpoint. The approve command and this record are not built yet.
 9. **Decided by the owner (2026-10-31), not built.** Triage can answer "none" with a reason, and the run stops before any work. The user sees a disclaimer that there is no runbook for the request. Before this, triage had to choose a runbook, and a choice outside the catalog was rejected. A catch-all runbook would hide the gap.
 
@@ -242,6 +242,9 @@ No public benchmark compares these setups on your code. Run your own:
 | v0.2 | 2026-10-31 | Non-code workflows, the runbook format, triage and the command-line worker adapters moved into v1 scope (section 6). Non-goals in section 4 updated to match. Phase 6 narrowed to what is still undecided. Status and implementation gaps are tracked in `docs/code-review.md`, not here. |
 | v0.3 | 2026-10-31 | Added goal G6, the scope item and section 8.7 (FR-20 to FR-29): the command line follows the 10 AXI principles. Added open question 8. |
 | v0.4 | 2026-10-31 | Resolved open question 8: a run waits at a checkpoint with `awaiting: approval`, and `--yes` is the explicit approval for an agent. |
+| v0.9 | 2026-10-31 | Question 3 changed: no Windows support for now (NFR cross-platform, P18 deferred). Question 1: the plugin is a module path named in `llm.yaml` (P19). |
+| v0.8 | 2026-10-31 | Recorded the owner answers to questions 1, 2, 4, 6 and 7. Question 1 requires a plugin design for workers (P19). Redaction is not required (FR-17). Question 5 stays deferred. |
+| v0.7 | 2026-10-31 | Recorded the owner decision on question 3: workers must run on Windows as well as Linux and macOS (NFR cross-platform, question 3). Added backlog item P18 in `docs/code-review.md`. |
 | v0.6 | 2026-10-31 | Recorded the owner decision on question 9: triage can answer "none" with a reason, and the run stops before any work. The user sees a disclaimer that there is no runbook for the request. Not built. Tracked as P17 in `docs/code-review.md` and as issue 4 on GitHub. |
 | v0.5 | 2026-10-31 | Moved to `docs/`. Recorded the owner decisions on the gaps: cost is logged only (NFR cost control, question 5); the real-repo flow in 2 slices with a scratch worktree (FR-9, FR-11); failover on the last retry (FR-7); the direct-call adapter is optional; risk fields, OpenTelemetry, redaction, weight shifting, the security scanner, licences and diff-size are deferred. Added open question 9 and a risk for the `claude` worker. |
 
