@@ -35,7 +35,7 @@ def ids(plan):
 
 def test_shipped_runbooks_load():
     books = catalog()
-    assert set(books) == {"web-app", "research", "code-audit", "api-design", "change-request"}
+    assert set(books) == {"web-app", "research", "code-audit", "api-design", "change-request", "bug-fix"}
     for p in RUNBOOKS_DIR.glob("*.yaml"):
         assert load_runbook(p).name == p.stem
 

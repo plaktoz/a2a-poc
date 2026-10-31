@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 270 passed.
+Suite at the last check: 282 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -51,6 +51,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | Check | `factory check`: one short prompt to each model, before any work | P19 | committed | the P-series commit, see note |
 | Codex cost | FR-30: `docs/model-prices.md` gives the cost of Codex calls, refreshed weekly from llm-prices.com | P19 | built | |
 | P10 slice 1 | Worktree, `change-request` runbook, commit | P19 | committed | the P-series commit, see note |
+| Bug fix | `bug-fix` runbook: a failing test first, then the fix, in a worktree. `change-request` no longer takes bugs. | P10 slice 1 | committed | this commit |
 | P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | todo | |
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | todo | |
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | todo | |
@@ -157,6 +158,20 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 - [ ] A stop from an LLM or network error prints the `--resume` command.
 - [ ] Tests with fake agents: stop mid-item, resume, check that done sub-tasks are not sent again.
 - [ ] README and test count. Commit.
+
+### Bug fix: `bug-fix` runbook
+
+- Status: committed. The suite passes (282).
+- Decided by the owner (2026-10-31): bugs go to `bug-fix`, not `change-request`. `change-request` covers features and deliberate changes only. The fix starts from a test that fails because of the bug.
+- Files: `runbooks/bug-fix.yaml`, `runbooks/change-request.yaml` (`use_when` and `description`), `src/factory/gates.py` (`repro_fails`), `src/factory/schemas.py` (`repro`), `src/factory/cli.py` (texts), `tests/test_bugfix.py`, `tests/test_runbooks.py`, `README.md`.
+- Verify: `.venv/bin/pytest -q`, `.venv/bin/factory runbooks`, `.venv/bin/factory plan bug-fix`. A fake run makes one commit on `factory/<name>`, and the original checkout stays unchanged.
+- Note: the developer and the reviewer of `bug-fix` both use `codex-gpt / gpt-6.1-sol`, as `change-request` does. The plan allows it, because the independence rule covers only reviewer against writer and architect, and verifier against developer.
+- [x] Runbook `bug-fix`: `spec`, `reproduce` (tester, `repro_fails`), then the `build` loop with `fix` and `verify` and `repo_tests_pass`.
+- [x] `change-request` `use_when` and `description` cover features and changes only.
+- [x] Gate `repro_fails` and schema `repro`.
+- [x] CLI texts, `tests/test_runbooks.py`, `tests/test_bugfix.py` (12 tests, fakes and real git repos).
+- [x] README: intro, quick start, runbook table, example, "Fix a bug", gate, test table, troubleshooting. Test count 282.
+- [x] Commit.
 
 ### P10 slice 2: pull request
 

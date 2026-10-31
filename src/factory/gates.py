@@ -470,6 +470,30 @@ def repo_tests_pass(ctx: GateCtx, out: dict) -> None:
                       + tail(r, 3000), "round")
 
 
+@gate
+def repro_fails(ctx: GateCtx, out: dict) -> None:
+    """The repo's test command fails, and its output names the reproduction test (bug-fix).
+
+    The orchestrator runs it, so an agent cannot claim a failure. A suite that passes means the bug
+    is not reproduced. A suite that fails without naming the test fails for another reason.
+    """
+    if ctx.tree is None or not ctx.test_command:
+        raise Failure("no test command: pass --test-command with the command that runs the repo's tests", "run")
+    try:
+        r = run(shlex.split(ctx.test_command), cwd=ctx.tree)
+    except FileNotFoundError as e:  # the tool is not installed: not the agent's doing
+        raise Failure(f"the test command `{ctx.test_command}` cannot run: {e}", "run") from None
+    except subprocess.TimeoutExpired:
+        raise Failure(f"`{ctx.test_command}` did not finish within the time limit", "step") from None
+    if r.returncode == 0:
+        raise Failure("the bug is not reproduced: every test passes. Write a test that fails because of the "
+                      "bug, and do not change the source code.")
+    name = out.get("test_name", "")
+    if name not in (r.stdout or "") + (r.stderr or ""):
+        raise Failure(f"the failing output does not name your test {name!r}; the suite fails for another reason. "
+                      "Write one test that fails because of the bug, and report its exact name.\n" + tail(r, 3000))
+
+
 _NPM_NON_REGISTRY = re.compile(r"^(?:(?:file|link|workspace|portal|patch|git|git\+\w+|https?|github|gitlab|bitbucket):"
                                r"|[\w.-]+/[\w.-]+(?:#.*)?$)")
 _REQ_NAME = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)")

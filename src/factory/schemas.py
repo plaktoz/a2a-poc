@@ -154,6 +154,11 @@ class DevResult(_Open):
     test_change: str = ""
 
 
+class Repro(_Open):
+    test_name: str = Field(min_length=1)  # the test that reproduces the bug
+    summary: str = ""
+
+
 class Report(_Open):
     markdown: str = Field(min_length=1)
 
@@ -286,6 +291,9 @@ SCHEMAS: dict[str, Schema] = {
     "dev_result": Schema(
         DevResult,
         """{"summary": str, "test_change": "<which test you changed and why, or empty>"}"""),
+    "repro": Schema(
+        Repro,
+        """{"test_name": "<the name of the one test that reproduces the bug>", "summary": str}"""),
     "report": Schema(
         Report,
         """{"markdown": "<the whole report in Markdown>"}"""),
@@ -338,6 +346,8 @@ def render(name: str | None, data: Any) -> str:
         lines = [f"Lens: {data['lens']}", data["summary"]]
         lines += [f"  [{f['severity']}] {f['file']}:{f['line']} {f['title']}" for f in data["findings"]]
         return "\n".join(lines)
+    if name == "repro":
+        return f"Reproduction test: {data['test_name']}\n{data.get('summary', '')}".rstrip()
     if name == "report":
         return data["markdown"]
     if name == "findings":

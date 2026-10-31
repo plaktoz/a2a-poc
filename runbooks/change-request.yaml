@@ -5,15 +5,17 @@
 # developer changes the code in the worktree, and an independent reviewer reads the diff. The
 # factory runs the repo's own test command (--test-command) itself; the developer's word that
 # the tests pass counts for nothing. When the loop passes, the factory makes one commit.
+# A bug fix is not a change request: the bug-fix runbook starts from a failing test.
 name: change-request
 title: Change an existing repo
 description: >
-  Makes a change to an existing git repository from a requirement: agrees acceptance criteria,
+  Adds a feature to, or changes the behaviour of, an existing git repository from a requirement: agrees acceptance criteria,
   changes the code in a separate worktree on a new branch, runs the repo's tests, has the diff
   reviewed, and commits the result. The branch is left for a person to review.
 use_when: >
-  The request asks to add a feature to, fix a bug in, or otherwise change code that already
+  The request asks to add a feature to, or otherwise deliberately change, code that already
   lives in a git repository. It needs the repo path and the command that runs its tests.
+  Fixing a bug, an error, a crash or a regression is a bug-fix, not a change-request.
 needs_target: true
 steps:
   - id: spec

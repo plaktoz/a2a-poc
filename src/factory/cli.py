@@ -15,11 +15,12 @@ shows you its choice and the plan before any work starts. Examples:
   factory run --brief "which vector database fits a 10M-document RAG system?"
   factory run --runbook code-audit --target apps/kanban-react/web --brief "is this ready to ship?"
   factory run --runbook change-request --repo ~/code/shop --test-command "npm test" --brief "add a cart"
+  factory run --runbook bug-fix --repo ~/code/shop --test-command "npm test" --brief "the cart total ignores removed items"
 
 Work happens in apps/<name>/ (--name, or chosen from the brief), with the run log, the
 artifacts and every agent's log in apps/<name>/.factory/.
 
-A change request works on a git repo (--repo) in its own worktree, under FACTORY_SCRATCH
+A change request or a bug fix works on a git repo (--repo) in its own worktree, under FACTORY_SCRATCH
 (default ~/factory-scratch): <scratch>/<repo>/<feature>/tree, on the branch factory/<feature>.
 The original checkout is not touched. The run ends with one commit on that branch.
 """
@@ -131,7 +132,7 @@ def _check_repo_args(args, rb: Runbook) -> None:
             raise ConfigError("--target is not used with --repo: the repo is the target")
     elif given:
         raise ConfigError(f"{', '.join(given)} only applies to a runbook that changes a git repo "
-                          "(change-request)")
+                          "(change-request, bug-fix)")
 
 
 def _workdir(args) -> tuple[Path, Path | None]:
@@ -282,10 +283,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="who plays a role in this run")
     p.add_argument("--name", help="work in apps/<name> (default: chosen from the brief)")
     p.add_argument("--target", help="existing code to work on (code-audit)")
-    p.add_argument("--repo", help="git repo to change (change-request): work happens in a worktree of it")
-    p.add_argument("--base", help="commit the new branch starts from (change-request; default: HEAD)")
+    p.add_argument("--repo", help="git repo to change (change-request, bug-fix): work happens in a worktree of it")
+    p.add_argument("--base", help="commit the new branch starts from (change-request, bug-fix; default: HEAD)")
     p.add_argument("--test-command", metavar="CMD",
-                   help='the command that runs the repo\'s tests, e.g. "npm test" (change-request)')
+                   help='the command that runs the repo\'s tests, e.g. "npm test" (change-request, bug-fix)')
     p.add_argument("--rebuild", action="store_true", help="redo work that was already accepted")
     p.add_argument("--resume", action="store_true",
                    help="continue the run in --name: keep what it accepted, redo the rest")

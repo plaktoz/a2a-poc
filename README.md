@@ -8,7 +8,8 @@ The factory can:
 - answer a research question in a report where every quote is checked against its source,
 - audit existing code and write a prioritized report,
 - design an HTTP API,
-- change an existing git repo and commit the change on its own branch.
+- change an existing git repo and commit the change on its own branch,
+- fix a bug in an existing git repo, starting from a test that fails because of the bug.
 
 ## Quick start
 
@@ -16,8 +17,8 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "270 passed"; no LLM is called
-uv run factory runbooks        # lists api-design, change-request, code-audit, research and web-app
+uv run pytest                  # prints "282 passed"; no LLM is called
+uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, research and web-app
 ```
 
 Set the environment variables that `llm.yaml` names before a real run:
@@ -47,7 +48,8 @@ The factory shows its plan and waits for your OK. Add `--yes` to skip every ques
 | `research` | Answer a question from public sources. Trait: `review` (default yes). | plan, investigate each sub-question in parallel, then a write loop | `PLAN.json`, `REPORT.md` |
 | `code-audit` | Review code without changing it. Needs `--target`. | audit through 4 lenses in parallel (security, correctness, maintainability, tests), then a write loop | `AUDIT.md` |
 | `api-design` | Turn a brief into a spec and an HTTP API contract. | spec, then a contract loop | `SPEC.json`, `API.json` |
-| `change-request` | Change code in an existing git repo. Needs `--repo` and `--test-command`. | spec (you approve it), then a build loop: a developer changes the code in a worktree, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
+| `bug-fix` | Fix a bug, an error, a crash or a regression in an existing git repo. Needs `--repo` and `--test-command`. | spec (the bug report; you approve it), a tester writes one test that fails because of the bug and the factory runs your tests to prove it fails, then a fix loop: a developer fixes the cause, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
+| `change-request` | Add a feature to, or deliberately change, code in an existing git repo. Not for bugs: use `bug-fix`. Needs `--repo` and `--test-command`. | spec (you approve it), then a build loop: a developer changes the code in a worktree, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
 
 Examples:
 
@@ -60,6 +62,8 @@ uv run factory run --brief "which vector database fits a 10M-document RAG system
 uv run factory run --runbook code-audit --target apps/kanban-react --brief "is it ready to ship?"
 uv run factory run --runbook change-request --repo ~/code/shop --test-command "npm test" \
     --brief "add a cart that shows the total" --name cart                    # a commit on factory/cart
+uv run factory run --runbook bug-fix --repo ~/code/shop --test-command "npm test" \
+    --brief "the cart total still counts an item after it is removed" --name total   # a commit on factory/total
 uv run factory run --brief "..." --staff writer=codex-gpt --staff verifier=codex-gemini
 ```
 
@@ -118,7 +122,7 @@ The status in `run.json` is `running`, `accepted`, `stopped` or `error`. After a
 | `factory` | `commit` and `dirty`: the git commit of the factory code and whether it had uncommitted changes. |
 | `gates` | The names of the gates in the plan |
 | `resumes` | One entry for each `--resume`, with its start time |
-| `repo`, `base`, `branch`, `tree`, `commit` | Only for `change-request`. See "Change a git repo". |
+| `repo`, `base`, `branch`, `tree`, `commit` | Only for `change-request` and `bug-fix`. See "Change a git repo". |
 
 ### Change a git repo
 
@@ -152,6 +156,24 @@ Rules:
 - The engine reverts any change to `.git` and any write outside the worktree. A write outside the worktree fails the attempt.
 - A run that ends with no file change stops. The factory does not commit an empty change.
 
+### Fix a bug
+
+The `bug-fix` runbook fixes a bug in a repo that you already have. It works like `change-request`: a worktree on `factory/<name>`, your checkout untouched, one commit at the end, nothing pushed. It differs in that the fix starts from a failing test.
+
+```bash
+uv run factory run --runbook bug-fix --repo ~/code/shop --test-command "npm test" \
+    --brief "the cart total still counts an item after it is removed" --name total
+```
+
+1. The analyst writes the bug report as a spec: the steps to reproduce, the expected and the actual behaviour, and the suspected cause. AC1 is "the bug no longer occurs". You approve the spec at the checkpoint.
+2. A tester writes **one** test that fails because of the bug, and reports its name. The tester changes no source file.
+3. The factory runs `--test-command` itself (gate `repro_fails`). The test command must fail, and its output must name the tester's test. If every test passes, the bug is not reproduced. If the suite fails without naming that test, it fails for another reason. Either way the tester tries again, and the run stops if the second try fails too.
+4. The developer fixes the cause with the smallest change. The developer must not weaken, skip or delete the reproduction test. After each round the factory runs `--test-command` again, and every test must pass.
+5. A reviewer reads the diff. The reviewer approves only if the reproduction test is still there, the change fixes the cause and not the symptom, and it touches only what the bug needs.
+6. The factory makes one commit. It holds the reproduction test and the fix.
+
+The folders, the flags and the rules are those of "Change a git repo". Both runbooks need `--repo` and `--test-command`.
+
 ### What a run costs
 
 Every LLM call logs its worker, model, tokens and cost. `run.json` holds one row for each call, plus totals for the run and for each model. The console prints a `Usage:` line at the end. Claude reports its cost. Codex reports tokens only, so the factory prices its calls from `docs/model-prices.md` (FR-30). A model with no price there shows its cost as unknown. The file is refreshed weekly with the skill `update-model-prices` or `uv run python -m factory.prices`. An alias such as `gpt-advantage-assist` takes the price of its target model.
@@ -172,9 +194,9 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `--staff ROLE=WORKER[:MODEL]` | Sets who plays a role in this run |
 | `--name NAME` | Works in `apps/NAME` |
 | `--target PATH` | The code to audit |
-| `--repo PATH` | The git repo that `change-request` changes. The work happens in a worktree. |
+| `--repo PATH` | The git repo that `change-request` or `bug-fix` changes. The work happens in a worktree. |
 | `--base REF` | The commit that the new branch starts from. Default `HEAD`. |
-| `--test-command CMD` | The command that runs the repo's tests, such as `"npm test"`. Required for `change-request`. |
+| `--test-command CMD` | The command that runs the repo's tests, such as `"npm test"`. Required for `change-request` and `bug-fix`. |
 | `--rebuild` | Redoes accepted work |
 | `--resume` | Continues the stopped run in `--name`. It keeps the items that were accepted and does the rest again. It refuses a run that is accepted. |
 | `--yes` | Asks nothing. The agents decide and every checkpoint is accepted. |
@@ -200,6 +222,7 @@ The engine never trusts a claim from an agent. It runs the tests itself and comp
 | `lint_clean` | The template's `lint` command exits 0 in each surface. A template with no `lint` command passes. | retry the step |
 | `packages_exist` | Each npm and PyPI package in the manifests exists on its registry. A registry that cannot be reached does not fail the gate. The gate logs the names it could not check. | retry the step |
 | `repo_tests_pass` | The `--test-command` exits 0 in the worktree. | new round |
+| `repro_fails` | The `--test-command` fails in the worktree, and its output names the test that the tester reported (`bug-fix`). | retry the step |
 
 The gates `citations_verified` and `evidence_verified` fail only when no finding survives. A quote needs 20 characters or more. The gate ignores case, punctuation, spacing and citation markers such as `[1]`.
 
@@ -367,7 +390,7 @@ The code is in `src/factory/`:
 | `invoke.py` | The one entry for an LLM call. It runs the worker's plugin and prices a call whose worker reports no cost. |
 | `prices.py`, `docs/model-prices.md` | The price table and its weekly refresh from llm-prices.com (FR-30) |
 | `workers/` | The plugin interface (`base.py`), the loader, and the `claude` and `codex` plugins |
-| `repo.py` | Worktrees, the write guard and the commit for `change-request` |
+| `repo.py` | Worktrees, the write guard and the commit for `change-request` and `bug-fix` |
 | `check.py` | `factory check` |
 | `runs.py` | `factory runs` |
 | `a2a_transport.py` | The A2A server, client and agent cards |
@@ -382,6 +405,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_config.py` | 33 | `llm.yaml` loads, rejects literal keys and unknown models, makes `per_task_usd` optional, and needs two reviewer candidates when the checker rule is on. |
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
 | `test_fallback.py` | 5 | A role's fallback takes the last attempt only, and a bad fallback fails to load. |
+| `test_bugfix.py` | 12 | `bug-fix` proves the bug with a failing test before the fix, makes one commit, and leaves the checkout unchanged. |
 | `test_gates_p6.py` | 35 | `secrets_clean`, `lint_clean` and `packages_exist` catch what they must, mask secrets and survive a registry outage. |
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
@@ -391,7 +415,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_schemas.py` | 19 | Each deliverable schema accepts good data, rejects bad data and renders as text. Triage can answer `none`. |
 | `test_tracing.py` | 9 | The run ID, the factory commit and the gate names reach `run.json` and every request. |
 | `test_usage.py` | 17 | Each LLM call reports its tokens and cost, and `run.json` sums them per step and per model. |
-| `test_prices.py` | 14 | The price table prices each Codex model and alias, refreshes from the feed without changing the file on a failure, and fills a missing Codex cost. |
+| `test_prices.py` | 15 | The price table prices each Codex model and alias, refreshes from the feed without changing the file on a failure, and fills a missing Codex cost. |
 | `test_workers.py` | 22 | The plugin loader accepts a good plugin, rejects bad ones, and the shipped plugins build their commands. |
 
 No person has run the factory live for this README. The live run calls the workers and the network. The tests do not.
@@ -409,7 +433,9 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | `apps/<name> already holds accepted work` | A run with this name finished. | Add `--rebuild`, or choose another `--name`. |
 | `<name> is already being worked on by another run` | Another process holds the lock. | Wait for that run, or choose another `--name`. |
 | `needs --target, an existing directory` | The `code-audit` runbook has no target. | Add `--target PATH`. |
-| `runbook change-request needs --test-command` or `--repo` | The runbook changes a git repo and runs your tests. | Add `--repo PATH` and `--test-command "..."`. |
+| `runbook change-request needs --test-command` or `--repo` (also `bug-fix`) | The runbook changes a git repo and runs your tests. | Add `--repo PATH` and `--test-command "..."`. |
+| `the bug is not reproduced: every test passes` | The tester's test passes, or the tester wrote no test. | Describe the steps to reproduce in the `--brief`, or check that `--test-command` runs the new test. |
+| `the failing output does not name your test` | The suite fails for another reason, or the command hides test names. | Fix the failing suite first, or use a test command that prints the name of each failing test. |
 | `branch factory/<name> already exists` | An earlier run used the name. | Choose another `--name`, or delete the branch. |
 | `--resume needs --name` or `nothing to resume` | `--resume` has no run to continue. | Give the `--name` of a stopped run. |
 | `There is no runbook for this request` | Triage answered `none`. | Rephrase the brief, or add a runbook. |
@@ -432,10 +458,10 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 - **Quotes under 20 characters fail.** `quote_on_page()` rejects them, and the gate drops that finding.
 - **Search has no retry.** A rate limit removes that source from the result.
 - **No read timeout on a task.** A hung agent blocks the run until its LLM call reaches its limit.
-- **The write guard covers the original checkout and `.git`.** For `change-request`, the engine reverts a write in the original checkout and in the worktree's git data. A `claude` agent has no operating-system sandbox, so it can write elsewhere. The factory cannot see that.
-- **A wrong test command gives a false green.** `repo_tests_pass` trusts `--test-command`. A command that runs no tests passes. Check the command yourself.
+- **The write guard covers the original checkout and `.git`.** For `change-request` and `bug-fix`, the engine reverts a write in the original checkout and in the worktree's git data. A `claude` agent has no operating-system sandbox, so it can write elsewhere. The factory cannot see that.
+- **A wrong test command gives a false green.** `repo_tests_pass` trusts `--test-command`. `repro_fails` needs the command to print the name of a failing test. A command that runs no tests passes. Check the command yourself.
 - **Worktrees stay.** The factory never removes a worktree or a branch. Use the command that the run prints.
-- **No pull request.** `change-request` makes a commit only. It does not push or open a pull request.
+- **No pull request.** `change-request` and `bug-fix` make a commit only. It does not push or open a pull request.
 - **Codex prices come from a table.** `docs/model-prices.md` is refreshed weekly. A price can lag the provider by days. A prompt over 272k tokens costs more than the lower tier the table lists. A model with no price shows an unknown cost, and the run total counts it as unknown.
 
 ## Glossary
@@ -462,7 +488,7 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | Runbook | A YAML file that describes one kind of work. |
 | Scaffold | A template copied into a run, such as `web/` or `api/`. |
 | Staff | The map from each role to a worker and a model. |
-| Worktree | A second working folder of a git repo, on its own branch. `change-request` works in one. |
+| Worktree | A second working folder of a git repo, on its own branch. `change-request` and `bug-fix` work in one. |
 | Step | One task for one role, with an output and gates. |
 | Surface | A part of a web app: `web` (frontend) or `api` (backend). |
 | Template | A scaffold folder with its metadata in `templates/<name>.yaml`. |
