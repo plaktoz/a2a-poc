@@ -2,7 +2,7 @@
 
 Date: 2026-10-31
 
-Status: draft for the owner to approve. No code is written.
+Status: open questions answered by the owner (2026-10-31). Slice 1 starts after P19. No code is written.
 
 ## 1. Goal
 
@@ -141,11 +141,13 @@ Update the P10 row in `docs/code-review.md` and the status in `docs/software-fac
 
 ## 8. Open questions
 
-| # | Question | Recommendation |
+Decided by the owner on 2026-10-31.
+
+| # | Question | Decision |
 |---|---|---|
 | 1 | How does the factory find the test command of the repo? | Slice 1 requires `--test-command` and stops with a clear error when it is missing. Detection from `package.json` or `pyproject.toml` comes later. A wrong guess gives a false green. |
 | 2 | Which base does the branch start from? | `HEAD` of the repo. `--base` overrides it. |
-| 3 | Is the secret scan (P6) a precondition? | Yes. Build it first. It is a regex pass over the changed files. Make it a precondition of slice 2. |
+| 3 | Is the secret scan (P6) a precondition? | Yes. Build it first. It is a regex pass over the changed files. It is a precondition of slice 2. |
 | 4 | Where does the scratch root live? | `~/factory-scratch`. `FACTORY_SCRATCH` overrides it. |
-| 5 | Which git identity signs the commit? | The identity in the repo's git config. The commit body names the factory run. |
-| 6 | Is a `claude`-worker step allowed to write outside the worktree if the post-step check reverts it? | No. Revert the change and fail the step. See section 6. |
+| 5 | Does the commit need a signature? | No. The factory makes a plain commit with the repo's git identity. It does not sign the commit. The commit body names the factory run. |
+| 6 | Is a `claude`-worker step allowed to write outside the worktree? | No. A step must not write outside the worktree. If it does, the factory reverts the change and fails the step. See section 6. The `claude` worker has no OS sandbox, so the check after each step is the only control. |
