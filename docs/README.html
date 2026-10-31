@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>factory</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #fbfaf7;
+    --panel: #ffffff;
+    --fg: #1f2328;
+    --muted: #5b6470;
+    --line: #d9d6cc;
+    --accent: #b45f06;
+    --accent-bg: #fdf0dc;
+    --link: #1f5fbf;
+    --ok: #1a7f37;
+    --ok-bg: #e6f4ea;
+    --warn-bg: #fff4d6;
+    --code-bg: #f1efe8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #17181a;
+      --panel: #1f2124;
+      --fg: #e6e4de;
+      --muted: #a2a7ae;
+      --line: #3a3d42;
+      --accent: #f0a042;
+      --accent-bg: #3a2c14;
+      --link: #7fb0ff;
+      --ok: #5fcf80;
+      --ok-bg: #16301e;
+      --warn-bg: #3a3214;
+      --code-bg: #26282b;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #17181a;
+    --panel: #1f2124;
+    --fg: #e6e4de;
+    --muted: #a2a7ae;
+    --line: #3a3d42;
+    --accent: #f0a042;
+    --accent-bg: #3a2c14;
+    --link: #7fb0ff;
+    --ok: #5fcf80;
+    --ok-bg: #16301e;
+    --warn-bg: #3a3214;
+    --code-bg: #26282b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 60rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.45rem; margin: 2.75rem 0 .75rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.75rem 0 .5rem; }
+  p, ul, ol { margin: .6rem 0; }
+  li { margin: .25rem 0; }
+  a { color: var(--link); }
+  code { font: .88em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: .8rem 1rem; border-radius: 8px; overflow-x: auto; margin: .8rem 0; }
+  pre code { background: none; padding: 0; font-size: .85rem; }
+  .lede { color: var(--muted); margin: 0 0 1.25rem; }
+  .table-wrap { overflow-x: auto; margin: .8rem 0; }
+  table { border-collapse: collapse; width: 100%; background: var(--panel); font-size: .92rem; }
+  th, td { border: 1px solid var(--line); padding: .45rem .65rem; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  nav.toc { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .75rem 1.1rem; margin: 1rem 0 0; }
+  nav.toc ol { columns: 2 14rem; margin: 0; padding-left: 1.2rem; }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-bg); padding: .6rem .9rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  .expected { border-left: 4px solid var(--ok); background: var(--ok-bg); padding: .6rem .9rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  .warn { border-left: 4px solid var(--accent); background: var(--warn-bg); padding: .6rem .9rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  figure { margin: 1.25rem 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .75rem; }
+  figure svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--fg); }
+  figcaption { color: var(--muted); font-size: .9rem; margin-top: .5rem; }
+  .band { font: .85rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: .7rem .9rem; overflow-x: auto; white-space: pre; }
+  .band .w { color: var(--accent); font-weight: 700; }
+  .band .d { color: var(--muted); }
+  .band .s { color: var(--link); }
+  /* SVG parts, styled here so the drawings follow the theme */
+  .node { fill: var(--panel); stroke: currentColor; stroke-width: 1.5; }
+  .node-hot { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 2; }
+  .edge { stroke: currentColor; stroke-width: 1.5; fill: none; }
+  .edge-hot { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .edge-dash { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; }
+  .lbl { fill: currentColor; font: 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .lbl-b { fill: currentColor; font: 600 13px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .lbl-m { fill: var(--muted); font: 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .lbl-hot { fill: var(--accent); font: 600 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .arrow-fill { fill: currentColor; }
+  .arrow-hot { fill: var(--accent); }
+</style>
+</head>
+
+<body>
+<main>
+
+<h1>factory</h1>
+
+<p class="lede">
+A software factory that runs a runbook of A2A agents. It builds web apps, writes research reports, audits code and designs APIs.</p>
+
+<p>An HTML version of this document is in <code>README.html</code>. It has the same content and the same diagrams.</p>
+
+<p>To install the project, go to <a href="#install">section 5</a>. To check that it works, go to <a href="#validate">section 6</a>.</p>
+
+<nav class="toc" aria-label="Contents">
+
+  <ol>
+
+    <li><a href="#purpose">Purpose</a></li>
+
+    <li><a href="#code">Where to find the code</a></li>
+
+    <li><a href="#how">How it works</a></li>
+
+    <li><a href="#settings">Settings</a></li>
+
+    <li><a href="#install">Install</a></li>
+
+    <li><a href="#validate">Validate</a></li>
+
+    <li><a href="#limits">Known limits</a></li>
+
+    <li><a href="#glossary">Glossary</a></li>
+
+  </ol>
+
+</nav>
+
+<h2 id="purpose">1. Purpose</h2>
+
+<p>The factory turns a written brief into a checked deliverable. The deliverable is a tested web app, a cited research report, a code audit or an API design.</p>
+
+<p>A runbook describes the work. A runbook is a YAML file in <code>runbooks/</code>. It lists the steps, the traits and the checks. Each step names the role that does it.</p>
+
+<p>Each role is an A2A agent. The factory starts one agent process for each role that a plan needs. Each agent calls one LLM worker.</p>
+
+<p>The engine sends a task to an agent and checks the result with gates. A gate is a check that the engine runs itself. The engine does not trust a claim that an agent makes. For example, it runs the tests itself and compares the counts.</p>
+
+<p>The shipped runbooks are:</p>
+
+<ul>
+  <li><strong>web-app</strong> – specifies, tests, builds and verifies a React frontend, a FastAPI backend, or both.</li>
+  <li><strong>research</strong> – plans a question, investigates each sub-question, checks every quote and writes a reviewed report.</li>
+  <li><strong>code-audit</strong> – reviews existing code through four lenses and writes a prioritized report.</li>
+  <li><strong>api-design</strong> – turns a brief into a spec and an HTTP API contract, and a reviewer checks it.</li>
+</ul>
+
+<p>A checker must use a different model than the author. The reviewer differs from the writer. The verifier differs from the developer. The factory refuses a plan that breaks this rule.</p>
+
+<p>Each run works in its own folder, <code>apps/&lt;name&gt;/</code>. Runs with different names do not share files or ports.</p>
+
+<h2 id="code">2. Where to find the code</h2>
+
+<p>The line numbers apply to this version of the files. If a line number is different, search for the name.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Item</th><th>File</th><th>Line</th></tr></thead>
+  <tbody>
+    <tr><td><code>AGENTS_FILE</code> – the default <code>agents.yaml</code></td><td><code>src/factory/cli.py</code></td><td>34</td></tr>
+    <tr><td><code>parse_traits()</code> – reads <code>--trait NAME=yes|no</code></td><td><code>src/factory/cli.py</code></td><td>38</td></tr>
+    <tr><td><code>parse_staff()</code> – reads <code>--staff ROLE=WORKER[:MODEL]</code></td><td><code>src/factory/cli.py</code></td><td>48</td></tr>
+    <tr><td><code>cmd_runbooks()</code> – the <code>runbooks</code> command</td><td><code>src/factory/cli.py</code></td><td>63</td></tr>
+    <tr><td><code>cmd_plan()</code> – the <code>plan</code> command</td><td><code>src/factory/cli.py</code></td><td>73</td></tr>
+    <tr><td><code>cmd_run()</code> – the <code>run</code> command</td><td><code>src/factory/cli.py</code></td><td>83</td></tr>
+    <tr><td><code>main()</code> – the argument parser and the error exit</td><td><code>src/factory/cli.py</code></td><td>123</td></tr>
+    <tr><td><code>holds()</code> – tests a trait condition</td><td><code>src/factory/runbook.py</code></td><td>62</td></tr>
+    <tr><td><code>fill()</code> – fills <code>{{ variable }}</code> in a text</td><td><code>src/factory/runbook.py</code></td><td>88</td></tr>
+    <tr><td><code>StaffDef</code> – a staff entry: worker, model, url</td><td><code>src/factory/runbook.py</code></td><td>121</td></tr>
+    <tr><td><code>StepDef</code> – the fields of a step</td><td><code>src/factory/runbook.py</code></td><td>127</td></tr>
+    <tr><td><code>LoopDef</code> – the fields of a loop</td><td><code>src/factory/runbook.py</code></td><td>155</td></tr>
+    <tr><td><code>Runbook</code> – the fields of a runbook, and its checks</td><td><code>src/factory/runbook.py</code></td><td>166</td></tr>
+    <tr><td><code>load_runbook()</code> – reads one runbook file</td><td><code>src/factory/runbook.py</code></td><td>246</td></tr>
+    <tr><td><code>catalog()</code> – loads every runbook in a folder</td><td><code>src/factory/runbook.py</code></td><td>256</td></tr>
+    <tr><td><code>load_staff()</code> – maps each role to a worker and model</td><td><code>src/factory/runbook.py</code></td><td>289</td></tr>
+    <tr><td><code>Plan</code> – a runbook with its traits and staff resolved</td><td><code>src/factory/runbook.py</code></td><td>312</td></tr>
+    <tr><td><code>resolve()</code> – builds a plan</td><td><code>src/factory/runbook.py</code></td><td>334</td></tr>
+    <tr><td><code>_check_independence()</code> – the checker rule</td><td><code>src/factory/runbook.py</code></td><td>365</td></tr>
+    <tr><td><code>outline()</code> – the text of a plan</td><td><code>src/factory/runbook.py</code></td><td>378</td></tr>
+    <tr><td><code>mermaid()</code> – the flowchart of a plan</td><td><code>src/factory/runbook.py</code></td><td>413</td></tr>
+    <tr><td><code>APP_NAME</code> – the rule for a run name</td><td><code>src/factory/engine.py</code></td><td>39</td></tr>
+    <tr><td><code>MAX_CONVERSATION</code> – the limit of turns at one checkpoint</td><td><code>src/factory/engine.py</code></td><td>40</td></tr>
+    <tr><td><code>API_PREFIX</code> – the path prefix of a full-stack contract</td><td><code>src/factory/engine.py</code></td><td>41</td></tr>
+    <tr><td><code>Stop</code> – ends the run</td><td><code>src/factory/engine.py</code></td><td>44</td></tr>
+    <tr><td><code>RoundFailed</code> – ends a round</td><td><code>src/factory/engine.py</code></td><td>48</td></tr>
+    <tr><td><code>open_workspace()</code> – creates and locks <code>apps/&lt;name&gt;</code></td><td><code>src/factory/engine.py</code></td><td>59</td></tr>
+    <tr><td><code>snapshot()</code> – reads every project file</td><td><code>src/factory/engine.py</code></td><td>86</td></tr>
+    <tr><td><code>changed()</code> – lists the files that differ</td><td><code>src/factory/engine.py</code></td><td>95</td></tr>
+    <tr><td><code>restore()</code> – puts files back</td><td><code>src/factory/engine.py</code></td><td>99</td></tr>
+    <tr><td><code>RunLog</code> – writes <code>run.json</code></td><td><code>src/factory/engine.py</code></td><td>111</td></tr>
+    <tr><td><code>Engine</code> – runs a plan</td><td><code>src/factory/engine.py</code></td><td>149</td></tr>
+    <tr><td><code>run()</code> – the driver of a run</td><td><code>src/factory/engine.py</code></td><td>167</td></tr>
+    <tr><td><code>loop()</code> – runs the rounds of a loop</td><td><code>src/factory/engine.py</code></td><td>199</td></tr>
+    <tr><td><code>step()</code> – runs the items of a step</td><td><code>src/factory/engine.py</code></td><td>225</td></tr>
+    <tr><td><code>attempt()</code> – runs one item with retries</td><td><code>src/factory/engine.py</code></td><td>253</td></tr>
+    <tr><td><code>_request()</code> – builds the task for an agent</td><td><code>src/factory/engine.py</code></td><td>290</td></tr>
+    <tr><td><code>_schema_ctx()</code> – the context for a schema</td><td><code>src/factory/engine.py</code></td><td>329</td></tr>
+    <tr><td><code>_on_input()</code> – asks the person</td><td><code>src/factory/engine.py</code></td><td>336</td></tr>
+    <tr><td><code>_check_files()</code> – reverts changes outside a role</td><td><code>src/factory/engine.py</code></td><td>359</td></tr>
+    <tr><td><code>_review_test_change()</code> – the tester judges a test change</td><td><code>src/factory/engine.py</code></td><td>381</td></tr>
+    <tr><td><code>_reset_scaffolds()</code> – resets the scaffolds before code is written</td><td><code>src/factory/engine.py</code></td><td>455</td></tr>
+    <tr><td><code>triage()</code> – asks the triage agent for a choice</td><td><code>src/factory/engine.py</code></td><td>535</td></tr>
+    <tr><td><code>Failure</code> – a failed gate, with a level</td><td><code>src/factory/gates.py</code></td><td>33</td></tr>
+    <tr><td><code>GATES</code> – the table of gates</td><td><code>src/factory/gates.py</code></td><td>62</td></tr>
+    <tr><td><code>run_tests()</code> – runs the suite of a surface</td><td><code>src/factory/gates.py</code></td><td>122</td></tr>
+    <tr><td><code>free_port()</code> – asks the system for a free port</td><td><code>src/factory/gates.py</code></td><td>141</td></tr>
+    <tr><td><code>serve_vite()</code> – builds and previews a frontend</td><td><code>src/factory/gates.py</code></td><td>173</td></tr>
+    <tr><td><code>serve_asgi()</code> – starts a backend with uvicorn</td><td><code>src/factory/gates.py</code></td><td>195</td></tr>
+    <tr><td><code>tests_named()</code> – gate: a test for each criterion</td><td><code>src/factory/gates.py</code></td><td>236</td></tr>
+    <tr><td><code>tests_red()</code> – gate: new tests fail</td><td><code>src/factory/gates.py</code></td><td>255</td></tr>
+    <tr><td><code>tests_green()</code> – gate: all tests pass</td><td><code>src/factory/gates.py</code></td><td>267</td></tr>
+    <tr><td><code>counts_match()</code> – gate: the counts agree</td><td><code>src/factory/gates.py</code></td><td>276</td></tr>
+    <tr><td><code>serves()</code> – gate: the build serves</td><td><code>src/factory/gates.py</code></td><td>285</td></tr>
+    <tr><td><code>criteria_covered()</code> – gate: every criterion passes</td><td><code>src/factory/gates.py</code></td><td>294</td></tr>
+    <tr><td><code>fetch_text()</code> – fetches a page as text</td><td><code>src/factory/gates.py</code></td><td>314</td></tr>
+    <tr><td><code>quote_on_page()</code> – finds a quote on a page</td><td><code>src/factory/gates.py</code></td><td>334</td></tr>
+    <tr><td><code>citations_verified()</code> – gate: quotes are on their pages</td><td><code>src/factory/gates.py</code></td><td>340</td></tr>
+    <tr><td><code>sources_cited()</code> – gate: the report cites verified sources</td><td><code>src/factory/gates.py</code></td><td>366</td></tr>
+    <tr><td><code>evidence_verified()</code> – gate: evidence is in the code</td><td><code>src/factory/gates.py</code></td><td>377</td></tr>
+    <tr><td><code>review_approves()</code> – gate: the reviewer approves</td><td><code>src/factory/gates.py</code></td><td>402</td></tr>
+    <tr><td><code>START_TIMEOUT</code> – the wait for an agent card</td><td><code>src/factory/fleet.py</code></td><td>22</td></tr>
+    <tr><td><code>Fleet</code> – starts and stops the agents</td><td><code>src/factory/fleet.py</code></td><td>26</td></tr>
+    <tr><td><code>_wait()</code> – waits for a card and checks its tags</td><td><code>src/factory/fleet.py</code></td><td>55</td></tr>
+    <tr><td><code>send()</code> – sends a task to a role</td><td><code>src/factory/fleet.py</code></td><td>81</td></tr>
+    <tr><td><code>LLM_ATTEMPTS</code> – the tries for a usable reply</td><td><code>src/factory/agent.py</code></td><td>43</td></tr>
+    <tr><td><code>extract_json()</code> – reads the last JSON block</td><td><code>src/factory/agent.py</code></td><td>46</td></tr>
+    <tr><td><code>prompt_for()</code> – builds the prompt of a task</td><td><code>src/factory/agent.py</code></td><td>60</td></tr>
+    <tr><td><code>produce()</code> – calls the worker and validates the reply</td><td><code>src/factory/agent.py</code></td><td>91</td></tr>
+    <tr><td><code>handle()</code> – turns a reply into questions, a review or a result</td><td><code>src/factory/agent.py</code></td><td>106</td></tr>
+    <tr><td><code>card_for()</code> – the agent card with its tags</td><td><code>src/factory/agent.py</code></td><td>119</td></tr>
+    <tr><td><code>main()</code> – starts one agent</td><td><code>src/factory/agent.py</code></td><td>127</td></tr>
+    <tr><td><code>CODEX_TIMEOUT</code> – the limits of one LLM call</td><td><code>src/factory/invoke.py</code></td><td>20</td></tr>
+    <tr><td><code>Tools</code> – the tools of a role in a folder</td><td><code>src/factory/invoke.py</code></td><td>24</td></tr>
+    <tr><td><code>claude_allowlist()</code> – the Claude tool flags</td><td><code>src/factory/invoke.py</code></td><td>36</td></tr>
+    <tr><td><code>invoke()</code> – runs Claude or Codex</td><td><code>src/factory/invoke.py</code></td><td>43</td></tr>
+    <tr><td><code>SEARCH</code> – the command line of the factory search</td><td><code>src/factory/roles.py</code></td><td>30</td></tr>
+    <tr><td><code>Role</code> – one role</td><td><code>src/factory/roles.py</code></td><td>39</td></tr>
+    <tr><td><code>_RoleDef</code> – the checked form of a role in the file</td><td><code>src/factory/roles.py</code></td><td>57</td></tr>
+    <tr><td><code>load_roles()</code> – reads <code>roles.yaml</code></td><td><code>src/factory/roles.py</code></td><td>70</td></tr>
+    <tr><td><code>ROLES</code> – the roles, loaded on first use</td><td><code>src/factory/roles.py</code></td><td>124</td></tr>
+    <tr><td><code>ConfigError</code> – a settings error</td><td><code>src/factory/config.py</code></td><td>39</td></tr>
+    <tr><td><code>Budgets</code> – the cost and retry limits</td><td><code>src/factory/config.py</code></td><td>107</td></tr>
+    <tr><td><code>Config</code> – the checked <code>llm.yaml</code></td><td><code>src/factory/config.py</code></td><td>128</td></tr>
+    <tr><td><code>worker()</code> – finds a worker by name</td><td><code>src/factory/config.py</code></td><td>176</td></tr>
+    <tr><td><code>reviewer_for()</code> – picks a reviewer model</td><td><code>src/factory/config.py</code></td><td>212</td></tr>
+    <tr><td><code>load_config()</code> – reads <code>llm.yaml</code> and fills the variables</td><td><code>src/factory/config.py</code></td><td>286</td></tr>
+    <tr><td><code>MODELS</code> – the schema of each deliverable</td><td><code>src/factory/schemas.py</code></td><td>154</td></tr>
+    <tr><td><code>SHAPES</code> – the reply format shown to an agent</td><td><code>src/factory/schemas.py</code></td><td>167</td></tr>
+    <tr><td><code>validate()</code> – checks a reply</td><td><code>src/factory/schemas.py</code></td><td>196</td></tr>
+    <tr><td><code>_check_contract()</code> – checks the API contract paths</td><td><code>src/factory/schemas.py</code></td><td>238</td></tr>
+    <tr><td><code>render()</code> – shows a deliverable as text</td><td><code>src/factory/schemas.py</code></td><td>284</td></tr>
+    <tr><td><code>Template</code> – a scaffold and its metadata</td><td><code>src/factory/scaffold.py</code></td><td>36</td></tr>
+    <tr><td><code>read_template()</code> – reads <code>templates/&lt;name&gt;.yaml</code></td><td><code>src/factory/scaffold.py</code></td><td>49</td></tr>
+    <tr><td><code>install()</code> – installs the dependencies of a scaffold</td><td><code>src/factory/scaffold.py</code></td><td>77</td></tr>
+    <tr><td><code>place()</code> – copies a scaffold into a run</td><td><code>src/factory/scaffold.py</code></td><td>88</td></tr>
+    <tr><td><code>reset()</code> – returns a scaffold to its template</td><td><code>src/factory/scaffold.py</code></td><td>99</td></tr>
+    <tr><td><code>TIMEOUT</code> – the wait for one search source</td><td><code>src/factory/search.py</code></td><td>23</td></tr>
+    <tr><td><code>SOURCES</code> – the search sources</td><td><code>src/factory/search.py</code></td><td>88</td></tr>
+    <tr><td><code>DEFAULT_SOURCES</code> – the sources used when <code>--sources</code> is absent</td><td><code>src/factory/search.py</code></td><td>92</td></tr>
+    <tr><td><code>search()</code> – queries the sources in parallel</td><td><code>src/factory/search.py</code></td><td>95</td></tr>
+    <tr><td><code>Reply</code> – a reply from an agent</td><td><code>src/factory/a2a_transport.py</code></td><td>47</td></tr>
+    <tr><td><code>StageFailed</code> – a task that did not finish</td><td><code>src/factory/a2a_transport.py</code></td><td>55</td></tr>
+    <tr><td><code>agent_card()</code> – builds an agent card</td><td><code>src/factory/a2a_transport.py</code></td><td>99</td></tr>
+    <tr><td><code>build_app()</code> – builds the agent server</td><td><code>src/factory/a2a_transport.py</code></td><td>119</td></tr>
+    <tr><td><code>fetch_card()</code> – reads an agent card</td><td><code>src/factory/a2a_transport.py</code></td><td>127</td></tr>
+    <tr><td><code>call()</code> – sends a task and handles input requests</td><td><code>src/factory/a2a_transport.py</code></td><td>133</td></tr>
+    <tr><td><code>ROLES_FILE</code> – the default <code>roles.yaml</code></td><td><code>src/factory/paths.py</code></td><td>10</td></tr>
+    <tr><td><code>CMD_TIMEOUT</code> – the limit of a command</td><td><code>src/factory/process.py</code></td><td>9</td></tr>
+    <tr><td><code>workers:</code> – the LLM workers</td><td><code>llm.yaml</code></td><td>21</td></tr>
+    <tr><td><code>reviewer:</code> – the reviewer candidates</td><td><code>llm.yaml</code></td><td>48</td></tr>
+    <tr><td><code>budgets:</code> – the cost and retry limits</td><td><code>llm.yaml</code></td><td>52</td></tr>
+    <tr><td><code>roles:</code> – who plays each role</td><td><code>agents.yaml</code></td><td>10</td></tr>
+    <tr><td><code>roles:</code> – the definition of each role</td><td><code>roles.yaml</code></td><td>17</td></tr>
+    <tr><td><code>rounds:</code> – the rounds of the research write loop</td><td><code>runbooks/research.yaml</code></td><td>49</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="how">3. How it works</h2>
+
+<h3 id="h-3-1">3.1 A run from brief to result</h3>
+
+<p>The command <code>factory run</code> takes a brief. It asks the triage agent to pick a runbook and its traits. The option <code>--runbook</code> skips this choice. The engine then runs the steps of the plan.</p>
+
+<figure>
+<svg viewBox="0 0 780 610" role="img" aria-label="Flowchart of a run. The brief goes to the triage agent, which picks the runbook and the traits. The option runbook skips this step. The factory resolves the plan with its traits, staff and independence check. You then approve the plan. If you answer no, the run does not start and exits with code 1. If you answer yes, the fleet starts one agent for each role, and the engine runs the steps and loops. A run that passes every check ends as done with exit code 0. A step or loop that fails with no retry left stops the run with exit code 1.">
+  <defs>
+      <marker id="f1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-fill"/></marker>
+      <marker id="f1h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-hot"/></marker>
+    </defs>
+    <!-- nodes -->
+    <rect class="node-hot" x="150" y="14" width="160" height="36" rx="8"/>
+    <text class="lbl-b" x="230.0" y="36.0" text-anchor="middle">Brief</text>
+    <rect class="node-hot" x="110" y="84" width="240" height="64" rx="8"/>
+    <text class="lbl-b" x="230.0" y="104.0" text-anchor="middle">triage agent</text>
+    <text class="lbl" x="230.0" y="120.0" text-anchor="middle">picks the runbook and traits</text>
+    <text class="lbl" x="230.0" y="136.0" text-anchor="middle">(skipped by --runbook)</text>
+    <rect class="node-hot" x="110" y="182" width="240" height="50" rx="8"/>
+    <text class="lbl-b" x="230.0" y="203.0" text-anchor="middle">resolve the plan</text>
+    <text class="lbl" x="230.0" y="219.0" text-anchor="middle">traits, staff, independence check</text>
+    <polygon class="node-hot" points="230,266 330,306 230,346 130,306"/>
+    <text class="lbl" x="230" y="302" text-anchor="middle">You approve</text>
+    <text class="lbl" x="230" y="318" text-anchor="middle">the plan?</text>
+    <rect class="node" x="520" y="288" width="200" height="36" rx="8"/>
+    <text class="lbl-b" x="620.0" y="310.0" text-anchor="middle">Not started (exit 1)</text>
+    <rect class="node-hot" x="110" y="380" width="240" height="52" rx="8"/>
+    <text class="lbl-b" x="230.0" y="402.0" text-anchor="middle">Fleet starts one agent</text>
+    <text class="lbl" x="230.0" y="418.0" text-anchor="middle">for each role</text>
+    <rect class="node-hot" x="110" y="466" width="240" height="50" rx="8"/>
+    <text class="lbl-b" x="230.0" y="487.0" text-anchor="middle">Engine runs the steps</text>
+    <text class="lbl" x="230.0" y="503.0" text-anchor="middle">and loops</text>
+    <rect class="node-hot" x="150" y="552" width="160" height="36" rx="8"/>
+    <text class="lbl-b" x="230.0" y="574.0" text-anchor="middle">Done (exit 0)</text>
+    <rect class="node" x="520" y="473" width="200" height="36" rx="8"/>
+    <text class="lbl-b" x="620.0" y="495.0" text-anchor="middle">Stopped (exit 1)</text>
+    <!-- happy path -->
+    <path class="edge-hot" d="M230 50 L230 82" marker-end="url(#f1h)"/>
+    <path class="edge-hot" d="M230 148 L230 180" marker-end="url(#f1h)"/>
+    <path class="edge-hot" d="M230 232 L230 264" marker-end="url(#f1h)"/>
+    <path class="edge-hot" d="M230 346 L230 378" marker-end="url(#f1h)"/>
+    <text class="lbl" x="238" y="368" text-anchor="start">yes</text>
+    <path class="edge-hot" d="M230 432 L230 464" marker-end="url(#f1h)"/>
+    <path class="edge-hot" d="M230 516 L230 550" marker-end="url(#f1h)"/>
+    <!-- failures -->
+    <path class="edge" d="M330 306 L518 306" marker-end="url(#f1a)"/>
+    <text class="lbl" x="424" y="298" text-anchor="middle">no</text>
+    <path class="edge" d="M350 491 L518 491" marker-end="url(#f1a)"/>
+    <text class="lbl" x="434" y="470" text-anchor="middle">a step or loop fails</text>
+    <text class="lbl" x="434" y="484" text-anchor="middle">with no retry left</text>
+  </svg>
+  
+<figcaption>Figure 1. A run from brief to result. The thick line is a run that passes every check. The option <code>--yes</code> skips the approval.</figcaption>
+</figure>
+
+<p>The command <code>factory plan</code> shows the same plan without a run. The option <code>--mermaid</code> prints the flowchart of the plan.</p>
+
+<p>A run uses these steps:</p>
+
+<ol>
+  <li>Load the settings, the runbooks and the staff.</li>
+  <li>Resolve the plan. The plan must pass the checker rule.</li>
+  <li>Ask you to approve the plan.</li>
+  <li>Create and lock <code>apps/&lt;name&gt;/</code>.</li>
+  <li>Start one agent for each role in the plan.</li>
+  <li>Place the scaffolds, then run the steps and loops in order.</li>
+  <li>Write <code>run.json</code> and stop the agents.</li>
+</ol>
+
+<h3 id="h-3-2">3.2 One attempt at a step</h3>
+
+<p>A step runs once for each item. An item is a surface, a list entry or an entry of an earlier result. The method <code>attempt()</code> runs one item.</p>
+
+<figure>
+<svg viewBox="0 0 800 560" role="img" aria-label="Flowchart of one attempt at a step. The engine snapshots the files, then sends the request to the agent. A decision checks whether the reply matches the schema. If yes, the engine checks the files and reverts changes outside the role. A second decision checks whether the gates pass. If yes, the attempt is accepted and the result is stored. If the reply does not match the schema, or a gate fails, the flow goes to a decision on the failure level. At level step with a retry left, the flow returns to the request with the failure message as feedback. At level step with none left, or at level round, the attempt ends with RoundFailed. At level run, the engine stops the run.">
+  <defs>
+      <marker id="f2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-fill"/></marker>
+      <marker id="f2h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-hot"/></marker>
+    </defs>
+    <!-- nodes -->
+    <rect class="node-hot" x="100" y="14" width="200" height="36" rx="8"/>
+    <text class="lbl-b" x="200.0" y="36.0" text-anchor="middle">Snapshot the files</text>
+    <rect class="node-hot" x="80" y="84" width="240" height="36" rx="8"/>
+    <text class="lbl-b" x="200.0" y="106.0" text-anchor="middle">Send the request to the agent</text>
+    <polygon class="node-hot" points="200,155 320,200 200,245 80,200"/>
+    <text class="lbl" x="200" y="196" text-anchor="middle">Reply matches</text>
+    <text class="lbl" x="200" y="212" text-anchor="middle">the schema?</text>
+    <rect class="node-hot" x="80" y="290" width="240" height="52" rx="8"/>
+    <text class="lbl-b" x="200.0" y="312.0" text-anchor="middle">Check the files</text>
+    <text class="lbl" x="200.0" y="328.0" text-anchor="middle">revert changes outside the role</text>
+    <polygon class="node-hot" points="200,380 300,420 200,460 100,420"/>
+    <text class="lbl" x="200" y="424" text-anchor="middle">Gates pass?</text>
+    <rect class="node-hot" x="80" y="500" width="240" height="36" rx="8"/>
+    <text class="lbl-b" x="200.0" y="522.0" text-anchor="middle">Accepted: store the result</text>
+    <polygon class="node" points="560,260 680,310 560,360 440,310"/>
+    <text class="lbl" x="560" y="314" text-anchor="middle">Failure level?</text>
+    <rect class="node" x="480" y="400" width="160" height="36" rx="8"/>
+    <text class="lbl-b" x="560.0" y="422.0" text-anchor="middle">RoundFailed</text>
+    <rect class="node" x="670" y="400" width="120" height="36" rx="8"/>
+    <text class="lbl-b" x="730.0" y="422.0" text-anchor="middle">Stop</text>
+    <!-- happy path -->
+    <path class="edge-hot" d="M200 50 L200 82" marker-end="url(#f2h)"/>
+    <path class="edge-hot" d="M200 120 L200 153" marker-end="url(#f2h)"/>
+    <path class="edge-hot" d="M200 245 L200 288" marker-end="url(#f2h)"/>
+    <text class="lbl" x="208" y="272" text-anchor="start">yes</text>
+    <path class="edge-hot" d="M200 342 L200 378" marker-end="url(#f2h)"/>
+    <path class="edge-hot" d="M200 460 L200 498" marker-end="url(#f2h)"/>
+    <text class="lbl" x="208" y="484" text-anchor="start">yes</text>
+    <!-- failures and retries -->
+    <path class="edge" d="M320 200 L400 200 L400 310 L438 310" marker-end="url(#f2a)"/>
+    <text class="lbl" x="360" y="192" text-anchor="middle">no</text>
+    <path class="edge" d="M300 420 L400 420 L400 310"/>
+    <text class="lbl" x="350" y="412" text-anchor="middle">no</text>
+    <path class="edge" d="M560 260 L560 102 L322 102" marker-end="url(#f2a)"/>
+    <text class="lbl" x="440" y="94" text-anchor="middle">step: retry left</text>
+    <path class="edge" d="M560 360 L560 398" marker-end="url(#f2a)"/>
+    <text class="lbl" x="568" y="376" text-anchor="start">step: none left,</text>
+    <text class="lbl" x="568" y="390" text-anchor="start">or round</text>
+    <path class="edge" d="M680 310 L730 310 L730 398" marker-end="url(#f2a)"/>
+    <text class="lbl" x="738" y="358" text-anchor="start">run</text>
+  </svg>
+  
+<figcaption>Figure 2. One attempt at a step. The thick line is an attempt that passes. A retry sends the failure message back as feedback.</figcaption>
+</figure>
+
+<p>Every failure has a level. The level decides what happens next.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Level</th><th>What happens</th><th>Set by</th></tr></thead>
+  <tbody>
+    <tr><td><code>step</code></td><td>The engine retries the attempt with the message as feedback. The default level.</td><td>A reply that does not match the schema, a task that did not finish, and most gates</td></tr>
+    <tr><td><code>round</code></td><td>The attempt ends with <code>RoundFailed</code>. The loop starts a new round.</td><td><code>tests_green</code>, <code>serves</code>, <code>review_approves</code></td></tr>
+    <tr><td><code>run</code></td><td>The engine raises <code>Stop</code>. The run ends.</td><td><code>criteria_covered</code></td></tr>
+  </tbody>
+</table></div>
+
+<p>A step has <code>retries</code>. The default is 1, so a step has 2 attempts. After the last attempt, the item ends with <code>RoundFailed</code>.</p>
+
+<p>Outside a loop, a <code>RoundFailed</code> ends the run.</p>
+
+<h3 id="h-3-3">3.3 Loops and rounds</h3>
+
+<p>A loop groups steps that repeat until they pass. The setting <code>rounds</code> gives the number of rounds. The value <code>budget</code> means 1 + <code>budgets.max_retries</code>. With the shipped settings, that is 2 rounds. The research <code>write</code> loop sets <code>rounds: 3</code>.</p>
+
+<p>A failed round gives its feedback to the first step of the next round. If the failed step runs for each surface, only the failed surfaces run again.</p>
+
+<p>A loop can have <code>gates</code>. They run after all steps of a round pass. If every round fails, the engine raises <code>Stop</code> with the last problem.</p>
+
+<h3 id="h-3-4">3.4 Gates</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Gate</th><th>What it checks</th><th>Level</th></tr></thead>
+  <tbody>
+    <tr><td><code>tests_named</code></td><td>Each criterion of the surface has a test named after it. No test is skipped, focused or marked todo.</td><td><code>step</code></td></tr>
+    <tr><td><code>tests_red</code></td><td>The new tests load and at least one fails.</td><td><code>step</code></td></tr>
+    <tr><td><code>tests_green</code></td><td>The suite loads and no test fails.</td><td><code>round</code></td></tr>
+    <tr><td><code>serves</code></td><td>The build serves: <code>vite build</code> and preview, or uvicorn answering <code>/openapi.json</code>.</td><td><code>round</code></td></tr>
+    <tr><td><code>counts_match</code></td><td>The counts of the verifier equal the counts of the engine run.</td><td><code>step</code></td></tr>
+    <tr><td><code>criteria_covered</code></td><td>Every criterion has a verdict that starts with <code>PASS</code>.</td><td><code>run</code></td></tr>
+    <tr><td><code>citations_verified</code></td><td>Each finding quote is on the page that it cites. The gate drops the others.</td><td><code>step</code></td></tr>
+    <tr><td><code>sources_cited</code></td><td>The report links every verified source and no other source.</td><td><code>step</code></td></tr>
+    <tr><td><code>evidence_verified</code></td><td>Each audit finding has its evidence near the cited line. The gate drops the others.</td><td><code>step</code></td></tr>
+    <tr><td><code>review_approves</code></td><td>The reviewer approved. Otherwise its issues go back to the author.</td><td><code>round</code></td></tr>
+  </tbody>
+</table></div>
+
+<p>The gates <code>citations_verified</code> and <code>evidence_verified</code> fail only when no finding survives. A quote must have 20 characters or more after normalization. The gate ignores case, punctuation, spacing and citation markers such as <code>[1]</code>.</p>
+
+<p>The gate <code>evidence_verified</code> searches 5 lines before and 5 lines after the cited line.</p>
+
+<h3 id="h-3-5">3.5 Roles, staffing and tools</h3>
+
+<p>A role is a block in <code>roles.yaml</code>. The file <code>agents.yaml</code> says which worker plays each role. A runbook can override this with its own <code>staff:</code> block. The option <code>--staff ROLE=WORKER[:MODEL]</code> overrides both for one run.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Role</th><th>Does</th><th>Default worker</th><th>Tools</th></tr></thead>
+  <tbody>
+    <tr><td><code>triage</code></td><td>Picks the runbook, the traits and a name.</td><td><code>claude-agent-sdk</code></td><td>none</td></tr>
+    <tr><td><code>analyst</code></td><td>Turns a brief into a spec or a research plan. Asks questions.</td><td><code>claude-agent-sdk</code></td><td>none</td></tr>
+    <tr><td><code>architect</code></td><td>Designs the API contract.</td><td><code>claude-agent-sdk</code></td><td>none</td></tr>
+    <tr><td><code>tester</code></td><td>Writes the tests first. Judges a test change.</td><td><code>codex-gpt</code></td><td>edit, test</td></tr>
+    <tr><td><code>developer</code></td><td>Builds the code that passes the tests.</td><td><code>codex-gpt</code></td><td>edit, test, build</td></tr>
+    <tr><td><code>verifier</code></td><td>Runs the tests and judges each criterion.</td><td><code>codex-gemini</code></td><td>test</td></tr>
+    <tr><td><code>researcher</code></td><td>Answers one sub-question with quoted sources.</td><td><code>claude-agent-sdk</code></td><td>web, search, curl</td></tr>
+    <tr><td><code>auditor</code></td><td>Reviews code through one lens.</td><td><code>claude-agent-sdk</code></td><td>none</td></tr>
+    <tr><td><code>writer</code></td><td>Writes the report from verified material.</td><td><code>claude-agent-sdk</code></td><td>none</td></tr>
+    <tr><td><code>reviewer</code></td><td>Approves a deliverable or sends it back.</td><td><code>codex-gpt</code></td><td>none</td></tr>
+  </tbody>
+</table></div>
+
+<p>Every role can read files. The class <code>Role</code> maps its fields to tools:</p>
+
+<ul>
+  <li>Claude gets <code>--allowedTools</code>. The list holds <code>Read</code>, <code>Glob</code> and <code>Grep</code>. The field <code>edit</code> adds <code>Edit</code> and <code>Write</code>. The field <code>web</code> adds <code>WebFetch</code>. Each command adds <code>Bash(&lt;command&gt;:*)</code>.</li>
+  <li>Codex gets the sandbox <code>read-only</code>. A role with <code>edit</code> or a command gets <code>workspace-write</code>. The commands <code>search</code> and <code>curl</code> also open network access.</li>
+</ul>
+
+<p>The checker rule compares models. The reviewer must differ from the writer. The verifier must differ from the developer. The setting <code>reviewer.must_differ_from_author</code> turns the rule on. It is on by default.</p>
+
+<h3 id="h-3-6">3.6 Agents and the A2A transport</h3>
+
+<p>The class <code>Fleet</code> starts one process for each role. The command is <code>python -m factory.agent ROLE --worker W --model M --port N --config C</code>. The port comes from <code>free_port()</code>. The log goes to <code>.factory/agents/&lt;role&gt;.log</code>.</p>
+
+<p>The fleet waits up to 30 seconds for each agent card. It checks that the card has the tags <code>role:</code>, <code>worker:</code> and <code>model:</code> with the expected values. If a staff entry has <code>url:</code>, the fleet uses that agent and does not start one.</p>
+
+<p>An agent handles a task in this order:</p>
+
+<ol>
+  <li>Build the prompt from the role, the stack, the task, the context and the feedback.</li>
+  <li>Call the worker. The function <code>invoke()</code> runs <code>codex</code> or <code>claude</code>.</li>
+  <li>Read the last <code>json</code> block of the reply.</li>
+  <li>Validate it against the schema of the step.</li>
+  <li>If the reply is not usable, call the worker once more with the error.</li>
+</ol>
+
+<p>The agent makes at most 2 calls (<code>LLM_ATTEMPTS</code>). The function <code>call()</code> has no read timeout. Each LLM call has its own limit: 900 seconds for Codex and 1500 seconds for Claude.</p>
+
+<h3 id="h-3-7">3.7 Checkpoints and questions</h3>
+
+<p>A step with <code>checkpoint: true</code> shows its result to you before the engine uses it. The analyst can also ask questions. Both use the task state <code>input-required</code>.</p>
+
+<ul>
+  <li>For questions, type an answer. Press Enter to let the agent decide.</li>
+  <li>For a review, press Enter to accept. Type text to ask for changes.</li>
+  <li>After 6 turns at one checkpoint, the next turn stops the run (<code>MAX_CONVERSATION</code>).</li>
+  <li>A parallel step never pauses for a person.</li>
+  <li>With <code>--yes</code>, no question appears. The agent decides, and the engine accepts every checkpoint.</li>
+</ul>
+
+<h3 id="h-3-8">3.8 Files a run writes</h3>
+
+<p>The engine takes a snapshot of the files before each attempt. After the attempt, it compares the files. A role with <code>writes: none</code> must not change files. The engine reverts such changes and goes on. A role with <code>writes: tests</code> or <code>writes: source</code> can change only the files that the template allows. A change outside that set is reverted, and the attempt fails.</p>
+
+<p>A developer can change a test only with a stated reason. The tester reviews the change. The engine reverts the change if the tester does not approve it.</p>
+
+<p>The first step that writes code resets each scaffold to its template. The reset keeps <code>node_modules</code> and <code>.venv</code>.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Path in <code>apps/&lt;name&gt;/</code></th><th>Content</th></tr></thead>
+  <tbody>
+    <tr><td><code>.factory/run.json</code></td><td>The status, the staff, and one event for each attempt</td></tr>
+    <tr><td><code>.factory/artifacts.json</code></td><td>The result of every step</td></tr>
+    <tr><td><code>.factory/lock</code></td><td>The lock that stops a second run with the same name</td></tr>
+    <tr><td><code>.factory/agents/&lt;role&gt;.log</code></td><td>The log of one agent</td></tr>
+    <tr><td><code>SPEC.json</code>, <code>API.json</code>, <code>PLAN.json</code></td><td>Results that a step saves with <code>save:</code></td></tr>
+    <tr><td><code>REPORT.md</code>, <code>AUDIT.md</code></td><td>Reports that a step saves with <code>save:</code></td></tr>
+    <tr><td><code>web/</code>, <code>api/</code></td><td>The scaffolds of a web app</td></tr>
+  </tbody>
+</table></div>
+
+<p>The status in <code>run.json</code> is <code>running</code>, <code>accepted</code>, <code>stopped</code> or <code>error</code>. A second run with the same name needs <code>--rebuild</code> after an accepted run.</p>
+
+<h2 id="settings">4. Settings</h2>
+
+<h3 id="h-4-1">4.1 llm.yaml</h3>
+
+<p>The file <code>llm.yaml</code> holds the endpoints, the workers, the allowed models and the budgets. The text <code>${VAR}</code> takes its value from the environment. The loader rejects a literal key.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Setting</th><th>Shipped value</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>llm.base_url</code></td><td><code>${ANTHROPIC_BASE_URL}</code></td><td>The default endpoint of a worker</td></tr>
+    <tr><td><code>llm.api_key_env</code></td><td><code>ANTHROPIC_AUTH_TOKEN</code></td><td>The name of the variable that holds the key</td></tr>
+    <tr><td><code>llm.wire_api</code></td><td><code>anthropic-messages</code></td><td>The default protocol</td></tr>
+    <tr><td><code>llm.allowed_models</code></td><td><code>${ANTHROPIC_MODEL}</code>, <code>gpt-6.1-sol</code>, <code>gemini-3.6-flash</code></td><td>Every model must be in this list</td></tr>
+    <tr><td><code>llm.default_model</code></td><td><code>${ANTHROPIC_MODEL}</code></td><td>The default model</td></tr>
+    <tr><td><code>workers.&lt;name&gt;.enabled</code></td><td><code>true</code> for all 3 workers</td><td>A disabled worker needs no variables</td></tr>
+    <tr><td><code>workers.&lt;name&gt;.harness</code></td><td><code>claude-agent-sdk</code> or <code>codex</code></td><td>The command that runs the worker</td></tr>
+    <tr><td><code>workers.&lt;name&gt;.models</code></td><td>one model each</td><td>The models that the worker serves</td></tr>
+    <tr><td><code>reviewer.candidates</code></td><td><code>gpt-6.1-sol</code>, <code>${ANTHROPIC_MODEL}</code>, <code>gemini-3.6-flash</code></td><td>Used by <code>reviewer_for()</code></td></tr>
+    <tr><td><code>reviewer.must_differ_from_author</code></td><td><code>true</code></td><td>Turns on the checker rule</td></tr>
+    <tr><td><code>budgets.per_task_usd</code></td><td><code>30</code></td><td>The cost limit of one Claude call</td></tr>
+    <tr><td><code>budgets.per_day_usd</code></td><td>not set</td><td>No code reads it</td></tr>
+    <tr><td><code>budgets.max_retries</code></td><td><code>1</code></td><td>A <code>budget</code> loop has 1 + this many rounds</td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="h-4-2">4.2 agents.yaml</h3>
+
+<p>The file <code>agents.yaml</code> maps each role to a worker. The shipped map is in the table in section 3.5. A staff entry can also set <code>model:</code> and <code>url:</code>.</p>
+
+<h3 id="h-4-3">4.3 roles.yaml</h3>
+
+<p>The file <code>roles.yaml</code> defines the roles. The loader checks the file when it loads. A bad file gives <code>error: ...</code> and exit code 2.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Default</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>title</code></td><td>required</td><td>The short name in plans and output</td></tr>
+    <tr><td><code>description</code></td><td>required</td><td>One sentence on the agent card</td></tr>
+    <tr><td><code>prompt</code></td><td>required</td><td>The standing instructions. The text <code>{search}</code> becomes the search command.</td></tr>
+    <tr><td><code>edit</code></td><td><code>false</code></td><td>The role can create and change files</td></tr>
+    <tr><td><code>web</code></td><td><code>false</code></td><td>The role can fetch web pages</td></tr>
+    <tr><td><code>runs</code></td><td>none</td><td>The commands the role can run: <code>test</code>, <code>build</code>, <code>search</code>, <code>curl</code></td></tr>
+    <tr><td><code>asks</code></td><td><code>false</code></td><td>The role can pause to ask you questions</td></tr>
+  </tbody>
+</table></div>
+
+<p>The variable <code>FACTORY_ROLES</code> names another roles file. The agents that the fleet starts inherit it.</p>
+
+<h3 id="h-4-4">4.4 Runbook fields</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Default</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>role</code></td><td>required</td><td>The role that does the step</td></tr>
+    <tr><td><code>instructions</code></td><td>required</td><td>The task, with <code>{{ brief }}</code>, <code>{{ item.* }}</code> and similar variables</td></tr>
+    <tr><td><code>when</code></td><td>always</td><td>A trait condition such as <code>frontend and backend</code></td></tr>
+    <tr><td><code>for_each</code></td><td>none</td><td><code>surfaces</code>, a list, or <code>&lt;step&gt;.&lt;field&gt;</code></td></tr>
+    <tr><td><code>parallel</code></td><td><code>false</code></td><td>Runs the items together, at most 6 at a time</td></tr>
+    <tr><td><code>reads</code></td><td>none</td><td>The earlier results that the agent gets as context</td></tr>
+    <tr><td><code>output</code></td><td>none</td><td>The schema that the reply must match</td></tr>
+    <tr><td><code>gates</code></td><td>none</td><td>The checks that the engine runs</td></tr>
+    <tr><td><code>checkpoint</code></td><td><code>false</code></td><td>You review the result</td></tr>
+    <tr><td><code>save</code></td><td>none</td><td>The file that receives the result</td></tr>
+    <tr><td><code>retries</code></td><td><code>1</code></td><td>The extra attempts after a failure</td></tr>
+    <tr><td><code>cwd</code></td><td><code>surface</code> or <code>workspace</code></td><td>The folder where the agent works. <code>target</code> is also allowed.</td></tr>
+    <tr><td><code>writes</code></td><td><code>none</code></td><td><code>none</code>, <code>tests</code> or <code>source</code></td></tr>
+    <tr><td><code>rounds</code> (loop)</td><td><code>budget</code></td><td>The rounds of a loop</td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="h-4-5">4.5 Command-line options</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Command or option</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>factory runbooks</code></td><td>Lists the runbooks and when to use each</td></tr>
+    <tr><td><code>factory plan RUNBOOK</code></td><td>Shows the plan without a run</td></tr>
+    <tr><td><code>--mermaid</code> (plan)</td><td>Prints a Mermaid flowchart</td></tr>
+    <tr><td><code>factory run --brief TEXT</code></td><td>Runs the factory. The option <code>--brief</code> is required.</td></tr>
+    <tr><td><code>--runbook NAME</code></td><td>Skips triage</td></tr>
+    <tr><td><code>--trait NAME=yes|no</code></td><td>Sets a trait. Repeat it for more traits.</td></tr>
+    <tr><td><code>--staff ROLE=WORKER[:MODEL]</code></td><td>Sets who plays a role</td></tr>
+    <tr><td><code>--name NAME</code></td><td>Works in <code>apps/NAME</code></td></tr>
+    <tr><td><code>--target PATH</code></td><td>The code to audit</td></tr>
+    <tr><td><code>--rebuild</code></td><td>Redoes accepted work</td></tr>
+    <tr><td><code>--yes</code></td><td>Asks nothing and accepts every checkpoint</td></tr>
+    <tr><td><code>--config</code>, <code>--agents</code>, <code>--runbooks</code></td><td>Use other settings files</td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="h-4-6">4.6 Environment variables</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Variable</th><th>Used for</th></tr></thead>
+  <tbody>
+    <tr><td><code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_MODEL</code></td><td>The <code>claude-agent-sdk</code> worker</td></tr>
+    <tr><td><code>OPENAI_BASE_URL</code>, <code>OPENAI_API_KEY</code></td><td>The <code>codex-gpt</code> worker</td></tr>
+    <tr><td><code>GOOGLE_GEMINI_BASE_URL</code>, <code>GEMINI_API_KEY</code></td><td>The <code>codex-gemini</code> worker</td></tr>
+    <tr><td><code>FACTORY_ROLES</code></td><td>Another roles file</td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="h-4-7">4.7 Fixed constants</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Constant</th><th>Value</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>START_TIMEOUT</code></td><td>30 seconds</td><td>The wait for an agent card</td></tr>
+    <tr><td><code>CODEX_TIMEOUT</code></td><td>900 seconds</td><td>The limit of one Codex call</td></tr>
+    <tr><td><code>CLAUDE_TIMEOUT</code></td><td>1500 seconds</td><td>The limit of one Claude call</td></tr>
+    <tr><td><code>LLM_ATTEMPTS</code></td><td>2</td><td>The calls for a usable reply</td></tr>
+    <tr><td><code>MAX_CONVERSATION</code></td><td>6</td><td>The turns at one checkpoint</td></tr>
+    <tr><td><code>CMD_TIMEOUT</code></td><td>300 seconds</td><td>The limit of a test or build command</td></tr>
+    <tr><td><code>TIMEOUT</code> (search)</td><td>12 seconds</td><td>The wait for one search source</td></tr>
+    <tr><td><code>API_PREFIX</code></td><td><code>/api/</code></td><td>The path prefix of a full-stack contract</td></tr>
+    <tr><td><code>APP_NAME</code></td><td>1 to 40 characters</td><td>Lowercase letters, digits and hyphens</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="install">5. Install</h2>
+
+<h3 id="h-5-1">5.1 Before you start</h3>
+
+<p>You need:</p>
+
+<ul>
+  <li>Python 3.11 or later.</li>
+  <li><code>uv</code>.</li>
+  <li><code>codex</code> and <code>claude</code> on your <code>PATH</code>.</li>
+  <li><code>npm</code>, if you build a frontend.</li>
+  <li>The environment variables in section 4.6.</li>
+</ul>
+
+<h3 id="h-5-2">5.2 Install the dependencies</h3>
+
+<pre><code>uv sync</code></pre>
+
+<h3 id="h-5-3">5.3 Check that the install worked</h3>
+
+<pre><code>uv run pytest
+uv run factory runbooks</code></pre>
+
+<p>The test run must print <code>125 passed</code>. The second command must list <code>api-design</code>, <code>code-audit</code>, <code>research</code> and <code>web-app</code>. Neither command calls an LLM.</p>
+
+<h3 id="h-5-4">5.4 Run the factory</h3>
+
+<pre><code>uv run factory plan web-app --trait backend=yes
+uv run factory run --brief &quot;a shared shopping list for my family&quot;
+uv run factory run --brief &quot;which vector database fits a 10M-document RAG system?&quot;
+uv run factory run --runbook code-audit --target apps/kanban-react --brief &quot;is it ready to ship?&quot;</code></pre>
+
+<p>A run calls the LLM workers and takes minutes. The factory shows the plan and waits for your approval.</p>
+
+<h3 id="h-5-5">5.5 Change the settings</h3>
+
+<ul>
+  <li>To change who plays a role, edit <code>agents.yaml</code>, or use <code>--staff</code> for one run.</li>
+  <li>To change a prompt or a capability, edit <code>roles.yaml</code>.</li>
+  <li>To add a kind of work, add a file to <code>runbooks/</code>.</li>
+  <li>To switch a worker off, set <code>enabled: false</code> in <code>llm.yaml</code>. A role that needs it must use another worker.</li>
+</ul>
+
+<h2 id="validate">6. Validate</h2>
+
+<h3 id="h-6-1">6.1 Level 1: unit tests</h3>
+
+<pre><code>uv run pytest</code></pre>
+
+<p>Last line of the real run:</p>
+
+<pre><code>============================== 125 passed in 2.31s ==============================</code></pre>
+
+<p>The engine tests use fake agents. No test calls an LLM or the network.</p>
+
+<h3 id="h-6-2">6.2 Level 2: plans without a run</h3>
+
+<pre><code>uv run factory plan web-app --trait backend=yes</code></pre>
+
+<p>The real output starts with these lines:</p>
+
+<pre><code>Runbook web-app: Build a web app
+Traits: frontend=yes, backend=yes
+Scaffolds: web/ (react-vite), api/ (fastapi)</code></pre>
+
+<p>The next lines show the steps: spec, contract, tests for each surface, and the loop <code>build</code> with develop and verify.</p>
+
+<h3 id="h-6-3">6.3 Level 3: a live run</h3>
+
+<p>A live run needs the workers and the network. This document quotes no output from a live run. No person has done this check for this document yet.</p>
+
+<h3 id="h-6-4">6.4 What each test file proves</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>File</th><th>Tests</th><th>What it proves</th></tr></thead>
+  <tbody>
+    <tr><td><code>tests/test_a2a_transport.py</code></td><td>5</td><td>A task returns its result, asks for input on the same task, fails with a reason, and serves its card.</td></tr>
+    <tr><td><code>tests/test_config.py</code></td><td>34</td><td><code>llm.yaml</code> loads, rejects literal keys and unknown models, and picks a reviewer that differs from the author.</td></tr>
+    <tr><td><code>tests/test_engine.py</code></td><td>24</td><td>Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents.</td></tr>
+    <tr><td><code>tests/test_roles.py</code></td><td>17</td><td><code>roles.yaml</code> loads, rejects bad files with a reason, and can be replaced with <code>FACTORY_ROLES</code>.</td></tr>
+    <tr><td><code>tests/test_runbooks.py</code></td><td>28</td><td>The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused.</td></tr>
+    <tr><td><code>tests/test_schemas.py</code></td><td>17</td><td>Each deliverable schema accepts good data, rejects bad data and renders as text.</td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="h-6-5">6.5 Problems and solutions</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Problem</th><th>Cause</th><th>Solution</th></tr></thead>
+  <tbody>
+    <tr><td><code>error: environment variables not set: ...</code></td><td>A <code>${VAR}</code> in <code>llm.yaml</code> has no value.</td><td>Set the variables in section 4.6.</td></tr>
+    <tr><td><code>error: no runbook &#x27;x&#x27;; runbooks are ...</code></td><td>The runbook name is wrong.</td><td>Run <code>factory runbooks</code>.</td></tr>
+    <tr><td><code>... both use &lt;model&gt;; the reviewer must use a different model</code></td><td>A checker and its author share a model.</td><td>Change <code>agents.yaml</code> or use <code>--staff</code>.</td></tr>
+    <tr><td><code>apps/&lt;name&gt; already holds accepted work</code></td><td>A run with this name finished.</td><td>Add <code>--rebuild</code>, or choose another <code>--name</code>.</td></tr>
+    <tr><td><code>&lt;name&gt; is already being worked on by another run</code></td><td>Another process holds the lock.</td><td>Wait for that run, or choose another <code>--name</code>.</td></tr>
+    <tr><td><code>factory.search: unrecognized arguments</code></td><td><code>--sources</code> got a space-separated list.</td><td>Write <code>--sources wikipedia,openalex</code>.</td></tr>
+    <tr><td>A search source returns HTTP 429</td><td>The public API limits the rate.</td><td>Wait and try again. The other sources still answer.</td></tr>
+    <tr><td><code>needs --target, an existing directory</code></td><td>The <code>code-audit</code> runbook has no target.</td><td>Add <code>--target PATH</code>.</td></tr>
+    <tr><td><code>error: ... roles.yaml ...</code></td><td>The roles file is not valid.</td><td>Read the reason in the message and fix the file.</td></tr>
+    <tr><td>Claude Code warns about an unknown model</td><td>The gateway model name is not in its list.</td><td>Ignore the warning. The call works.</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="limits">7. Known limits</h2>
+
+<ul>
+  <li><strong>A run can end with a draft.</strong> In the <code>research</code> runbook, the <code>report</code> step saves <code>REPORT.md</code> before the <code>review</code> step runs. If the reviewer does not approve in 3 rounds, the run stops with status <code>stopped</code>. The last draft stays on disk. In 3 live runs, this happened.</li>
+  <li><strong>Port race.</strong> <code>free_port()</code> closes its socket before the agent binds the port (<code>gates.py</code> line 141). Another process can take the port. The fleet then gives up after 30 seconds (<code>fleet.py</code> line 22).</li>
+  <li><strong>The card check is weak.</strong> The fleet compares only the tags <code>role:</code>, <code>worker:</code> and <code>model:</code> (<code>fleet.py</code> line 55). A different agent with the same tags passes.</li>
+  <li><strong>Agents keep state in memory.</strong> <code>InMemoryTaskStore</code> (<code>a2a_transport.py</code> line 122) loses a task when the agent stops. A task cannot resume.</li>
+  <li><strong>Same folder.</strong> The task carries the path of the workspace. An agent at a <code>url:</code> must see the same folder.</li>
+  <li><strong>Codex has no command list.</strong> Any command makes the Codex sandbox writable (<code>invoke.py</code> line 46). The engine reverts the writes of a role with <code>writes: none</code> after the attempt (<code>engine.py</code> line 359).</li>
+  <li><strong>The cost limit covers Claude only.</strong> <code>per_task_usd</code> goes to the Claude command (<code>invoke.py</code> line 59). The Codex command has no cost limit. No code reads <code>per_day_usd</code> (<code>config.py</code> line 109).</li>
+  <li><strong>The reviewer settings are not used in a run.</strong> No run code calls <code>reviewer_for()</code> (<code>config.py</code> line 212). Only tests call it. The checker rule uses <code>_check_independence()</code> (<code>runbook.py</code> line 365).</li>
+  <li><strong>A test gap is not retried.</strong> If the tests are green and a criterion is not <code>PASS</code>, the run stops (<code>gates.py</code> line 294).</li>
+  <li><strong>Quotes under 20 characters fail.</strong> <code>quote_on_page()</code> rejects them (<code>gates.py</code> line 336). The gate drops such a finding.</li>
+  <li><strong>Search has no retry.</strong> <code>search()</code> reports the error of a source and goes on (<code>search.py</code> line 95). A rate limit removes that source from the result.</li>
+  <li><strong>Only 6 items run together.</strong> A parallel step uses at most 6 threads (<code>engine.py</code> line 243).</li>
+  <li><strong>No read timeout on a task.</strong> A hung agent blocks the run until its LLM call reaches the limit (<code>a2a_transport.py</code> line 133).</li>
+  <li><strong>No person has checked the HTML.</strong> The checks in section 6 do not include a review of the page by a person.</li>
+</ul>
+
+<h2 id="glossary">8. Glossary</h2>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>A2A</td><td>The agent-to-agent protocol. An agent serves a card and accepts tasks.</td></tr>
+    <tr><td>Agent</td><td>A process that plays one role and calls one worker.</td></tr>
+    <tr><td>Agent card</td><td>The description that an agent serves. Its tags show the role, worker and model.</td></tr>
+    <tr><td>Artifact</td><td>The saved result of a step.</td></tr>
+    <tr><td>Brief</td><td>The request that you write in your own words.</td></tr>
+    <tr><td>Checkpoint</td><td>A pause where you review a result.</td></tr>
+    <tr><td>Contract</td><td>The list of API endpoints with example bodies.</td></tr>
+    <tr><td>Criterion</td><td>One testable statement in a spec. It has an id such as <code>AC1</code>.</td></tr>
+    <tr><td>Engine</td><td>The code that runs a plan: steps, loops, retries, checks and checkpoints.</td></tr>
+    <tr><td>Fleet</td><td>The set of agent processes of one run.</td></tr>
+    <tr><td>Gate</td><td>A check that the engine runs itself on a result.</td></tr>
+    <tr><td>Harness</td><td>The command that runs a worker: <code>claude</code> or <code>codex</code>.</td></tr>
+    <tr><td>Item</td><td>One unit of a step, such as one surface or one sub-question.</td></tr>
+    <tr><td>Loop</td><td>A group of steps that repeat in rounds until they pass.</td></tr>
+    <tr><td>Plan</td><td>A runbook with its traits, staff and scaffolds resolved.</td></tr>
+    <tr><td>Role</td><td>A job in a runbook, such as <code>developer</code>. A block in <code>roles.yaml</code> defines it.</td></tr>
+    <tr><td>Round</td><td>One pass through the steps of a loop.</td></tr>
+    <tr><td>Runbook</td><td>A YAML file that describes one kind of work.</td></tr>
+    <tr><td>Scaffold</td><td>A template copied into a run, such as <code>web/</code> or <code>api/</code>.</td></tr>
+    <tr><td>Staff</td><td>The map from each role to a worker and a model.</td></tr>
+    <tr><td>Step</td><td>One task for one role, with an output and gates.</td></tr>
+    <tr><td>Surface</td><td>A part of a web app: <code>web</code> (frontend) or <code>api</code> (backend).</td></tr>
+    <tr><td>Template</td><td>A scaffold folder with its metadata in <code>templates/&lt;name&gt;.yaml</code>.</td></tr>
+    <tr><td>Trait</td><td>A yes-or-no choice that changes a runbook, such as <code>backend</code>.</td></tr>
+    <tr><td>Triage</td><td>The choice of a runbook and its traits for a brief.</td></tr>
+    <tr><td>Worker</td><td>An entry in <code>llm.yaml</code>: a harness, an endpoint and a list of models.</td></tr>
+    <tr><td>Workspace</td><td>The folder <code>apps/&lt;name&gt;/</code> of one run.</td></tr>
+  </tbody>
+</table></div>
+
+</main>
+</body>
+</html>

@@ -24,7 +24,9 @@ uv run factory run --brief "..." --staff writer=codex-gpt --staff verifier=codex
 uv run factory run --brief "..." --yes      # unattended: no questions, checkpoints auto-accepted
 ```
 
-Requirements are the same as the samples (see `src/sample/README.md`): the environment variables named in `llm.yaml`, plus `codex` and `claude` on your `PATH`. Building a frontend also needs `npm`.
+Requirements: the environment variables named in `llm.yaml` (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `GOOGLE_GEMINI_BASE_URL`, `GEMINI_API_KEY`), plus `codex` and `claude` on your `PATH`. Building a frontend also needs `npm`. Claude Code prints a warning that it does not recognize `claude-advantage-assist`; it is expected and the call still works.
+
+`codex-gemini` is enabled in `llm.yaml`, and the verifier role uses it by default, so `GEMINI_API_KEY` and `GOOGLE_GEMINI_BASE_URL` must be set. Codex warns that it has no metadata for `gemini-3.6-flash` and uses fallback metadata.
 
 ## Runbooks
 
@@ -66,6 +68,8 @@ Try a combination before running it with `uv run factory plan <runbook> --trait 
 | writer | writes the report from verified material only | |
 | reviewer | approves or sends back a deliverable | |
 
+The roles themselves are data in `roles.yaml`: each has a `title`, a `description`, a standing `prompt`, and capabilities (`edit`, `web`, `runs`, `asks`). Edit a prompt or a capability there, or add a block for a new role, and no code changes. The file is validated when it loads. Set `FACTORY_ROLES=/path/to/roles.yaml` to use another file; the agents the factory launches inherit it.
+
 `agents.yaml` says which worker (and optionally which model) from `llm.yaml` plays each role. A runbook can override this with its own `staff:`, and `--staff ROLE=WORKER[:MODEL]` overrides it for one run. A checker can't share its author's worker and model, so the reviewer differs from the writer and the verifier from the developer, and a plan that breaks this is refused.
 
 Each run starts one A2A agent per role it needs (`python -m factory.agent ROLE --worker W --port N`) on free ports and checks their cards before sending work. Roles map to tool permissions: Claude `--allowedTools`, or the Codex sandbox (`read-only` / `workspace-write`, with network access for researchers).
@@ -94,7 +98,7 @@ A template is a scaffold directory in `templates/<name>/` with metadata in `temp
 Researchers can't rely on native web search through the gateway. They use the factory's own search, which queries public APIs:
 
 ```bash
-uv run python -m factory.search "sqlite concurrent writes" --sources wikipedia openalex hackernews github stackoverflow npm --limit 5
+uv run python -m factory.search "sqlite concurrent writes" --sources wikipedia,openalex,hackernews,github,stackoverflow,npm --limit 5
 ```
 
 They then fetch the pages they cite, and the `citations_verified` gate checks every quote against the page.
@@ -105,8 +109,6 @@ Work happens in `apps/<name>/`, one directory per run, so runs can overlap. `app
 
 ## Code
 
-`src/factory/`: `cli.py` (commands), `runbook.py` (loading, validation, trait resolution, staffing, plan outline), `engine.py` (runs a plan: steps, loops, retries, role checks, checkpoints), `gates.py`, `schemas.py` (deliverables), `roles.py`, `agent.py` (the generic role agent), `fleet.py` (launches agents), `invoke.py` (Claude / Codex calls with per-role tools), `scaffold.py`, `search.py`, `a2a_transport.py`.
-
-The original fixed four-stage pipeline is still in `src/sample/pipeline.py` (see `src/sample/README.md`, and `docs/pipeline-profile.md` for a technical profile of it).
+`src/factory/`: `cli.py` (commands), `runbook.py` (loading, validation, trait resolution, staffing, plan outline), `engine.py` (runs a plan: steps, loops, retries, role checks, checkpoints), `gates.py`, `schemas.py` (deliverables), `roles.py` (loads `roles.yaml`), `agent.py` (the generic role agent), `fleet.py` (launches agents), `invoke.py` (Claude / Codex calls with per-role tools), `scaffold.py`, `search.py`, `a2a_transport.py`.
 
 Tests: `uv run pytest`. The engine tests use fake agents, so no LLM is called.
