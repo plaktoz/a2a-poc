@@ -1,7 +1,7 @@
 # PRD: Multi-Harness, LLM-Agnostic Software Factory
 
-**Status:** Draft v0.1
-**Date:** 2026-10-28
+**Status:** Draft v0.2
+**Date:** 2026-10-31
 **Owner:** TBD
 **Basis:** Design reasoning from a research discussion (Oct 2026). Items marked *Assumption* or *Open question* are not yet validated.
 
@@ -32,8 +32,7 @@ Build a software factory that turns reviewed specifications into merged pull req
 
 - Training or fine-tuning models.
 - Replacing human review or merge authority.
-- Building a general-purpose agent framework.
-- Supporting non-code tasks in v1 (deferred to a later phase).
+- Building a general-purpose agent framework. The runbook format serves only the factory's own workflows (see section 6).
 - Building a custom LLM gateway if an off-the-shelf one meets requirements.
 
 ## 5. Users and Stakeholders
@@ -52,11 +51,13 @@ Build a software factory that turns reviewed specifications into merged pull req
 - Shared quality gate pipeline.
 - Scorecard and observability.
 - Git-based integration: one branch or worktree per task.
+- Workflows defined as runbooks (YAML data in `runbooks/`): software builds (`web-app`), research (`research`), code audit (`code-audit`) and API design (`api-design`).
+- A triage step that picks the runbook and its traits from a brief, with the user approving the plan before a run starts.
+- Worker adapters for the `claude` and `codex` command-line tools, with per-role tool permissions.
 
 ### Out of scope (v1)
 - Cross-organization agent federation.
 - Autonomous merge without human approval.
-- Non-code workflows.
 
 ## 7. Architecture Overview
 
@@ -163,7 +164,7 @@ Targets are placeholders until baselines exist.
 | 3 | Second worker (different harness) behind A2A, with tracing across the boundary | Same gates; side-by-side scorecard |
 | 4 | Gateway for model routing and cost attribution | Model swap is a config change |
 | 5 | Data-driven routing and retry escalation | Routing weights adjust from outcomes |
-| 6 | Evaluate non-code tasks and additional workers | Go/no-go decision |
+| 6 | Evaluate additional workers and further non-code workflows beyond the four runbooks in section 6 | Go/no-go decision |
 
 ## 12. Validation Plan (head-to-head benchmark)
 
@@ -213,7 +214,14 @@ No public benchmark compares these setups on your code. Run your own:
 - An off-the-shelf gateway and observability backend are acceptable.
 - Numeric targets above are placeholders pending Phase 2 baselines.
 
-## 17. Evidence Notes
+## 17. Revision History
+
+| Version | Date | Change |
+|---------|------|--------|
+| v0.1 | 2026-10-28 | First draft. |
+| v0.2 | 2026-10-31 | Non-code workflows, the runbook format, triage and the command-line worker adapters moved into v1 scope (section 6). Non-goals in section 4 updated to match. Phase 6 narrowed to what is still undecided. Status and implementation gaps are tracked in `docs/code-review.md`, not here. |
+
+## 18. Evidence Notes
 
 - Same-model score gaps across harnesses and weaker evidence for open-framework gaps come from benchmark papers and secondary analyses; treat as directional.
 - Defect and security statistics for AI-generated code come from a mix of academic and vendor studies.

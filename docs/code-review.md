@@ -201,8 +201,8 @@ Recommendation: do the renames and the docstring. Defer the file split.
 |---|---|---|
 | 1 | A, B | Small. One commit. Done: the reviewer now differs from the architect too, with a test. |
 | 2 | E, G, K (renames only) | Small. One commit. Done, except the items listed under "Step 2 status" below. |
-| 3 | C1 for `reviewer_for`, H | Small. C1 is done: `reviewer_for()` and its 2 tests are deleted. `reviewer.candidates` stays, because the config still validates it at load time. H is open. |
-| 4 | I2 | Small to medium. |
+| 3 | C1 for `reviewer_for`, H | Small. Done: C1 deletes `reviewer_for()` and its 2 tests, and `reviewer.candidates` stays because the config still validates it. H updates the PRD to v0.2. |
+| 4 | I2 | Small to medium. Done: a stopped run marks its saved Markdown draft "NOT APPROVED" and exits with code 1. |
 | 5 | D | Medium. Own branch. |
 | 6 | F, J | Large. Defer and track as issues. |
 
