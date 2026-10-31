@@ -95,6 +95,16 @@ def test_api_design_reviewer_must_not_share_the_architects_model(cfg, staff):
         resolve(catalog()["api-design"], {}, same, cfg)
 
 
+def test_reviewer_must_not_share_the_developers_model(cfg, staff):
+    from dataclasses import replace
+
+    for name in ("change-request", "bug-fix"):
+        assert plan_for(name, cfg, staff)  # the default staffing passes
+        same = {**staff, "reviewer": replace(staff["developer"])}
+        with pytest.raises(ConfigError, match="reviewer and the developer"):
+            resolve(catalog()[name], {}, same, cfg)
+
+
 def test_staff_overrides_and_unknown_models(cfg):
     from factory.runbook import StaffDef
     from factory import ModelNotAllowed

@@ -387,7 +387,8 @@ def _check_independence(plan: Plan, cfg: Config) -> None:
     if not cfg.reviewer.must_differ_from_author:
         return
     used = plan.roles()
-    for checker, author in (("reviewer", "writer"), ("reviewer", "architect"), ("verifier", "developer")):
+    for checker, author in (("reviewer", "writer"), ("reviewer", "architect"), ("reviewer", "developer"),
+                            ("verifier", "developer")):
         if checker not in used or author not in used:
             continue
         # A fallback must keep independence too, so a switch cannot break it (FR-7).

@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 282 passed.
+Suite at the last check: 283 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -165,7 +165,7 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 - Decided by the owner (2026-10-31): bugs go to `bug-fix`, not `change-request`. `change-request` covers features and deliberate changes only. The fix starts from a test that fails because of the bug.
 - Files: `runbooks/bug-fix.yaml`, `runbooks/change-request.yaml` (`use_when` and `description`), `src/factory/gates.py` (`repro_fails`), `src/factory/schemas.py` (`repro`), `src/factory/cli.py` (texts), `tests/test_bugfix.py`, `tests/test_runbooks.py`, `README.md`.
 - Verify: `.venv/bin/pytest -q`, `.venv/bin/factory runbooks`, `.venv/bin/factory plan bug-fix`. A fake run makes one commit on `factory/<name>`, and the original checkout stays unchanged.
-- Note: the developer and the reviewer of `bug-fix` both use `codex-gpt / gpt-6.1-sol`, as `change-request` does. The plan allows it, because the independence rule covers only reviewer against writer and architect, and verifier against developer.
+- Note (fixed 2026-10-31): the developer and the reviewer both used `codex-gpt / gpt-6.1-sol`. The independence rule did not check that pair. Now it does (`_check_independence`), and the reviewer in `agents.yaml` is `codex-gemini / gemini-3.7-flash`.
 - [x] Runbook `bug-fix`: `spec`, `reproduce` (tester, `repro_fails`), then the `build` loop with `fix` and `verify` and `repo_tests_pass`.
 - [x] `change-request` `use_when` and `description` cover features and changes only.
 - [x] Gate `repro_fails` and schema `repro`.

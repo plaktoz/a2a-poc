@@ -17,7 +17,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "282 passed"; no LLM is called
+uv run pytest                  # prints "283 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, research and web-app
 ```
 
@@ -270,11 +270,11 @@ A **role** is a job in a runbook. `roles.yaml` defines each role. `agents.yaml` 
 | `researcher` | Answers one sub-question with quoted sources | `claude-agent-sdk` | web, search, curl |
 | `auditor` | Reviews code through one lens | `claude-agent-sdk` | none |
 | `writer` | Writes the report from verified material | `claude-agent-sdk` | none |
-| `reviewer` | Approves a deliverable or sends it back | `codex-gpt` | none |
+| `reviewer` | Approves a deliverable or sends it back | `codex-gemini` | none |
 
 Every role can read files. The tools map to worker permissions. Claude gets `--allowedTools`. Codex gets the sandbox `read-only`, or `workspace-write` for a role that can edit or run a command. The commands `search` and `curl` also open network access.
 
-**The checker rule.** A checker must use a different model than the author. The reviewer differs from the writer and from the architect. The verifier differs from the developer. The rule applies to a pair only when both roles are in the plan. The factory refuses a plan that breaks it. The setting `reviewer.must_differ_from_author` turns it on, and it is on by default.
+**The checker rule.** A checker must use a different model than the author. The reviewer differs from the writer, the architect and the developer. The verifier differs from the developer. The rule applies to a pair only when both roles are in the plan. The factory refuses a plan that breaks it. The setting `reviewer.must_differ_from_author` turns it on, and it is on by default.
 
 To change who plays a role, edit `agents.yaml`, give a runbook its own `staff:` block, or use `--staff` for one run. A staff entry can also set `model:` and `url:`. With `url:`, the factory uses an agent that you already run at that A2A address and starts none.
 
@@ -410,7 +410,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
-| `test_runbooks.py` | 29 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. |
+| `test_runbooks.py` | 30 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. |
 | `test_runs.py` | 5 | `factory runs` sums the run records and changes nothing. |
 | `test_schemas.py` | 19 | Each deliverable schema accepts good data, rejects bad data and renders as text. Triage can answer `none`. |
 | `test_tracing.py` | 9 | The run ID, the factory commit and the gate names reach `run.json` and every request. |
