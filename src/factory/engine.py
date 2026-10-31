@@ -507,7 +507,7 @@ class Engine:
         for s in self.plan.steps():
             if s.id == ref:
                 return s.output
-        return ref if ref in schemas.MODELS else None
+        return ref if ref in schemas.SCHEMAS else None
 
     def _per_item(self, ref: str) -> bool:
         for s in self.plan.steps():

@@ -54,7 +54,7 @@ The line numbers apply to this version of the files. If a line number is differe
 | `_check_independence()` – the checker rule | `src/factory/runbook.py` | 365 |
 | `outline()` – the text of a plan | `src/factory/runbook.py` | 378 |
 | `mermaid()` – the flowchart of a plan | `src/factory/runbook.py` | 413 |
-| `APP_NAME` – the rule for a run name | `src/factory/schemas.py` | 20 |
+| `APP_NAME` – the rule for a run name | `src/factory/schemas.py` | 24 |
 | `MAX_CONVERSATION` – the limit of turns at one checkpoint | `src/factory/engine.py` | 38 |
 | `API_PREFIX` – the path prefix of a full-stack contract | `src/factory/engine.py` | 39 |
 | `Stop` – ends the run | `src/factory/engine.py` | 42 |
@@ -119,11 +119,10 @@ The line numbers apply to this version of the files. If a line number is differe
 | `Config` – the checked `llm.yaml` | `src/factory/config.py` | 128 |
 | `worker()` – finds a worker by name | `src/factory/config.py` | 176 |
 | `load_config()` – reads `llm.yaml` and fills the variables | `src/factory/config.py` | 271 |
-| `MODELS` – the schema of each deliverable | `src/factory/schemas.py` | 156 |
-| `SHAPES` – the reply format shown to an agent | `src/factory/schemas.py` | 169 |
-| `validate()` – checks a reply | `src/factory/schemas.py` | 198 |
-| `_check_contract()` – checks the API contract paths | `src/factory/schemas.py` | 240 |
-| `render()` – shows a deliverable as text | `src/factory/schemas.py` | 286 |
+| `SCHEMAS` – the model, reply format and run rule of each deliverable | `src/factory/schemas.py` | 242 |
+| `validate()` – checks a reply | `src/factory/schemas.py` | 160 |
+| `_check_contract()` – checks the API contract paths | `src/factory/schemas.py` | 202 |
+| `render()` – shows a deliverable as text | `src/factory/schemas.py` | 298 |
 | `Template` – a scaffold and its metadata | `src/factory/scaffold.py` | 36 |
 | `read_template()` – reads `templates/<name>.yaml` | `src/factory/scaffold.py` | 49 |
 | `install()` – installs the dependencies of a scaffold | `src/factory/scaffold.py` | 77 |

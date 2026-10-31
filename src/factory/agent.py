@@ -70,7 +70,7 @@ def prompt_for(role: Role, req: dict, history: str) -> str:
         parts.append(history)
     if name := req.get("output"):
         parts.append("When you are done, end your reply with exactly one ```json code block, and "
-                     f"nothing after it, with this shape:\n{schemas.SHAPES[name]}")
+                     f"nothing after it, with this shape:\n{schemas.SCHEMAS[name].shape}")
     return "\n\n".join(parts)
 
 

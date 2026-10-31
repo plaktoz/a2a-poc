@@ -2,7 +2,7 @@
 
 import pytest
 
-from factory.schemas import MODELS, SHAPES, render, validate
+from factory.schemas import SCHEMAS, render, validate
 
 
 def spec(*surfaces):
@@ -11,7 +11,7 @@ def spec(*surfaces):
 
 
 def test_every_schema_has_a_prompt_shape():
-    assert set(SHAPES) == set(MODELS)
+    assert all(sc.shape.strip().startswith("{") for sc in SCHEMAS.values())
 
 
 def test_spec_defaults_and_extra_fields_are_kept():

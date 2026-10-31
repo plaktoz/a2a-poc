@@ -188,7 +188,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>_check_independence()</code> – the checker rule</td><td><code>src/factory/runbook.py</code></td><td>365</td></tr>
     <tr><td><code>outline()</code> – the text of a plan</td><td><code>src/factory/runbook.py</code></td><td>378</td></tr>
     <tr><td><code>mermaid()</code> – the flowchart of a plan</td><td><code>src/factory/runbook.py</code></td><td>413</td></tr>
-    <tr><td><code>APP_NAME</code> – the rule for a run name</td><td><code>src/factory/schemas.py</code></td><td>20</td></tr>
+    <tr><td><code>APP_NAME</code> – the rule for a run name</td><td><code>src/factory/schemas.py</code></td><td>24</td></tr>
     <tr><td><code>MAX_CONVERSATION</code> – the limit of turns at one checkpoint</td><td><code>src/factory/engine.py</code></td><td>38</td></tr>
     <tr><td><code>API_PREFIX</code> – the path prefix of a full-stack contract</td><td><code>src/factory/engine.py</code></td><td>39</td></tr>
     <tr><td><code>Stop</code> – ends the run</td><td><code>src/factory/engine.py</code></td><td>42</td></tr>
@@ -253,11 +253,10 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>Config</code> – the checked <code>llm.yaml</code></td><td><code>src/factory/config.py</code></td><td>128</td></tr>
     <tr><td><code>worker()</code> – finds a worker by name</td><td><code>src/factory/config.py</code></td><td>176</td></tr>
     <tr><td><code>load_config()</code> – reads <code>llm.yaml</code> and fills the variables</td><td><code>src/factory/config.py</code></td><td>271</td></tr>
-    <tr><td><code>MODELS</code> – the schema of each deliverable</td><td><code>src/factory/schemas.py</code></td><td>156</td></tr>
-    <tr><td><code>SHAPES</code> – the reply format shown to an agent</td><td><code>src/factory/schemas.py</code></td><td>169</td></tr>
-    <tr><td><code>validate()</code> – checks a reply</td><td><code>src/factory/schemas.py</code></td><td>198</td></tr>
-    <tr><td><code>_check_contract()</code> – checks the API contract paths</td><td><code>src/factory/schemas.py</code></td><td>240</td></tr>
-    <tr><td><code>render()</code> – shows a deliverable as text</td><td><code>src/factory/schemas.py</code></td><td>286</td></tr>
+    <tr><td><code>SCHEMAS</code> – the model, reply format and run rule of each deliverable</td><td><code>src/factory/schemas.py</code></td><td>242</td></tr>
+    <tr><td><code>validate()</code> – checks a reply</td><td><code>src/factory/schemas.py</code></td><td>160</td></tr>
+    <tr><td><code>_check_contract()</code> – checks the API contract paths</td><td><code>src/factory/schemas.py</code></td><td>202</td></tr>
+    <tr><td><code>render()</code> – shows a deliverable as text</td><td><code>src/factory/schemas.py</code></td><td>298</td></tr>
     <tr><td><code>Template</code> – a scaffold and its metadata</td><td><code>src/factory/scaffold.py</code></td><td>36</td></tr>
     <tr><td><code>read_template()</code> – reads <code>templates/&lt;name&gt;.yaml</code></td><td><code>src/factory/scaffold.py</code></td><td>49</td></tr>
     <tr><td><code>install()</code> – installs the dependencies of a scaffold</td><td><code>src/factory/scaffold.py</code></td><td>77</td></tr>

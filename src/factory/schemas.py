@@ -5,14 +5,18 @@ cheaply), and the orchestrator validates it again as a gate. Each schema has:
 
 - a pydantic model (structure),
 - `check(data, ctx)` for rules that need run context, such as the product's surfaces,
-- `SHAPES[name]`, the example the agent puts in its prompt,
+- a shape, the example the agent puts in its prompt,
 - `render(name, data)`, the text a human reads at an approval checkpoint.
+
+`SCHEMAS[name]` holds the first three in one record.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -153,61 +157,19 @@ class Report(_Open):
     markdown: str = Field(min_length=1)
 
 
-MODELS: dict[str, type[BaseModel]] = {
-    "spec": Spec,
-    "api_contract": ApiContract,
-    "research_plan": ResearchPlan,
-    "findings": Findings,
-    "audit_findings": AuditFindings,
-    "verification": Verification,
-    "verdict": Verdict,
-    "triage": Triage,
-    "dev_result": DevResult,
-    "report": Report,
-}
-
-SHAPES: dict[str, str] = {
-    "spec": """{"title": str, "goal": str,
- "acceptance_criteria": [{"id": "AC1", "text": str, "surface": str}],
- "constraints": [str], "out_of_scope": [str], "assumptions": [str], "questions": [str]}""",
-    "api_contract": """{"endpoints": [{"method": "GET|POST|PUT|PATCH|DELETE", "path": "/...",
-   "summary": str, "request": <JSON example body or null>, "response": <JSON example body>,
-   "status": [int]}],
- "models": {<Name>: <JSON example object>}, "notes": [str]}""",
-    "research_plan": """{"title": str, "question": str, "audience": str, "deliverable": str,
- "sub_questions": [{"id": "Q1", "question": str, "why": str}],
- "out_of_scope": [str], "assumptions": [str], "questions": [str]}""",
-    "findings": """{"sub_question_id": "Q1", "answer": str,
- "findings": [{"claim": str, "source_url": str, "source_title": str,
-               "quote": "<exact sentence copied from the source>", "confidence": "high|medium|low"}],
- "gaps": [str]}""",
-    "audit_findings": """{"lens": str, "summary": str,
- "findings": [{"severity": "critical|high|medium|low", "title": str, "file": "<path relative to
-   the project root>", "line": int, "evidence": "<exact code copied from that line or the lines
-   around it>", "recommendation": str}]}""",
-    "verification": """{"passed": int, "failed": int,
- "verdicts": {"AC1": "PASS" | "FAIL - <reason>"}}""",
-    "verdict": """{"verdict": "approve|revise", "issues": [str], "strengths": [str]}""",
-    "triage": """{"runbook": str, "traits": {<trait>: <value>}, "name": "<lowercase-hyphenated
-   project name, at most 40 characters>", "rationale": str, "target": "<path or null>"}""",
-    "dev_result": """{"summary": str, "test_change": "<which test you changed and why, or empty>"}""",
-    "report": """{"markdown": "<the whole report in Markdown>"}""",
-}
-
-
 def validate(name: str, data: Any, ctx: dict | None = None) -> dict:
     """Return `data` as a plain dict with defaults applied; raise ValueError if unusable."""
-    if name not in MODELS:
+    if name not in SCHEMAS:
         raise ValueError(f"unknown schema {name!r}")
+    schema = SCHEMAS[name]
     try:
-        obj = MODELS[name].model_validate(data)
+        obj = schema.model.model_validate(data)
     except ValidationError as e:
         errors = "; ".join(f"{'.'.join(map(str, x['loc'])) or '<root>'}: {x['msg']}" for x in e.errors()[:6])
         raise ValueError(f"does not match the {name} shape: {errors}") from None
     out = obj.model_dump(mode="json")
-    check = _CHECKS.get(name)
-    if check:
-        check(out, ctx or {})
+    if schema.check:
+        schema.check(out, ctx or {})
     return out
 
 
@@ -268,11 +230,61 @@ def _check_triage(data: dict, ctx: dict) -> None:
         raise ValueError("name must be lowercase letters, digits and hyphens, at most 40 characters")
 
 
-_CHECKS = {
-    "spec": _check_spec,
-    "research_plan": _check_ids("Q", "sub_questions"),
-    "api_contract": _check_contract,
-    "triage": _check_triage,
+@dataclass(frozen=True)
+class Schema:
+    """One deliverable: its structure, the example shown to an agent, and its run-context rule."""
+
+    model: type[BaseModel]
+    shape: str
+    check: Callable[[dict, dict], None] | None = None
+
+
+SCHEMAS: dict[str, Schema] = {
+    "spec": Schema(
+        Spec,
+        """{"title": str, "goal": str,
+ "acceptance_criteria": [{"id": "AC1", "text": str, "surface": str}],
+ "constraints": [str], "out_of_scope": [str], "assumptions": [str], "questions": [str]}""", _check_spec),
+    "api_contract": Schema(
+        ApiContract,
+        """{"endpoints": [{"method": "GET|POST|PUT|PATCH|DELETE", "path": "/...",
+   "summary": str, "request": <JSON example body or null>, "response": <JSON example body>,
+   "status": [int]}],
+ "models": {<Name>: <JSON example object>}, "notes": [str]}""", _check_contract),
+    "research_plan": Schema(
+        ResearchPlan,
+        """{"title": str, "question": str, "audience": str, "deliverable": str,
+ "sub_questions": [{"id": "Q1", "question": str, "why": str}],
+ "out_of_scope": [str], "assumptions": [str], "questions": [str]}""", _check_ids("Q", "sub_questions")),
+    "findings": Schema(
+        Findings,
+        """{"sub_question_id": "Q1", "answer": str,
+ "findings": [{"claim": str, "source_url": str, "source_title": str,
+               "quote": "<exact sentence copied from the source>", "confidence": "high|medium|low"}],
+ "gaps": [str]}"""),
+    "audit_findings": Schema(
+        AuditFindings,
+        """{"lens": str, "summary": str,
+ "findings": [{"severity": "critical|high|medium|low", "title": str, "file": "<path relative to
+   the project root>", "line": int, "evidence": "<exact code copied from that line or the lines
+   around it>", "recommendation": str}]}"""),
+    "verification": Schema(
+        Verification,
+        """{"passed": int, "failed": int,
+ "verdicts": {"AC1": "PASS" | "FAIL - <reason>"}}"""),
+    "verdict": Schema(
+        Verdict,
+        """{"verdict": "approve|revise", "issues": [str], "strengths": [str]}"""),
+    "triage": Schema(
+        Triage,
+        """{"runbook": str, "traits": {<trait>: <value>}, "name": "<lowercase-hyphenated
+   project name, at most 40 characters>", "rationale": str, "target": "<path or null>"}""", _check_triage),
+    "dev_result": Schema(
+        DevResult,
+        """{"summary": str, "test_change": "<which test you changed and why, or empty>"}"""),
+    "report": Schema(
+        Report,
+        """{"markdown": "<the whole report in Markdown>"}"""),
 }
 
 

@@ -216,8 +216,8 @@ class Runbook(_Strict):
             raise ValueError(f"duplicate id {s.id!r}")
         if s.role not in ROLES:
             raise ValueError(f"{where}: unknown role {s.role!r}; roles are {', '.join(ROLES)}")
-        if s.output is not None and s.output not in schemas.MODELS:
-            raise ValueError(f"{where}: unknown output {s.output!r}; outputs are {', '.join(schemas.MODELS)}")
+        if s.output is not None and s.output not in schemas.SCHEMAS:
+            raise ValueError(f"{where}: unknown output {s.output!r}; outputs are {', '.join(schemas.SCHEMAS)}")
         if bad := [g for g in s.gates if g not in GATES]:
             raise ValueError(f"{where}: unknown gate {', '.join(bad)}; gates are {', '.join(GATES)}")
         if bad := [r for r in s.reads if r not in seen]:
