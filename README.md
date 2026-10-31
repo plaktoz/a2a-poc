@@ -107,6 +107,6 @@ Work happens in `apps/<name>/`, one directory per run, so runs can overlap. `app
 
 `src/factory/`: `cli.py` (commands), `runbook.py` (loading, validation, trait resolution, staffing, plan outline), `engine.py` (runs a plan: steps, loops, retries, role checks, checkpoints), `gates.py`, `schemas.py` (deliverables), `roles.py`, `agent.py` (the generic role agent), `fleet.py` (launches agents), `invoke.py` (Claude / Codex calls with per-role tools), `scaffold.py`, `search.py`, `a2a_transport.py`.
 
-The original fixed four-stage pipeline is still in `src/sample/pipeline.py` (see `src/sample/README.md`).
+The original fixed four-stage pipeline is still in `src/sample/pipeline.py` (see `src/sample/README.md`, and `docs/pipeline-profile.md` for a technical profile of it).
 
 Tests: `uv run pytest`. The engine tests use fake agents, so no LLM is called.

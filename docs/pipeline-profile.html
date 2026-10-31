@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>a2a-poc</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #fbfaf7;
+    --panel: #ffffff;
+    --fg: #1f2328;
+    --muted: #5b6470;
+    --line: #d9d6cc;
+    --accent: #b45f06;
+    --accent-bg: #fdf0dc;
+    --link: #1f5fbf;
+    --ok: #1a7f37;
+    --ok-bg: #e6f4ea;
+    --warn-bg: #fff4d6;
+    --code-bg: #f1efe8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #17181a;
+      --panel: #1f2124;
+      --fg: #e6e4de;
+      --muted: #a2a7ae;
+      --line: #3a3d42;
+      --accent: #f0a042;
+      --accent-bg: #3a2c14;
+      --link: #7fb0ff;
+      --ok: #5fcf80;
+      --ok-bg: #16301e;
+      --warn-bg: #3a3214;
+      --code-bg: #26282b;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #17181a;
+    --panel: #1f2124;
+    --fg: #e6e4de;
+    --muted: #a2a7ae;
+    --line: #3a3d42;
+    --accent: #f0a042;
+    --accent-bg: #3a2c14;
+    --link: #7fb0ff;
+    --ok: #5fcf80;
+    --ok-bg: #16301e;
+    --warn-bg: #3a3214;
+    --code-bg: #26282b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 60rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.45rem; margin: 2.75rem 0 .75rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.75rem 0 .5rem; }
+  p, ul, ol { margin: .6rem 0; }
+  li { margin: .25rem 0; }
+  a { color: var(--link); }
+  code { font: .88em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: .8rem 1rem; border-radius: 8px; overflow-x: auto; margin: .8rem 0; }
+  pre code { background: none; padding: 0; font-size: .85rem; }
+  .lede { color: var(--muted); margin: 0 0 1.25rem; }
+  .table-wrap { overflow-x: auto; margin: .8rem 0; }
+  table { border-collapse: collapse; width: 100%; background: var(--panel); font-size: .92rem; }
+  th, td { border: 1px solid var(--line); padding: .45rem .65rem; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  nav.toc { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .75rem 1.1rem; margin: 1rem 0 0; }
+  nav.toc ol { columns: 2 14rem; margin: 0; padding-left: 1.2rem; }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-bg); padding: .6rem .9rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  .expected { border-left: 4px solid var(--ok); background: var(--ok-bg); padding: .6rem .9rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  .warn { border-left: 4px solid var(--accent); background: var(--warn-bg); padding: .6rem .9rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  figure { margin: 1.25rem 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .75rem; }
+  figure svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--fg); }
+  figcaption { color: var(--muted); font-size: .9rem; margin-top: .5rem; }
+  .band { font: .85rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: .7rem .9rem; overflow-x: auto; white-space: pre; }
+  .band .w { color: var(--accent); font-weight: 700; }
+  .band .d { color: var(--muted); }
+  .band .s { color: var(--link); }
+  /* SVG parts, styled here so the drawings follow the theme */
+  .node { fill: var(--panel); stroke: currentColor; stroke-width: 1.5; }
+  .node-hot { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 2; }
+  .edge { stroke: currentColor; stroke-width: 1.5; fill: none; }
+  .edge-hot { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .edge-dash { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; }
+  .lbl { fill: currentColor; font: 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .lbl-b { fill: currentColor; font: 600 13px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .lbl-m { fill: var(--muted); font: 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .lbl-hot { fill: var(--accent); font: 600 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .arrow-fill { fill: currentColor; }
+  .arrow-hot { fill: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>a2a-poc</h1>
+
+<p class="lede">
+A proof of concept (POC) of a software factory. It builds a React app from a short brief through four A2A agents.</p>
+
+<p>An HTML version of this document is in <code>pipeline-profile.html</code>. It has the same content and the same diagrams.</p>
+
+<p>To install the project, go to <a href="#install">section 5</a>. To check that it works, go to <a href="#validate">section 6</a>.
+</p>
+
+<nav class="toc" aria-label="Contents">
+
+  <ol>
+
+    <li><a href="#purpose">Purpose</a></li>
+
+    <li><a href="#code">Where to find the code</a></li>
+
+    <li><a href="#how">How it works</a></li>
+
+    <li><a href="#settings">Settings</a></li>
+
+    <li><a href="#install">Install</a></li>
+
+    <li><a href="#validate">Validate</a></li>
+
+    <li><a href="#limits">Known limits</a></li>
+
+    <li><a href="#glossary">Glossary</a></li>
+
+  </ol>
+
+</nav>
+
+<h2 id="purpose">1. Purpose</h2>
+
+<p>A software factory turns a written brief into a tested web app. This project is a POC of one. It builds a React app in four stages. A separate A2A agent does each stage.</p>
+
+<p>The orchestrator, <code>pipeline.py</code>, sends a task to each agent. The orchestrator checks each result with its own commands. It does not trust a count that an agent reports. For example, it runs Vitest itself and compares the counts.</p>
+
+<p>The four stages are:</p>
+
+<ol>
+  <li><strong>requirements</strong> – drafts a spec with acceptance criteria. You accept the spec.</li>
+  <li><strong>tests</strong> – writes Vitest tests, at least one for each criterion, before the app exists.</li>
+  <li><strong>implement</strong> – builds the app until the tests pass.</li>
+  <li><strong>verify</strong> – runs the tests and checks that a passing test covers each criterion.</li>
+</ol>
+
+<p>Each stage uses one LLM worker and one model. <code>pipeline.yaml</code> sets them. <code>llm.yaml</code> lists the workers and models that are allowed.</p>
+
+<p>Each app is built in its own folder, <code>apps/&lt;name&gt;/</code>. A run writes <code>SPEC.json</code>, <code>src/</code> and <code>.factory/run.json</code> there. Runs for different apps do not share files or ports.</p>
+
+<p>The folder <code>src/factory</code> holds the library: the config loader, the LLM command builders and the A2A transport. The folder <code>src/sample</code> holds the scripts: the orchestrator, the stage agents and two live checks.</p>
+
+<h2 id="code">2. Where to find the code</h2>
+
+<p>The line numbers apply to this version of the files. If a line number is different, search for the name.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Item</th><th>File</th><th>Line</th></tr></thead>
+  <tbody>
+    <tr><td>Constants (default app, app name rule, spec rounds, start timeout, protected files)</td><td><code>src/sample/pipeline.py</code></td><td>58–72</td></tr>
+    <tr><td><code>Agents</code> – starts the stage agents, waits for their cards, stops them, sends tasks</td><td><code>src/sample/pipeline.py</code></td><td>82</td></tr>
+    <tr><td><code>free_port()</code> – asks the system for a free port</td><td><code>src/sample/pipeline.py</code></td><td>198</td></tr>
+    <tr><td><code>_wait_for_card()</code> – waits for the agent card and checks its tags</td><td><code>src/sample/pipeline.py</code></td><td>113</td></tr>
+    <tr><td><code>snapshot()</code> – hashes every project file</td><td><code>src/sample/pipeline.py</code></td><td>151</td></tr>
+    <tr><td><code>changed()</code> – lists the files that differ between two snapshots</td><td><code>src/sample/pipeline.py</code></td><td>161</td></tr>
+    <tr><td><code>vitest()</code> – runs Vitest and reads its JSON report</td><td><code>src/sample/pipeline.py</code></td><td>176</td></tr>
+    <tr><td><code>build_and_serve()</code> – builds the app and fetches it from <code>vite preview</code></td><td><code>src/sample/pipeline.py</code></td><td>209</td></tr>
+    <tr><td><code>RunLog</code> – writes <code>.factory/run.json</code></td><td><code>src/sample/pipeline.py</code></td><td>245</td></tr>
+    <tr><td><code>gather_requirements()</code> – stage 1 on the orchestrator side</td><td><code>src/sample/pipeline.py</code></td><td>269</td></tr>
+    <tr><td><code>write_tests()</code> – stage 2 gate (loads, RED)</td><td><code>src/sample/pipeline.py</code></td><td>307</td></tr>
+    <tr><td><code>review_test_change()</code> – the tester approves or rejects a test edit</td><td><code>src/sample/pipeline.py</code></td><td>329</td></tr>
+    <tr><td><code>implement()</code> – stage 3 gate (files, test edit, build, serve)</td><td><code>src/sample/pipeline.py</code></td><td>354</td></tr>
+    <tr><td><code>verify()</code> – stage 4 gate (counts match)</td><td><code>src/sample/pipeline.py</code></td><td>372</td></tr>
+    <tr><td><code>reset_app()</code> – removes the generated files of an earlier run</td><td><code>src/sample/pipeline.py</code></td><td>393</td></tr>
+    <tr><td><code>open_app()</code> – creates the app folder and takes the lock</td><td><code>src/sample/pipeline.py</code></td><td>405</td></tr>
+    <tr><td>The lock call <code>fcntl.flock</code></td><td><code>src/sample/pipeline.py</code></td><td>417</td></tr>
+    <tr><td><code>default_app_name()</code> – makes an app name from the brief</td><td><code>src/sample/pipeline.py</code></td><td>433</td></tr>
+    <tr><td><code>prepare_workdir()</code> – runs <code>npm install</code> and checks the scaffold</td><td><code>src/sample/pipeline.py</code></td><td>439</td></tr>
+    <tr><td><code>develop()</code> – the developer rounds and the final result</td><td><code>src/sample/pipeline.py</code></td><td>451</td></tr>
+    <tr><td><code>main()</code> – command-line flags and the four stages</td><td><code>src/sample/pipeline.py</code></td><td>487</td></tr>
+    <tr><td><code>CODEX_TIMEOUT</code>, <code>CLAUDE_TIMEOUT</code>, <code>LLM_ATTEMPTS</code></td><td><code>src/sample/stage_agents.py</code></td><td>50–51</td></tr>
+    <tr><td><code>ROLES</code> – agent titles and descriptions</td><td><code>src/sample/stage_agents.py</code></td><td>53</td></tr>
+    <tr><td><code>STACK</code> – the fixed project stack in every prompt</td><td><code>src/sample/stage_agents.py</code></td><td>64</td></tr>
+    <tr><td><code>SPEC_FORMAT</code> – the reply format for the spec</td><td><code>src/sample/stage_agents.py</code></td><td>73</td></tr>
+    <tr><td><code>llm()</code> – runs the worker for one stage</td><td><code>src/sample/stage_agents.py</code></td><td>89</td></tr>
+    <tr><td><code>draft_spec()</code> – asks the worker for a spec</td><td><code>src/sample/stage_agents.py</code></td><td>127</td></tr>
+    <tr><td><code>requirements()</code> – handler of stage 1</td><td><code>src/sample/stage_agents.py</code></td><td>149</td></tr>
+    <tr><td><code>review_tests()</code> – the tester judges a test edit</td><td><code>src/sample/stage_agents.py</code></td><td>174</td></tr>
+    <tr><td><code>tests()</code> – handler of stage 2</td><td><code>src/sample/stage_agents.py</code></td><td>204</td></tr>
+    <tr><td><code>implement()</code> – handler of stage 3</td><td><code>src/sample/stage_agents.py</code></td><td>247</td></tr>
+    <tr><td><code>verify()</code> – handler of stage 4</td><td><code>src/sample/stage_agents.py</code></td><td>285</td></tr>
+    <tr><td><code>HANDLERS</code> – stage name to handler</td><td><code>src/sample/stage_agents.py</code></td><td>307</td></tr>
+    <tr><td><code>main()</code> – serves one stage (flags <code>stage</code>, <code>--stages</code>, <code>--port</code>)</td><td><code>src/sample/stage_agents.py</code></td><td>310</td></tr>
+    <tr><td>Paths and constants (<code>APPS</code>, <code>TEMPLATE</code>, <code>STAGE_NAMES</code>, <code>TEST_FILE</code>, <code>CMD_TIMEOUT</code>)</td><td><code>src/sample/pipeline_common.py</code></td><td>15–23</td></tr>
+    <tr><td><code>Stage</code> – worker, model and url of a stage</td><td><code>src/sample/pipeline_common.py</code></td><td>27</td></tr>
+    <tr><td><code>load_stages()</code> – reads and checks <code>pipeline.yaml</code></td><td><code>src/sample/pipeline_common.py</code></td><td>34</td></tr>
+    <tr><td><code>run()</code> – runs a command with stdin closed</td><td><code>src/sample/pipeline_common.py</code></td><td>58</td></tr>
+    <tr><td><code>check_spec()</code> – checks a spec</td><td><code>src/sample/pipeline_common.py</code></td><td>76</td></tr>
+    <tr><td><code>check_test_file()</code> – every criterion has a named test, no skips</td><td><code>src/sample/pipeline_common.py</code></td><td>91</td></tr>
+    <tr><td><code>Reply</code> – the result of a handler</td><td><code>src/factory/a2a_transport.py</code></td><td>47</td></tr>
+    <tr><td><code>StageFailed</code> – the task failed or cannot continue</td><td><code>src/factory/a2a_transport.py</code></td><td>55</td></tr>
+    <tr><td><code>_Executor</code> – keeps the turns of each task</td><td><code>src/factory/a2a_transport.py</code></td><td>64</td></tr>
+    <tr><td><code>execute()</code> – runs the handler and sets the task state</td><td><code>src/factory/a2a_transport.py</code></td><td>69</td></tr>
+    <tr><td><code>agent_card()</code> – builds the agent card</td><td><code>src/factory/a2a_transport.py</code></td><td>99</td></tr>
+    <tr><td><code>build_app()</code> – serves the card and the JSON-RPC route</td><td><code>src/factory/a2a_transport.py</code></td><td>119</td></tr>
+    <tr><td><code>fetch_card()</code> – reads an agent card</td><td><code>src/factory/a2a_transport.py</code></td><td>127</td></tr>
+    <tr><td><code>call()</code> – sends a task and answers <code>input-required</code></td><td><code>src/factory/a2a_transport.py</code></td><td>133</td></tr>
+    <tr><td><code>ConfigError</code> – the config file is invalid</td><td><code>src/factory/config.py</code></td><td>39</td></tr>
+    <tr><td><code>Budgets</code> – <code>per_task_usd</code>, <code>per_day_usd</code>, <code>max_retries</code></td><td><code>src/factory/config.py</code></td><td>107</td></tr>
+    <tr><td><code>Config</code> – the checked config</td><td><code>src/factory/config.py</code></td><td>128</td></tr>
+    <tr><td><code>check_request()</code> – checks a worker and model</td><td><code>src/factory/config.py</code></td><td>194</td></tr>
+    <tr><td><code>reviewer_for()</code> – picks a reviewer model</td><td><code>src/factory/config.py</code></td><td>212</td></tr>
+    <tr><td><code>_interpolate()</code> – replaces <code>${VAR}</code></td><td><code>src/factory/config.py</code></td><td>246</td></tr>
+    <tr><td><code>load_config()</code> – loads and checks <code>llm.yaml</code></td><td><code>src/factory/config.py</code></td><td>286</td></tr>
+    <tr><td><code>codex_argv()</code> – builds the <code>codex exec</code> command</td><td><code>src/factory/codex.py</code></td><td>25</td></tr>
+    <tr><td><code>claude_env()</code> – builds the environment of a Claude worker</td><td><code>src/factory/claude.py</code></td><td>16</td></tr>
+    <tr><td>Block <code>llm</code></td><td><code>llm.yaml</code></td><td>11</td></tr>
+    <tr><td>Block <code>workers</code></td><td><code>llm.yaml</code></td><td>21</td></tr>
+    <tr><td>Block <code>reviewer</code></td><td><code>llm.yaml</code></td><td>48</td></tr>
+    <tr><td>Block <code>budgets</code></td><td><code>llm.yaml</code></td><td>52</td></tr>
+    <tr><td>Block <code>stages</code></td><td><code>src/sample/pipeline.yaml</code></td><td>11</td></tr>
+    <tr><td>Live check of a Codex worker (<code>main</code>)</td><td><code>src/sample/codex_live.py</code></td><td>18</td></tr>
+    <tr><td>Live check of a Claude worker (<code>main</code>)</td><td><code>src/sample/claude_live.py</code></td><td>19</td></tr>
+    <tr><td>Tests</td><td><code>tests/test_a2a_transport.py</code>, <code>tests/test_apps.py</code>, <code>tests/test_config.py</code>, <code>tests/test_test_amendments.py</code></td><td>see 6.4</td></tr>
+  </tbody>
+</table></div>
+
+<p>Other files:</p>
+
+<ul>
+  <li><code>templates/react-vite/</code> is the scaffold that <code>open_app()</code> copies into each new app.</li>
+  <li><code>src/sample/README.md</code> is a separate README for the scripts.</li>
+  <li><code>software-factory-prd.md</code> is a separate document. This README does not use it as a source.</li>
+</ul>
+
+<h2 id="how">3. How it works</h2>
+
+<h3 id="h-3-1">3.1 The four stages and the gates</h3>
+
+<p>The orchestrator runs the stages in order. After each stage, it runs a gate. A gate is a check that the orchestrator does itself. A failed gate in stage 3 or 4 sends the problem back to the developer.</p>
+
+<figure>
+<svg viewBox="0 0 800 580" role="img" aria-label="Flowchart of the four stages. The brief goes to requirements, then tests, then implement, then verify, then Done with exit code 0. Each stage shows its gate. A rejected implement round, or red tests in verify, goes to a check of the rounds left. If a round is left, the flow returns to implement. If no round is left, the run stops with exit code 1. Green tests with a criterion that is not PASS also stop the run with exit code 1.">
+    <defs>
+      <marker id="f1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-fill"/></marker>
+      <marker id="f1h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-hot"/></marker>
+    </defs>
+    <!-- nodes -->
+    <rect class="node-hot" x="150" y="14" width="120" height="36" rx="8"/>
+    <text class="lbl-b" x="210.0" y="36.0" text-anchor="middle">Brief</text>
+    <rect class="node-hot" x="110" y="86" width="200" height="64" rx="8"/>
+    <text class="lbl-b" x="210.0" y="106.0" text-anchor="middle">1. requirements</text>
+    <text class="lbl" x="210.0" y="122.0" text-anchor="middle">gate: you accept</text>
+    <text class="lbl" x="210.0" y="138.0" text-anchor="middle">the spec</text>
+    <rect class="node-hot" x="110" y="186" width="200" height="64" rx="8"/>
+    <text class="lbl-b" x="210.0" y="206.0" text-anchor="middle">2. tests</text>
+    <text class="lbl" x="210.0" y="222.0" text-anchor="middle">gate: suite loads</text>
+    <text class="lbl" x="210.0" y="238.0" text-anchor="middle">and is RED</text>
+    <rect class="node-hot" x="110" y="286" width="200" height="80" rx="8"/>
+    <text class="lbl-b" x="210.0" y="306.0" text-anchor="middle">3. implement</text>
+    <text class="lbl" x="210.0" y="322.0" text-anchor="middle">gate: only src/ changed,</text>
+    <text class="lbl" x="210.0" y="338.0" text-anchor="middle">test edits approved,</text>
+    <text class="lbl" x="210.0" y="354.0" text-anchor="middle">builds and serves</text>
+    <rect class="node-hot" x="110" y="402" width="200" height="80" rx="8"/>
+    <text class="lbl-b" x="210.0" y="422.0" text-anchor="middle">4. verify</text>
+    <text class="lbl" x="210.0" y="438.0" text-anchor="middle">gate: counts match,</text>
+    <text class="lbl" x="210.0" y="454.0" text-anchor="middle">all green,</text>
+    <text class="lbl" x="210.0" y="470.0" text-anchor="middle">every criterion PASS</text>
+    <rect class="node-hot" x="110" y="518" width="200" height="36" rx="8"/>
+    <text class="lbl-b" x="210.0" y="540.0" text-anchor="middle">Done (exit 0)</text>
+    <polygon class="node" points="590,340 690,384 590,428 490,384"/>
+    <text class="lbl" x="590" y="380" text-anchor="middle">Rounds left?</text>
+    <text class="lbl" x="590" y="396" text-anchor="middle">1 + max_retries</text>
+    <rect class="node" x="490" y="518" width="200" height="36" rx="8"/>
+    <text class="lbl-b" x="590.0" y="540.0" text-anchor="middle">Stopped (exit 1)</text>
+    <!-- happy path -->
+    <path class="edge-hot" d="M210 50 L210 84" marker-end="url(#f1h)"/>
+    <path class="edge-hot" d="M210 150 L210 184" marker-end="url(#f1h)"/>
+    <path class="edge-hot" d="M210 250 L210 284" marker-end="url(#f1h)"/>
+    <path class="edge-hot" d="M210 366 L210 400" marker-end="url(#f1h)"/>
+    <path class="edge-hot" d="M210 482 L210 516" marker-end="url(#f1h)"/>
+    <!-- failures and retries -->
+    <path class="edge" d="M312 316 L590 316 L590 338" marker-end="url(#f1a)"/>
+    <text class="lbl" x="440" y="332" text-anchor="middle">not accepted</text>
+    <path class="edge" d="M312 420 L420 420 L420 384 L488 384" marker-end="url(#f1a)"/>
+    <text class="lbl" x="366" y="412" text-anchor="middle">tests red</text>
+    <path class="edge" d="M690 384 L740 384 L740 290 L312 290" marker-end="url(#f1a)"/>
+    <text class="lbl" x="748" y="340" text-anchor="start">yes</text>
+    <path class="edge" d="M590 428 L590 516" marker-end="url(#f1a)"/>
+    <text class="lbl" x="598" y="478" text-anchor="start">no</text>
+    <path class="edge" d="M312 464 L380 464 L380 536 L488 536" marker-end="url(#f1a)"/>
+    <text class="lbl" x="388" y="486" text-anchor="start">tests green, a criterion</text>
+    <text class="lbl" x="388" y="500" text-anchor="start">is not PASS</text>
+  </svg>
+  <figcaption>Figure 1. The four stages and their gates. The thick line is a run that passes every gate. A round is one pass through implement and verify.</figcaption>
+</figure>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Stage</th><th>The agent does</th><th>The orchestrator gate</th><th>If the gate fails</th></tr></thead>
+  <tbody>
+    <tr><td>1. requirements</td><td>Asks questions. Drafts a spec.</td><td><code>check_spec()</code> accepts the spec. You accept it.</td><td>You can ask for changes, and the agent drafts again. The 7th pause stops the run. Type <code>q</code> to quit.</td></tr>
+    <tr><td>2. tests</td><td>Writes <code>src/App.test.jsx</code>.</td><td>Only that file changed. The suite loads. At least 1 test fails (RED).</td><td>The agent gets feedback and tries once more. A second failure stops the run. A change to another file stops the run at once.</td></tr>
+    <tr><td>3. implement</td><td>Edits files under <code>src/</code>.</td><td>Only <code>src/</code> changed and no protected file changed. A test edit is approved. <code>npm run build</code> passes. <code>vite preview</code> serves the app.</td><td>The problem goes back to the developer as feedback. A change outside the role stops the run.</td></tr>
+    <tr><td>4. verify</td><td>Runs the tests. Judges each criterion.</td><td>The reported counts equal the orchestrator Vitest counts. No test fails. Every verdict starts with <code>PASS</code>.</td><td>A failed test goes back to the developer. A changed file or a count mismatch stops the run. A green run with an uncovered criterion stops with exit code 1.</td></tr>
+  </tbody>
+</table></div>
+
+<p>The protected files are <code>package.json</code>, <code>package-lock.json</code>, <code>vite.config.js</code>, <code>index.html</code>, <code>src/main.jsx</code> and <code>src/setupTests.js</code>.</p>
+
+<p>The number of rounds is <code>1 + budgets.max_retries</code>. With the shipped settings, that is 2 rounds.</p>
+
+<h3 id="h-3-2">3.2 Stage 1: the spec conversation</h3>
+
+<p>Stage 1 is one A2A task with several turns. The agent drafts a spec and then pauses in the state <code>input-required</code>. The orchestrator asks you, sends your reply on the same task, and the agent drafts again. The loop ends when you accept the spec.</p>
+
+<figure>
+<svg viewBox="0 0 760 490" role="img" aria-label="Sequence diagram of the spec conversation between the user, the orchestrator, the requirements agent and the LLM worker. The orchestrator sends the task to the agent. The agent asks the LLM worker for a spec. In a loop, the agent pauses in input-required with the spec. The orchestrator shows the draft to the user. The user answers, accepts or asks for changes. The orchestrator sends the reply on the same task, and the agent asks the worker to redraft. When the user accepts, the agent completes the task with the spec.">
+    <defs>
+      <marker id="f2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-fill"/></marker>
+      <marker id="f2h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-hot"/></marker>
+    </defs>
+    <!-- participants -->
+    <rect class="node" x="10" y="14" width="120" height="36" rx="8"/>
+    <text class="lbl-b" x="70.0" y="36.0" text-anchor="middle">User</text>
+    <rect class="node" x="195" y="14" width="150" height="36" rx="8"/>
+    <text class="lbl-b" x="270.0" y="36.0" text-anchor="middle">Orchestrator</text>
+    <rect class="node" x="385" y="14" width="170" height="36" rx="8"/>
+    <text class="lbl-b" x="470.0" y="36.0" text-anchor="middle">Requirements agent</text>
+    <rect class="node" x="595" y="14" width="150" height="36" rx="8"/>
+    <text class="lbl-b" x="670.0" y="36.0" text-anchor="middle">LLM worker</text>
+    <!-- lifelines -->
+    <line class="edge-dash" x1="70" y1="50" x2="70" y2="470"/>
+    <line class="edge-dash" x1="270" y1="50" x2="270" y2="470"/>
+    <line class="edge-dash" x1="470" y1="50" x2="470" y2="470"/>
+    <line class="edge-dash" x1="670" y1="50" x2="670" y2="470"/>
+    <!-- loop frame -->
+    <rect class="edge-dash" x="30" y="180" width="710" height="228" rx="6"/>
+    <text class="lbl-m" x="84" y="196" text-anchor="start">loop until the user accepts</text>
+    <!-- messages -->
+    <line class="edge" x1="270" y1="88" x2="468" y2="88" marker-end="url(#f2a)"/>
+    <text class="lbl" x="370.0" y="80" text-anchor="middle">1. task: brief and workdir</text>
+    <line class="edge" x1="470" y1="122" x2="668" y2="122" marker-end="url(#f2a)"/>
+    <text class="lbl" x="570.0" y="114" text-anchor="middle">2. run LLM: draft the spec</text>
+    <line class="edge-dash" x1="670" y1="156" x2="472" y2="156" marker-end="url(#f2a)"/>
+    <text class="lbl" x="570.0" y="148" text-anchor="middle">3. spec as JSON</text>
+    <line class="edge" x1="470" y1="222" x2="272" y2="222" marker-end="url(#f2a)"/>
+    <text class="lbl" x="370.0" y="214" text-anchor="middle">4. input-required + spec</text>
+    <line class="edge" x1="270" y1="256" x2="72" y2="256" marker-end="url(#f2a)"/>
+    <text class="lbl" x="170.0" y="248" text-anchor="middle">5. show draft, ask</text>
+    <line class="edge-dash" x1="70" y1="290" x2="268" y2="290" marker-end="url(#f2a)"/>
+    <text class="lbl" x="170.0" y="282" text-anchor="middle">6. answers, accept or changes</text>
+    <line class="edge" x1="270" y1="324" x2="468" y2="324" marker-end="url(#f2a)"/>
+    <text class="lbl" x="370.0" y="316" text-anchor="middle">7. same task: user reply</text>
+    <line class="edge" x1="470" y1="358" x2="668" y2="358" marker-end="url(#f2a)"/>
+    <text class="lbl" x="570.0" y="350" text-anchor="middle">8. run LLM: redraft</text>
+    <line class="edge-dash" x1="670" y1="392" x2="472" y2="392" marker-end="url(#f2a)"/>
+    <text class="lbl" x="570.0" y="384" text-anchor="middle">9. spec as JSON</text>
+    <line class="edge" x1="470" y1="440" x2="272" y2="440" marker-end="url(#f2a)"/>
+    <text class="lbl" x="370.0" y="432" text-anchor="middle">10. completed: artifact spec</text>
+  </svg>
+  <figcaption>Figure 2. The spec conversation. When the reply in step 7 is <code>accept</code>, the agent skips steps 8 and 9 and returns the accepted spec.</figcaption>
+</figure>
+
+<ul>
+  <li>A spec with open questions gives <code>kind: "questions"</code>. A spec without questions gives <code>kind: "review"</code>.</li>
+  <li>With <code>--yes</code>, the orchestrator answers each question with a fixed text and accepts the first spec. The fixed text tells the agent to record its decision under <code>assumptions</code>.</li>
+  <li>The orchestrator counts each <code>input-required</code> pause. The 7th pause stops the run (<code>MAX_SPEC_ROUNDS</code>).</li>
+</ul>
+
+<h3 id="h-3-3">3.3 A developer round</h3>
+
+<p>One round of stage 3 has the checks below. The gate for stage 4 follows only if the round is accepted.</p>
+
+<figure>
+<svg viewBox="0 0 660 610" role="img" aria-label="Flowchart of one developer round. The orchestrator sends the implement task. If files outside src or protected files changed, the run stops with an error. If not, the next check asks whether the test file changed. If it did not change, the app builds and vite preview serves it. If it changed, the edit is reviewed: a reason must be given, every criterion must still be named, and the tester must approve. A rejected edit makes the round not accepted and restores the test file. An approved edit goes on to the build. If the app builds and serves, the flow goes to verify. If not, the round is not accepted.">
+    <defs>
+      <marker id="f3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-fill"/></marker>
+      <marker id="f3h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrow-hot"/></marker>
+    </defs>
+    <!-- nodes -->
+    <rect class="node-hot" x="130" y="14" width="200" height="40" rx="8"/>
+    <text class="lbl" x="230.0" y="38.0" text-anchor="middle">Send implement task</text>
+    <polygon class="node" points="230,84 350,130 230,176 110,130"/>
+    <text class="lbl" x="230" y="126" text-anchor="middle">Changed files outside</text>
+    <text class="lbl" x="230" y="142" text-anchor="middle">src/ or protected?</text>
+    <rect class="node" x="400" y="110" width="180" height="40" rx="8"/>
+    <text class="lbl" x="490.0" y="134.0" text-anchor="middle">Stop the run: error</text>
+    <polygon class="node" points="230,204 350,250 230,296 110,250"/>
+    <text class="lbl" x="230" y="246" text-anchor="middle">Test file</text>
+    <text class="lbl" x="230" y="262" text-anchor="middle">changed?</text>
+    <rect class="node" x="400" y="208" width="210" height="84" rx="8"/>
+    <text class="lbl" x="505.0" y="230.0" text-anchor="middle">Review the edit:</text>
+    <text class="lbl" x="505.0" y="246.0" text-anchor="middle">reason given,</text>
+    <text class="lbl" x="505.0" y="262.0" text-anchor="middle">criteria still named,</text>
+    <text class="lbl" x="505.0" y="278.0" text-anchor="middle">tester approves</text>
+    <polygon class="node" points="505,322 605,366 505,410 405,366"/>
+    <text class="lbl" x="505" y="362" text-anchor="middle">Edit</text>
+    <text class="lbl" x="505" y="378" text-anchor="middle">approved?</text>
+    <rect class="node-hot" x="130" y="346" width="200" height="48" rx="8"/>
+    <text class="lbl" x="230.0" y="366.0" text-anchor="middle">npm run build,</text>
+    <text class="lbl" x="230.0" y="382.0" text-anchor="middle">vite preview serves</text>
+    <polygon class="node" points="230,424 350,470 230,516 110,470"/>
+    <text class="lbl" x="230" y="466" text-anchor="middle">Builds and</text>
+    <text class="lbl" x="230" y="482" text-anchor="middle">serves?</text>
+    <rect class="node" x="395" y="442" width="230" height="84" rx="8"/>
+    <text class="lbl" x="510.0" y="464.0" text-anchor="middle">Round not accepted:</text>
+    <text class="lbl" x="510.0" y="480.0" text-anchor="middle">restore the test file</text>
+    <text class="lbl" x="510.0" y="496.0" text-anchor="middle">if rejected;</text>
+    <text class="lbl" x="510.0" y="512.0" text-anchor="middle">send feedback</text>
+    <rect class="node-hot" x="130" y="548" width="200" height="40" rx="8"/>
+    <text class="lbl" x="230.0" y="572.0" text-anchor="middle">Go to verify</text>
+    <!-- path with no test edit -->
+    <path class="edge-hot" d="M230 54 L230 82" marker-end="url(#f3h)"/>
+    <path class="edge-hot" d="M230 176 L230 202" marker-end="url(#f3h)"/>
+    <text class="lbl-hot" x="240" y="195" text-anchor="start">no</text>
+    <path class="edge-hot" d="M230 296 L230 344" marker-end="url(#f3h)"/>
+    <text class="lbl-hot" x="240" y="325" text-anchor="start">no</text>
+    <path class="edge-hot" d="M230 394 L230 422" marker-end="url(#f3h)"/>
+    <path class="edge-hot" d="M230 516 L230 546" marker-end="url(#f3h)"/>
+    <text class="lbl-hot" x="240" y="536" text-anchor="start">yes</text>
+    <!-- other paths -->
+    <path class="edge" d="M350 130 L398 130" marker-end="url(#f3a)"/>
+    <text class="lbl" x="374" y="122" text-anchor="middle">yes</text>
+    <path class="edge" d="M350 250 L398 250" marker-end="url(#f3a)"/>
+    <text class="lbl" x="374" y="242" text-anchor="middle">yes</text>
+    <path class="edge" d="M505 292 L505 320" marker-end="url(#f3a)"/>
+    <path class="edge" d="M405 366 L332 366" marker-end="url(#f3a)"/>
+    <text class="lbl" x="368" y="358" text-anchor="middle">yes</text>
+    <path class="edge" d="M505 410 L505 440" marker-end="url(#f3a)"/>
+    <text class="lbl" x="513" y="430" text-anchor="start">no</text>
+    <path class="edge" d="M350 470 L393 470" marker-end="url(#f3a)"/>
+    <text class="lbl" x="372" y="462" text-anchor="middle">no</text>
+  </svg>
+  <figcaption>Figure 3. One developer round. The thick line is the path with no test edit. A rejected test edit restores the test file as it was before the round.</figcaption>
+</figure>
+
+<p>The prompt allows the developer to edit the test file only to fix a test that is wrong. The prompt asks the developer to end the reply with <code>TEST CHANGE: none</code>, or <code>TEST CHANGE:</code> and the reason.</p>
+
+<p>The orchestrator does not enforce that rule. It reviews each edit instead. A missing reason rejects the edit. A file that no longer names every criterion rejects the edit. The tester judges only an edit that passes both checks.</p>
+
+<h3 id="h-3-4">3.4 Messages between the orchestrator and the agents</h3>
+
+<p>Every request and result is a JSON object in an A2A data part. The table shows the shapes that <code>stage_agents.py</code> documents.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Stage</th><th>Request</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td>requirements</td><td><code>{brief, workdir}</code></td><td>Pauses with <code>{kind: "questions", questions, spec}</code>, answered by <code>{answers}</code>. Pauses with <code>{kind: "review", spec}</code>, answered by <code>{accept: true}</code> or <code>{accept: false, changes}</code>. Ends with <code>{spec}</code>.</td></tr>
+    <tr><td>tests</td><td><code>{spec, workdir, feedback}</code></td><td>Writes <code>src/App.test.jsx</code>. Returns <code>{path, tests}</code>.</td></tr>
+    <tr><td>tests, review mode</td><td><code>{mode: "review", spec, workdir, before, after, reason}</code></td><td><code>{approved, reason}</code></td></tr>
+    <tr><td>implement</td><td><code>{workdir, feedback}</code></td><td>Edits <code>src/</code>. Returns <code>{summary, test_change}</code>.</td></tr>
+    <tr><td>verify</td><td><code>{workdir}</code></td><td><code>{passed, failed, verdicts}</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="h-3-5">3.5 How a run starts and stops</h3>
+
+<ol>
+  <li><code>main()</code> loads <code>llm.yaml</code> and <code>pipeline.yaml</code>. Each stage must name an enabled worker and an allowed model.</li>
+  <li><code>open_app()</code> checks the app name and creates <code>apps/&lt;name&gt;/.factory/</code>.</li>
+  <li><code>open_app()</code> takes a lock on <code>apps/&lt;name&gt;/.factory/lock</code> with <code>fcntl.flock</code>. A second run of the same app stops with an error.</li>
+  <li>The system releases the lock when the process ends, so a crashed run leaves no stale lock.</li>
+  <li><code>open_app()</code> copies the template if <code>package.json</code> is missing. An app that has a <code>SPEC.json</code> stops the run unless you pass <code>--rebuild</code>.</li>
+  <li><code>prepare_workdir()</code> runs <code>npm install</code> if <code>node_modules</code> is missing. Then it checks that the protected files exist.</li>
+  <li><code>Agents</code> gives each stage a free port. <code>free_port()</code> binds port 0, and the system picks the port. With <code>--no-launch</code>, the ports come from <code>pipeline.yaml</code> (9101 to 9104).</li>
+  <li><code>Agents</code> starts one <code>stage_agents.py</code> process for each stage. It writes each log to <code>apps/&lt;name&gt;/.factory/agents/&lt;stage&gt;.log</code>.</li>
+  <li><code>_wait_for_card()</code> waits up to 30 seconds for each agent card. It tries again every 0.3 seconds.</li>
+  <li>The card must have the tags <code>stage:&lt;name&gt;</code>, <code>worker:&lt;name&gt;</code> and <code>model:&lt;name&gt;</code> for the stage. Other tags are allowed.</li>
+  <li>After stage 1, <code>reset_app()</code> deletes the generated files under <code>src/</code>. Then the orchestrator writes <code>SPEC.json</code>.</li>
+  <li>When the run ends, <code>Agents</code> sends a stop signal to the 4 processes. A process that is still alive after 10 seconds is killed.</li>
+</ol>
+
+<p>A run starts 4 agent servers. Two runs at the same time start 8. Each gate in stage 3 also starts a <code>vite preview</code> server on a free port for a short time.</p>
+
+<p>The test <code>test_each_run_gets_its_own_agent_ports</code> shows that two runs with 2 stages each get 4 different ports. This review did not run two apps at the same time.</p>
+
+<p>Each run starts its own agents, so an agent serves one app. With <code>--no-launch</code>, runs share the agents. Then each task has its own list of turns, by task ID. Every LLM call starts a new process with a new prompt. The code passes no session ID and no resume flag. Each request carries its own workdir.</p>
+
+<h3 id="h-3-6">3.6 How an agent calls its LLM worker</h3>
+
+<p><code>llm()</code> in <code>stage_agents.py</code> runs the worker of the stage. The harness decides how.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Harness</th><th>Command</th><th>Timeout</th></tr></thead>
+  <tbody>
+    <tr><td><code>codex</code></td><td><code>codex exec --ignore-user-config -s &lt;sandbox&gt; -m &lt;model&gt; -c &lt;provider settings&gt; -C &lt;workdir&gt; --skip-git-repo-check -- &lt;prompt&gt;</code></td><td>600 seconds</td></tr>
+    <tr><td><code>claude-agent-sdk</code></td><td><code>claude -p &lt;prompt&gt; --model &lt;model&gt; --permission-mode acceptEdits --max-budget-usd &lt;per_task_usd&gt; --allowedTools &lt;tools&gt;</code></td><td>1200 seconds</td></tr>
+  </tbody>
+</table></div>
+
+<ul>
+  <li>Codex reads the API key from the environment variable that <code>api_key_env</code> names. The key is not on the command line.</li>
+  <li>The sandbox is <code>workspace-write</code> if the stage edits files or runs commands. Otherwise it is <code>read-only</code>.</li>
+  <li>The Claude process starts with only <code>HOME</code>, <code>PATH</code>, <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code> and <code>ANTHROPIC_MODEL</code>.</li>
+  <li>The Claude tools are <code>Read</code>, <code>Glob</code> and <code>Grep</code>. <code>Edit</code> and <code>Write</code> are added when the stage edits files. Each allowed command is added as <code>Bash(&lt;command&gt;)</code>.</li>
+  <li><code>run()</code> closes stdin. <code>codex exec</code> hangs on an open stdin.</li>
+  <li>The spec, test, review and verify requests ask again after a reply with the wrong format. Each has 2 attempts (<code>LLM_ATTEMPTS</code>). The implement request has 1 attempt.</li>
+</ul>
+
+<p>What each agent can do:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Agent</th><th>Edits files</th><th>Allowed commands</th></tr></thead>
+  <tbody>
+    <tr><td>requirements</td><td>No</td><td>None</td></tr>
+    <tr><td>tests</td><td>No. The agent writes the test file itself.</td><td>None</td></tr>
+    <tr><td>tests, review mode</td><td>No</td><td>None</td></tr>
+    <tr><td>implement</td><td>Yes</td><td><code>npm run build</code>, <code>npx vitest run</code></td></tr>
+    <tr><td>verify</td><td>No</td><td><code>npx vitest run</code></td></tr>
+  </tbody>
+</table></div>
+
+<p>The command list applies only to Claude workers. A Codex worker can run any command in its writable sandbox. The shipped <code>pipeline.yaml</code> gives the tests, implement and verify stages to Codex workers.</p>
+
+<h3 id="h-3-7">3.7 Stored values</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Value</th><th>Where</th><th>Kept until</th></tr></thead>
+  <tbody>
+    <tr><td>Turns of a task</td><td>The memory of the agent process (<code>_Executor._turns</code>)</td><td>The task ends, fails or is cancelled</td></tr>
+    <tr><td>A2A tasks</td><td>The memory of the agent process (<code>InMemoryTaskStore</code>)</td><td>The agent process ends</td></tr>
+    <tr><td>Accepted spec</td><td><code>apps/&lt;name&gt;/SPEC.json</code></td><td>The next run of the same app writes it again</td></tr>
+    <tr><td>Run log</td><td><code>apps/&lt;name&gt;/.factory/run.json</code></td><td>The next run of the same app writes it again</td></tr>
+    <tr><td>Agent logs</td><td><code>apps/&lt;name&gt;/.factory/agents/&lt;stage&gt;.log</code></td><td>The next run of the same app writes them again</td></tr>
+    <tr><td>Lock</td><td><code>apps/&lt;name&gt;/.factory/lock</code></td><td>The run ends. The file stays; the lock does not.</td></tr>
+    <tr><td>Vitest report</td><td><code>apps/&lt;name&gt;/.vitest-result.json</code></td><td>The next call of <code>vitest()</code> deletes it</td></tr>
+  </tbody>
+</table></div>
+
+<p>Each event in <code>run.json</code> has these fields: <code>stage</code>, <code>agent</code>, <code>worker</code>, <code>model</code>, <code>seconds</code>, <code>outcome</code> and <code>detail</code>. The field <code>status</code> has one of these values: <code>accepted</code>, <code>failed</code>, <code>error</code> or <code>tests green, criteria not covered</code>.</p>
+
+<h3 id="h-3-8">3.8 Checks on llm.yaml</h3>
+
+<p><code>load_config()</code> stops with a <code>ConfigError</code> for each case in the table.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Case</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td>A key named <code>api_key</code>, <code>apikey</code>, <code>token</code>, <code>secret</code>, <code>password</code> or <code>authorization</code></td><td>Rejected</td></tr>
+    <tr><td><code>api_key_env</code> is not the name of an environment variable</td><td>Rejected</td></tr>
+    <tr><td>A <code>${VAR}</code> that is unset or empty</td><td>Rejected, unless the worker is disabled</td></tr>
+    <tr><td>An enabled worker whose key variable is not set</td><td>Rejected</td></tr>
+    <tr><td>An unknown field</td><td>Rejected</td></tr>
+    <tr><td>A <code>version</code> other than 1</td><td>Rejected</td></tr>
+    <tr><td>A <code>base_url</code> that is not an http or https URL</td><td>Rejected</td></tr>
+    <tr><td>A model that is not in <code>llm.allowed_models</code></td><td>Rejected</td></tr>
+    <tr><td>A <code>default_model</code> that is not in the list of the worker</td><td>Rejected</td></tr>
+    <tr><td>All workers disabled</td><td>Rejected</td></tr>
+    <tr><td><code>must_differ_from_author</code> with fewer than 2 reviewer models on enabled workers</td><td>Rejected</td></tr>
+    <tr><td><code>per_task_usd</code> of 0 or less</td><td>Rejected</td></tr>
+  </tbody>
+</table></div>
+
+<p><code>check_request()</code> raises <code>ModelNotAllowed</code> for an unknown worker, a disabled worker, or a model outside the allowed lists.</p>
+
+<h2 id="settings">4. Settings</h2>
+
+<h3 id="h-4-1">4.1 llm.yaml</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Setting</th><th>Value in the repository</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>version</code></td><td><code>1</code></td><td>The only version that <code>load_config()</code> accepts.</td></tr>
+    <tr><td><code>llm.base_url</code></td><td><code>${ANTHROPIC_BASE_URL}</code></td><td>The default gateway URL for each worker.</td></tr>
+    <tr><td><code>llm.api_key_env</code></td><td><code>ANTHROPIC_AUTH_TOKEN</code></td><td>The name of the variable that holds the default key.</td></tr>
+    <tr><td><code>llm.wire_api</code></td><td><code>anthropic-messages</code></td><td>The default protocol. The other value is <code>responses</code>.</td></tr>
+    <tr><td><code>llm.allowed_models</code></td><td><code>${ANTHROPIC_MODEL}</code>, <code>gpt-6.1-sol</code>, <code>gemini-3.6-flash</code></td><td>Every model that any worker can use.</td></tr>
+    <tr><td><code>llm.default_model</code></td><td><code>${ANTHROPIC_MODEL}</code></td><td>Must be in <code>allowed_models</code>.</td></tr>
+    <tr><td><code>workers.claude-agent-sdk</code></td><td>enabled, harness <code>claude-agent-sdk</code></td><td>Runs <code>claude -p</code>. Model <code>${ANTHROPIC_MODEL}</code>.</td></tr>
+    <tr><td><code>workers.codex-gpt</code></td><td>enabled, harness <code>codex</code></td><td>Runs <code>codex exec</code>. Model <code>gpt-6.1-sol</code>. Uses <code>OPENAI_BASE_URL</code> and <code>OPENAI_API_KEY</code>.</td></tr>
+    <tr><td><code>workers.codex-gemini</code></td><td>enabled, harness <code>codex</code></td><td>Runs <code>codex exec</code>. Model <code>gemini-3.6-flash</code>. Uses <code>GOOGLE_GEMINI_BASE_URL</code> and <code>GEMINI_API_KEY</code>.</td></tr>
+    <tr><td><code>workers.&lt;name&gt;.harness</code>, <code>models</code>, <code>default_model</code></td><td>set for each worker</td><td><code>llm()</code> supports the harnesses <code>codex</code> and <code>claude-agent-sdk</code>. A stage can request only a listed model.</td></tr>
+    <tr><td><code>workers.&lt;name&gt;.enabled</code></td><td><code>true</code></td><td>A disabled worker does not need its variables.</td></tr>
+    <tr><td><code>reviewer.candidates</code></td><td><code>gpt-6.1-sol</code>, <code>${ANTHROPIC_MODEL}</code>, <code>gemini-3.6-flash</code></td><td>Models for <code>reviewer_for()</code>. The pipeline does not call it.</td></tr>
+    <tr><td><code>reviewer.must_differ_from_author</code></td><td><code>true</code></td><td>The reviewer model must differ from the author model.</td></tr>
+    <tr><td><code>budgets.per_task_usd</code></td><td><code>30</code></td><td>The cost limit of one Claude call (<code>--max-budget-usd</code>). Codex calls have no such limit.</td></tr>
+    <tr><td><code>budgets.max_retries</code></td><td><code>1</code></td><td>The number of extra developer rounds.</td></tr>
+    <tr><td><code>budgets.per_day_usd</code></td><td>not set</td><td>The loader accepts it. No pipeline code reads it.</td></tr>
+  </tbody>
+</table></div>
+
+<p>A worker takes <code>base_url</code>, <code>api_key_env</code> and <code>wire_api</code> from the <code>llm</code> block unless it sets its own.</p>
+
+<h3 id="h-4-2">4.2 pipeline.yaml</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Stage</th><th>Worker</th><th>Model</th><th>Url (used with <code>--no-launch</code>)</th></tr></thead>
+  <tbody>
+    <tr><td><code>requirements</code></td><td><code>claude-agent-sdk</code></td><td>the worker default</td><td><code>http://127.0.0.1:9101</code></td></tr>
+    <tr><td><code>tests</code></td><td><code>codex-gpt</code></td><td>the worker default</td><td><code>http://127.0.0.1:9102</code></td></tr>
+    <tr><td><code>implement</code></td><td><code>codex-gpt</code></td><td>the worker default</td><td><code>http://127.0.0.1:9103</code></td></tr>
+    <tr><td><code>verify</code></td><td><code>codex-gemini</code></td><td>the worker default</td><td><code>http://127.0.0.1:9104</code></td></tr>
+  </tbody>
+</table></div>
+
+<p>The file must have exactly these 4 stage keys. Each stage needs <code>worker</code> and <code>url</code>. <code>model</code> is optional. Each url must be <code>http://host:port</code>, and the 4 urls must differ.</p>
+
+<h3 id="h-4-3">4.3 Command-line flags</h3>
+
+<p><code>src/sample/pipeline.py</code>:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Flag</th><th>Default</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>--brief</code></td><td>the kanban board brief</td><td>What to build.</td></tr>
+    <tr><td><code>--app</code></td><td><code>kanban-react</code> for the default brief. Otherwise the first 4 words of the brief, or <code>app</code> if it has none</td><td>The app name. The folder is <code>apps/&lt;app&gt;</code>.</td></tr>
+    <tr><td><code>--rebuild</code></td><td>off</td><td>Builds over an app that has a <code>SPEC.json</code>.</td></tr>
+    <tr><td><code>--stages</code></td><td><code>src/sample/pipeline.yaml</code></td><td>Other workers, models or urls.</td></tr>
+    <tr><td><code>--spec</code></td><td>none</td><td>Reuses an accepted spec and skips stage 1.</td></tr>
+    <tr><td><code>--yes</code></td><td>off</td><td>Accepts the spec without asking you.</td></tr>
+    <tr><td><code>--no-launch</code></td><td>off</td><td>Connects to agents that already run.</td></tr>
+  </tbody>
+</table></div>
+
+<p><code>src/sample/stage_agents.py</code>:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Argument</th><th>Default</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>stage</code></td><td>required</td><td>One of <code>requirements</code>, <code>tests</code>, <code>implement</code>, <code>verify</code>.</td></tr>
+    <tr><td><code>--stages</code></td><td><code>src/sample/pipeline.yaml</code></td><td>The stages file.</td></tr>
+    <tr><td><code>--port</code></td><td>the port in the url</td><td>Serves on this port instead.</td></tr>
+  </tbody>
+</table></div>
+
+<p>An app name must match <code>[a-z0-9][a-z0-9-]{0,39}</code>: lowercase letters, digits and hyphens, at most 40 characters.</p>
+
+<h3 id="h-4-4">4.4 Environment variables</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Variable</th><th>Needed by</th></tr></thead>
+  <tbody>
+    <tr><td><code>ANTHROPIC_BASE_URL</code></td><td><code>llm.yaml</code> (all workers that use the default)</td></tr>
+    <tr><td><code>ANTHROPIC_AUTH_TOKEN</code></td><td><code>claude-agent-sdk</code></td></tr>
+    <tr><td><code>ANTHROPIC_MODEL</code></td><td><code>llm.yaml</code> (the model of <code>claude-agent-sdk</code>)</td></tr>
+    <tr><td><code>OPENAI_BASE_URL</code></td><td><code>codex-gpt</code></td></tr>
+    <tr><td><code>OPENAI_API_KEY</code></td><td><code>codex-gpt</code></td></tr>
+    <tr><td><code>GOOGLE_GEMINI_BASE_URL</code></td><td><code>codex-gemini</code></td></tr>
+    <tr><td><code>GEMINI_API_KEY</code></td><td><code>codex-gemini</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="h-4-5">4.5 Fixed constants</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Constant</th><th>Value</th><th>File</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>MAX_SPEC_ROUNDS</code></td><td>6</td><td><code>pipeline.py</code></td><td>The most <code>input-required</code> turns in stage 1.</td></tr>
+    <tr><td><code>AGENT_START_TIMEOUT</code></td><td>30 seconds</td><td><code>pipeline.py</code></td><td>The wait for each agent card.</td></tr>
+    <tr><td><code>RESULT_FILE</code></td><td><code>.vitest-result.json</code></td><td><code>pipeline.py</code></td><td>The Vitest report file.</td></tr>
+    <tr><td><code>IGNORED_DIRS</code></td><td><code>node_modules</code>, <code>dist</code>, <code>.factory</code></td><td><code>pipeline.py</code></td><td>Folders that <code>snapshot()</code> skips.</td></tr>
+    <tr><td><code>CODEX_TIMEOUT</code></td><td>600 seconds</td><td><code>stage_agents.py</code></td><td>The time limit of a Codex call.</td></tr>
+    <tr><td><code>CLAUDE_TIMEOUT</code></td><td>1200 seconds</td><td><code>stage_agents.py</code></td><td>The time limit of a Claude call.</td></tr>
+    <tr><td><code>LLM_ATTEMPTS</code></td><td>2</td><td><code>stage_agents.py</code></td><td>Attempts for a reply with the wrong format.</td></tr>
+    <tr><td><code>CMD_TIMEOUT</code></td><td>300 seconds</td><td><code>pipeline_common.py</code></td><td>The time limit of <code>npm</code> and <code>npx</code> commands.</td></tr>
+    <tr><td><code>TEST_FILE</code></td><td><code>src/App.test.jsx</code></td><td><code>pipeline_common.py</code></td><td>The only test file.</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="install">5. Install</h2>
+
+<h3 id="h-5-1">5.1 Before you start</h3>
+
+<p>You need:</p>
+
+<ul>
+  <li>macOS or Linux. The code imports <code>fcntl</code>, which Windows does not have.</li>
+  <li>Python 3.11 or later. This review used Python 3.13.0.</li>
+  <li><code>uv</code>. This review used uv 0.13.5.</li>
+  <li>Node.js and <code>npm</code>. This review used Node.js v26.12.1 and npm 11.20.0. This document does not state a minimum version.</li>
+  <li>The <code>codex</code> command. This review used codex-cli 0.164.0.</li>
+  <li>The <code>claude</code> command. This review used Claude Code 2.1.316.</li>
+  <li>Access to the LLM gateway, and the 7 environment variables in 4.4.</li>
+</ul>
+
+<p>In this document, the <strong>repository root</strong> is the top folder of the repository, named <code>a2a-poc</code>. All commands start from that folder.</p>
+
+<h3 id="h-5-2">5.2 Install the dependencies</h3>
+
+<ol>
+  <li>Open a terminal. Go to the repository root.</li>
+  <li>Run:
+<pre><code>uv sync</code></pre>
+  </li>
+  <li>Set the 7 environment variables from 4.4.</li>
+</ol>
+
+<p>This review ran <code>uv sync</code> in a clean copy of the tracked files. The install check and <code>uv run pytest</code> passed there. The repository <code>.venv</code> was not rebuilt. No person has done the install check on their own machine yet.</p>
+
+<p>The first run of an app runs <code>npm install</code> in <code>apps/&lt;name&gt;/</code>. You do not run it yourself.</p>
+
+<p>To use fewer workers, set <code>enabled: false</code> on a worker in <code>llm.yaml</code>. Then change each stage in <code>pipeline.yaml</code> that names it. A stage that names a disabled worker stops the run at the start. Keep at least 2 reviewer models on enabled workers. Otherwise <code>load_config()</code> fails.</p>
+
+<h3 id="h-5-3">5.3 Check that the install worked</h3>
+
+<p>Run:</p>
+
+<pre><code>uv run python -c "from factory import load_config; c = load_config('llm.yaml'); print(sorted(w.name for w in c.enabled_workers()))"</code></pre>
+
+<div class="expected"><strong>Expected:</strong> the output lists the enabled workers. This review printed:</div>
+
+<pre><code>['claude-agent-sdk', 'codex-gemini', 'codex-gpt']</code></pre>
+
+<p>If a variable is missing, the command stops with a <code>ConfigError</code> that names it. See the table in 6.5.</p>
+
+<h3 id="h-5-4">5.4 Run the pipeline</h3>
+
+<p>Run these commands from the repository root. This review did not run them.</p>
+
+<pre><code>uv run python src/sample/pipeline.py --app todo --brief "a todo app with due dates"
+uv run python src/sample/pipeline.py --app todo --brief "a todo app with due dates" --rebuild
+uv run python src/sample/pipeline.py --app todo --brief "a todo app with due dates" --yes
+uv run python src/sample/pipeline.py --app todo --spec apps/todo/SPEC.json --rebuild</code></pre>
+
+<ul>
+  <li>Line 1 builds the app and asks you about the spec.</li>
+  <li>Line 2 builds over an app that has a <code>SPEC.json</code>.</li>
+  <li>Line 3 accepts the first spec without asking you. Add <code>--rebuild</code> if <code>apps/todo</code> has a <code>SPEC.json</code>.</li>
+  <li>Line 4 reuses an accepted spec and skips stage 1.</li>
+</ul>
+
+<p>To build 2 apps at the same time, start 1 command for each app in its own terminal.</p>
+
+<p>To open the app after a build, run <code>cd apps/&lt;name&gt; &amp;&amp; npm run dev</code>.</p>
+
+<p>To run the agents yourself, start each stage in its own terminal with <code>uv run python src/sample/stage_agents.py &lt;stage&gt;</code>. Then start the pipeline with <code>--no-launch</code>. Each agent serves on the url in <code>pipeline.yaml</code>.</p>
+
+<h3 id="h-5-5">5.5 Change the settings</h3>
+
+<ol>
+  <li>Open <code>llm.yaml</code> or <code>src/sample/pipeline.yaml</code> in a text editor.</li>
+  <li>Change a value. Never write a key in <code>llm.yaml</code>. Write the name of an environment variable.</li>
+  <li>Run the install check in 5.3.</li>
+  <li>Run <code>uv run pytest</code>. The test <code>test_shipped_config_loads</code> loads the real <code>llm.yaml</code>.</li>
+</ol>
+
+<h2 id="validate">6. Validate</h2>
+
+<p>To validate means to check that the project works as this document says. There are three levels.</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Level</th><th>What it proves</th><th>Time</th><th>Needs an LLM request</th></tr></thead>
+  <tbody>
+    <tr><td>1. Unit tests</td><td>The config rules, the A2A transport, the app folders and the test-edit review work.</td><td>About 2 seconds</td><td>No</td></tr>
+    <tr><td>2. Live checks</td><td>A worker answers through the gateway.</td><td>Up to 90 seconds each (the script timeout)</td><td>Yes, a small one</td></tr>
+    <tr><td>3. Full run</td><td>The four stages build an app.</td><td>Not measured</td><td>Yes, many</td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="h-6-1">6.1 Level 1: unit tests</h3>
+
+<ol>
+  <li>Go to the repository root.</li>
+  <li>Run:
+<pre><code>uv run pytest</code></pre>
+  </li>
+  <li>Read the last line.</li>
+</ol>
+
+<div class="expected"><strong>Expected result:</strong> the last line reads <code>58 passed</code>. This review printed:</div>
+
+<pre><code>============================== 58 passed in 1.61s ==============================</code></pre>
+
+<p>The time changes from run to run. The 58 tests are:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>File</th><th>Tests</th></tr></thead>
+  <tbody>
+    <tr><td><code>tests/test_config.py</code></td><td>34</td></tr>
+    <tr><td><code>tests/test_apps.py</code></td><td>13</td></tr>
+    <tr><td><code>tests/test_test_amendments.py</code></td><td>6</td></tr>
+    <tr><td><code>tests/test_a2a_transport.py</code></td><td>5</td></tr>
+  </tbody>
+</table></div>
+
+<p>No test calls an LLM. The transport tests start a local server on a free port.</p>
+
+<h3 id="h-6-2">6.2 Level 2: live checks</h3>
+
+<p>These checks need the 7 environment variables and the <code>codex</code> and <code>claude</code> commands.</p>
+
+<ol>
+  <li>Run:
+<pre><code>uv run python src/sample/codex_live.py
+uv run python src/sample/claude_live.py</code></pre>
+  </li>
+  <li>Read the first line of each output.</li>
+</ol>
+
+<div class="expected"><strong>Expected result:</strong> <code>worker=codex-gpt exit=0</code> and <code>OK</code>, then <code>worker=claude-agent-sdk exit=0</code> and <code>OK</code>. This review printed both.</div>
+
+<p>The check for the Gemini worker is <code>uv run python src/sample/codex_live.py codex-gemini</code>. This review printed <code>worker=codex-gemini exit=0</code> and <code>OK</code>.</p>
+
+<h3 id="h-6-3">6.3 Level 3: full run</h3>
+
+<p>Run the command in 5.4 for a small brief. This review did not run it.</p>
+
+<p>The file <code>apps/kanban-react/.factory/run.json</code> comes from an earlier run. Git ignores it. This review read the file and did not repeat the run. The status is <code>accepted</code>. The file has no requirements event. The events are:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Stage</th><th>Outcome</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr><td>tests</td><td>red</td><td>25 tests, 25 failing</td></tr>
+    <tr><td>tests</td><td>amended</td><td>Updated the shared columnNames() helper to query level-two column headings, avoiding multiple matches from required ticket headings.</td></tr>
+    <tr><td>implement</td><td>running</td><td>changed 12 files</td></tr>
+    <tr><td>verify</td><td>green</td><td>passed=25 failed=0</td></tr>
+  </tbody>
+</table></div>
+
+<div class="expected"><strong>Expected result of a good run:</strong> the last lines say <code>Done: all N tests pass and every criterion is accepted.</code>, and the exit code is 0.</div>
+
+<h3 id="h-6-4">6.4 What each test proves</h3>
+
+<p>Tests in <code>tests/test_a2a_transport.py</code>:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Test</th><th>Line</th><th>Rule it proves</th></tr></thead>
+  <tbody>
+    <tr><td><code>test_single_turn_returns_the_result</code></td><td>45</td><td>A handler result comes back to the caller.</td></tr>
+    <tr><td><code>test_input_required_is_answered_on_the_same_task</code></td><td>50</td><td>The handler sees the turns <code>user</code>, <code>agent</code>, <code>user</code> of one task.</td></tr>
+    <tr><td><code>test_input_required_without_on_input_raises</code></td><td>70</td><td>A pause without an <code>on_input</code> function raises <code>StageFailed</code>.</td></tr>
+    <tr><td><code>test_handler_error_fails_the_task</code></td><td>76</td><td>A handler error fails the task and the message shows the error.</td></tr>
+    <tr><td><code>test_card_is_served_with_its_tags</code></td><td>85</td><td>The agent card shows its name and tags.</td></tr>
+  </tbody>
+</table></div>
+
+<p>Tests in <code>tests/test_apps.py</code>:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Test</th><th>Line</th><th>Rule it proves</th></tr></thead>
+  <tbody>
+    <tr><td><code>test_new_app_is_copied_from_the_template</code></td><td>27</td><td>A new app gets <code>package.json</code> from the template.</td></tr>
+    <tr><td><code>test_same_app_cannot_be_built_twice_at_once</code></td><td>33</td><td>A second run of the same app stops with <code>already being built</code>.</td></tr>
+    <tr><td><code>test_different_apps_build_at_once</code></td><td>41</td><td>Two apps open at once, in two folders.</td></tr>
+    <tr><td><code>test_built_app_needs_rebuild</code></td><td>47</td><td>An app with a <code>SPEC.json</code> needs <code>--rebuild</code>. Opening it does not delete <code>SPEC.json</code>.</td></tr>
+    <tr><td><code>test_bad_app_names_are_rejected</code></td><td>58</td><td>Six bad names are rejected: <code>../x</code>, <code>Todo</code>, <code>a b</code>, an empty name, <code>-x</code> and a 41-character name.</td></tr>
+    <tr><td><code>test_default_app_names</code></td><td>63</td><td>The default brief gives <code>kanban-react</code>. The brief <code>A todo app, with due dates!</code> gives <code>a-todo-app-with</code>. The brief <code>???</code> gives <code>app</code>.</td></tr>
+    <tr><td><code>test_each_run_gets_its_own_agent_ports</code></td><td>69</td><td>Two <code>Agents</code> objects with 2 stages each get 4 different ports. None is 9100 or 9101.</td></tr>
+    <tr><td><code>test_no_launch_keeps_the_configured_urls</code></td><td>77</td><td>With <code>--no-launch</code>, the url stays as in <code>pipeline.yaml</code>.</td></tr>
+  </tbody>
+</table></div>
+
+<p>Tests in <code>tests/test_test_amendments.py</code>:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Test</th><th>Line</th><th>Rule it proves</th></tr></thead>
+  <tbody>
+    <tr><td><code>test_approved_amendment_is_kept</code></td><td>48</td><td>An approved test edit stays. The tester receives a request in review mode.</td></tr>
+    <tr><td><code>test_rejected_amendment_is_reverted_and_reported</code></td><td>54</td><td>A rejected edit is undone, and the message says so.</td></tr>
+    <tr><td><code>test_amendment_without_reason_is_rejected_without_asking_the_tester</code></td><td>60</td><td>An edit without a reason is rejected. The tester is not asked.</td></tr>
+    <tr><td><code>test_amendment_that_drops_a_criterion_is_rejected_without_asking_the_tester</code></td><td>66</td><td>An edit that removes the test of a criterion is rejected. The tester is not asked.</td></tr>
+    <tr><td><code>test_check_test_file_checks</code></td><td>72</td><td><code>check_test_file()</code> finds a missing criterion and the use of <code>.skip</code>.</td></tr>
+    <tr><td><code>test_parameterised_tests_name_a_criterion</code></td><td>79</td><td><code>it.each</code> and <code>test.each</code> count as a named test.</td></tr>
+  </tbody>
+</table></div>
+
+<p>Tests in <code>tests/test_config.py</code>:</p>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Test</th><th>Line</th><th>Rule it proves</th></tr></thead>
+  <tbody>
+    <tr><td><code>test_shipped_config_loads</code></td><td>53</td><td>The real <code>llm.yaml</code> loads with the test environment. It has 3 allowed models, 3 workers, <code>per_task_usd</code> 30 and no <code>per_day_usd</code>.</td></tr>
+    <tr><td><code>test_pinned_workers_are_enabled_as_expected</code></td><td>62</td><td>With <code>codex-gemini</code> disabled, the enabled workers are <code>claude-agent-sdk</code> and <code>codex-gpt</code>.</td></tr>
+    <tr><td><code>test_worker_inherits_and_overrides_globals</code></td><td>67</td><td>A worker takes the <code>llm</code> defaults unless it sets its own.</td></tr>
+    <tr><td><code>test_missing_placeholder_env_is_an_error</code></td><td>78</td><td>An unset <code>${VAR}</code> stops the load.</td></tr>
+    <tr><td><code>test_empty_placeholder_env_is_an_error</code></td><td>84</td><td>An empty <code>${VAR}</code> stops the load.</td></tr>
+    <tr><td><code>test_disabled_worker_does_not_need_its_env</code></td><td>89</td><td>A disabled worker needs no variables.</td></tr>
+    <tr><td><code>test_enabled_worker_needs_its_key_env</code></td><td>95</td><td>An enabled worker needs its key variable.</td></tr>
+    <tr><td><code>test_enabling_gemini_requires_its_env</code></td><td>101</td><td>Enabling <code>codex-gemini</code> needs <code>GEMINI_API_KEY</code>.</td></tr>
+    <tr><td><code>test_literal_secret_fields_are_rejected</code></td><td>112</td><td>The fields <code>api_key</code>, <code>token</code> and <code>secret</code> are rejected.</td></tr>
+    <tr><td><code>test_literal_key_in_api_key_env_is_rejected</code></td><td>119</td><td>A key written in <code>api_key_env</code> is rejected.</td></tr>
+    <tr><td><code>test_worker_model_must_be_in_global_allowlist</code></td><td>126</td><td>A worker model must be in <code>llm.allowed_models</code>.</td></tr>
+    <tr><td><code>test_reviewer_candidate_must_be_in_global_allowlist</code></td><td>134</td><td>A reviewer candidate must be in <code>llm.allowed_models</code>.</td></tr>
+    <tr><td><code>test_default_model_must_be_in_worker_models</code></td><td>141</td><td>A worker <code>default_model</code> must be in its <code>models</code>.</td></tr>
+    <tr><td><code>test_global_default_model_must_be_allowed</code></td><td>148</td><td><code>llm.default_model</code> must be in <code>allowed_models</code>.</td></tr>
+    <tr><td><code>test_unknown_field_is_rejected</code></td><td>155</td><td>A misspelled field is rejected.</td></tr>
+    <tr><td><code>test_bad_url_is_rejected</code></td><td>162</td><td>A value that is not an http(s) URL is rejected.</td></tr>
+    <tr><td><code>test_per_task_budget_must_be_positive</code></td><td>170</td><td><code>per_task_usd</code> of 0 and -5 are rejected.</td></tr>
+    <tr><td><code>test_disabling_all_workers_is_rejected</code></td><td>177</td><td>At least one worker must be enabled.</td></tr>
+    <tr><td><code>test_reviewer_needs_two_models_when_must_differ</code></td><td>185</td><td>The reviewer rule needs 2 models on enabled workers.</td></tr>
+    <tr><td><code>test_missing_file_is_a_config_error</code></td><td>192</td><td>A missing file gives <code>ConfigError</code>.</td></tr>
+    <tr><td><code>test_check_request_defaults_and_accepts_listed_model</code></td><td>200</td><td><code>check_request()</code> returns the default or a listed model.</td></tr>
+    <tr><td><code>test_check_request_rejects_model_outside_worker_list</code></td><td>206</td><td>A model outside the worker list is rejected.</td></tr>
+    <tr><td><code>test_check_request_rejects_model_outside_allowlist</code></td><td>212</td><td>A model outside <code>allowed_models</code> is rejected.</td></tr>
+    <tr><td><code>test_check_request_rejects_disabled_and_unknown_workers</code></td><td>218</td><td>A disabled or unknown worker is rejected.</td></tr>
+    <tr><td><code>test_reviewer_differs_from_author</code></td><td>226</td><td><code>reviewer_for()</code> returns <code>gpt-6.1-sol</code> for the author <code>claude-test</code>, and the reverse.</td></tr>
+    <tr><td><code>test_reviewer_skips_models_of_disabled_workers</code></td><td>232</td><td><code>reviewer_for()</code> skips models of disabled workers.</td></tr>
+    <tr><td><code>test_codex_argv_uses_flags_and_never_the_key</code></td><td>242</td><td>The Codex command has the right flags, and the key is not in it.</td></tr>
+    <tr><td><code>test_codex_argv_rejects_wrong_harness_and_bad_model</code></td><td>256</td><td><code>codex_argv()</code> rejects a Claude worker and a model outside the list.</td></tr>
+    <tr><td><code>test_prompt_starting_with_dash_is_not_parsed_as_a_flag</code></td><td>264</td><td>The <code>--</code> before the prompt stops a prompt from acting as a flag.</td></tr>
+    <tr><td><code>test_claude_env</code></td><td>270</td><td><code>claude_env()</code> returns the 3 variables.</td></tr>
+    <tr><td><code>test_claude_env_rejects_wrong_harness_and_bad_model</code></td><td>279</td><td><code>claude_env()</code> rejects a Codex worker.</td></tr>
+  </tbody>
+</table></div>
+
+<p>The tests <code>test_bad_app_names_are_rejected</code> (6 cases), <code>test_literal_secret_fields_are_rejected</code> (3 cases) and <code>test_per_task_budget_must_be_positive</code> (2 cases) run once for each case.</p>
+
+<p>No test names these functions: <code>develop</code>, <code>write_tests</code>, <code>build_and_serve</code>, <code>snapshot</code>, <code>vitest</code>, <code>verify</code>, <code>gather_requirements</code>, <code>reset_app</code>, <code>prepare_workdir</code>, <code>draft_spec</code>, <code>check_spec</code> and <code>load_stages</code>. No test imports <code>stage_agents.py</code>. Level 3 is the only check of these.</p>
+
+<h3 id="h-6-5">6.5 Problems and solutions</h3>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Problem</th><th>Cause</th><th>Solution</th></tr></thead>
+  <tbody>
+    <tr><td><code>environment variables not set: ...</code></td><td>A <code>${VAR}</code> in <code>llm.yaml</code> has no value.</td><td>Set each variable the message names.</td></tr>
+    <tr><td><code>API key environment variables not set: ...</code></td><td>An enabled worker has no key variable.</td><td>Set the variable, or set <code>enabled: false</code> on the worker.</td></tr>
+    <tr><td><code>worker '...' is disabled</code></td><td>A stage in <code>pipeline.yaml</code> names a disabled worker.</td><td>Enable the worker, or name another worker in <code>pipeline.yaml</code>.</td></tr>
+    <tr><td><code>app '...' is already being built by another run</code></td><td>Another run holds the lock.</td><td>Wait for that run, or use another <code>--app</code>.</td></tr>
+    <tr><td><code>apps/... already has a built app; pass --rebuild ...</code></td><td>The app has a <code>SPEC.json</code>.</td><td>Pass <code>--rebuild</code>, or use another <code>--app</code>.</td></tr>
+    <tr><td><code>no A2A agent card at ... for stage ...</code></td><td>The agent did not start in 30 seconds.</td><td>Read the log file that the message names. With <code>--no-launch</code>, start the agent first.</td></tr>
+    <tr><td><code>agent at ... advertises [...], expected [...]</code></td><td>The agent on the port is not the one <code>pipeline.yaml</code> names.</td><td>With <code>--no-launch</code>, start the right agent on that port.</td></tr>
+    <tr><td><code>the ... agent modified files outside its role</code></td><td>An agent changed a file it must not change.</td><td>Read the files the message lists. Run the pipeline again. The orchestrator does not restore them.</td></tr>
+    <tr><td><code>the verify agent reported passed/failed=... but vitest says ...</code></td><td>The verifier reported counts that differ from the real run.</td><td>Run the pipeline again.</td></tr>
+    <tr><td><code>Tests are green, but the verifier did not accept AC...</code></td><td>A passing test does not cover that criterion.</td><td>Read the verdicts in the output. Improve the spec, then run with <code>--rebuild</code>.</td></tr>
+    <tr><td><code>Stopped: not green after N developer rounds.</code></td><td>The developer did not pass the gates in time.</td><td>Read <code>.factory/run.json</code>. Raise <code>budgets.max_retries</code>, or change the brief.</td></tr>
+    <tr><td><code>no accepted spec after 6 rounds</code></td><td>The requirements agent paused more than 6 times.</td><td>Run again. Give clearer changes, or pass <code>--yes</code>.</td></tr>
+    <tr><td><code>error: app name '...' must be lowercase letters, digits and hyphens</code></td><td>The app name does not match the rule in 4.3.</td><td>Use a name such as <code>todo-app</code>.</td></tr>
+    <tr><td><code>npm install failed</code></td><td><code>npm</code> cannot install the packages.</td><td>Run <code>npm install</code> in <code>apps/&lt;name&gt;/</code> and read the error.</td></tr>
+    <tr><td><code>Stopped: an agent failed its task: ...</code></td><td>An agent raised an error, for example a timeout or a wrong reply format.</td><td>Read the message and the agent log in <code>.factory/agents/</code>. Run again.</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="limits">7. Known limits</h2>
+
+<ul>
+  <li><strong>Port race.</strong> <code>free_port()</code> closes the socket before the agent binds the port (lines 198–201). Another process can take the port in between. The agent then fails to start, and <code>_wait_for_card()</code> gives up after 30 seconds. <code>build_and_serve()</code> has the same gap (line 214).</li>
+  <li><strong>No run ID in the card check.</strong> The check at lines 125–128 compares only the stage, worker and model tags. A different agent with the same tags on the same port passes. With <code>--no-launch</code>, the ports are fixed, so two runs share the same agents.</li>
+  <li><strong>Agents keep state in memory.</strong> <code>_Executor._turns</code> (line 67) and <code>InMemoryTaskStore</code> (line 122) are lost when an agent process stops. A task cannot resume after a restart.</li>
+  <li><strong>Same machine.</strong> The agents work in the workdir of the orchestrator. A remote agent needs a shared workspace. The docstring at <code>stage_agents.py</code> lines 25–26 says so.</li>
+  <li><strong>Codex has no command list.</strong> Any command makes the Codex sandbox writable (<code>stage_agents.py</code> lines 93–95 and 99). The verify agent runs a command, so it can write files.</li>
+  <li><strong>Gates detect a change. They do not undo it.</strong> A change outside the role stops the run (<code>pipeline.py</code> lines 313–314, 360–362 and 376–377). The orchestrator does not restore the files. Only a rejected test edit is restored (line 348).</li>
+  <li><strong>Budget limit only for Claude.</strong> <code>per_task_usd</code> goes only to the Claude command (<code>stage_agents.py</code> line 113). The Codex command has no cost limit. <code>per_day_usd</code> (<code>config.py</code> line 109) has no reader.</li>
+  <li><strong>Reviewer settings are not used.</strong> The pipeline never calls <code>reviewer_for()</code> (<code>config.py</code> line 212). Only tests call it.</li>
+  <li><strong>Stale comment.</strong> <code>llm.yaml</code> line 38 says <code>flip to true to activate</code>. The value on that line is already <code>true</code>.</li>
+  <li><strong>Rounds are shared.</strong> A failed build and a failed test use the same count of <code>1 + max_retries</code> rounds (<code>pipeline.py</code> lines 453 and 529).</li>
+  <li><strong>A test gap is not retried.</strong> Green tests with a criterion that is not <code>PASS</code> stop the run with exit code 1 (lines 470–477). The developer does not get a second round for it.</li>
+  <li><strong>Skipped tests count as failed.</strong> <code>TestRun.failed</code> is the total minus the passed tests (line 173).</li>
+  <li><strong>Timeouts stop the run.</strong> A Codex call stops after 600 seconds. A Claude call stops after 1200 seconds. The agent raises an error, the task fails and the run stops with exit code 1.</li>
+  <li><strong>Only malformed replies are retried.</strong> <code>LLM_ATTEMPTS</code> covers a reply with the wrong format. A call that exits with an error is not tried again (<code>stage_agents.py</code> lines 119–120).</li>
+  <li><strong>Test file rule.</strong> <code>check_test_file()</code> finds a criterion only in a test whose name starts with <code>AC&lt;number&gt;:</code> and uses <code>it</code> or <code>test</code> (line 94).</li>
+  <li><strong>POSIX only.</strong> The lock uses <code>fcntl</code> (<code>pipeline.py</code> lines 37 and 417). This review did not test Windows.</li>
+  <li><strong>Rebuild deletes files.</strong> <code>reset_app()</code> deletes every file under <code>src/</code> except the protected files (lines 393–402). A rebuild discards hand edits.</li>
+  <li><strong>Some changes go unseen.</strong> <code>snapshot()</code> skips <code>node_modules</code>, <code>dist</code> and <code>.factory</code> (lines 71 and 156). An agent change in those folders passes the gates.</li>
+  <li><strong>Gate errors end with a traceback.</strong> A changed file or a count mismatch raises <code>RuntimeError</code> (lines 362, 377 and 381). The run saves the status <code>error</code> and exits with a Python traceback.</li>
+  <li><strong>Not run in this review.</strong> The full pipeline (level 3) and two apps at the same time. No person has done the human checks yet.</li>
+  <li><strong>Mermaid.</strong> <code>mermaid-cli</code> (run through <code>npx</code>) rendered all 3 diagrams with exit code 0. The HTML SVGs were checked only by eye in headless Chrome.</li>
+</ul>
+
+<h2 id="glossary">8. Glossary</h2>
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>A2A</td><td>Agent2Agent. The protocol that the orchestrator and the agents use.</td></tr>
+    <tr><td>Acceptance criterion</td><td>One behavior that a user can see in the browser. It has an ID such as <code>AC1</code>.</td></tr>
+    <tr><td>Agent</td><td>A server that does one stage. It serves A2A.</td></tr>
+    <tr><td>Agent card</td><td>The JSON document at the well-known path of an agent. It names the agent and its tags.</td></tr>
+    <tr><td>App</td><td>The React app that a run builds. It lives in <code>apps/&lt;name&gt;/</code>.</td></tr>
+    <tr><td>Artifact</td><td>The final result of an A2A task. A completed task returns its result as an artifact.</td></tr>
+    <tr><td>Brief</td><td>The short text that says what to build.</td></tr>
+    <tr><td>Developer</td><td>The role of the implement agent.</td></tr>
+    <tr><td>Gate</td><td>A check that the orchestrator does itself after a stage.</td></tr>
+    <tr><td>Gateway</td><td>The service that the workers send their LLM requests to.</td></tr>
+    <tr><td>GREEN</td><td>All tests pass.</td></tr>
+    <tr><td>Handler</td><td>The function in <code>stage_agents.py</code> that does the work of one stage.</td></tr>
+    <tr><td>Harness</td><td>The program that runs a worker: <code>codex</code> or <code>claude-agent-sdk</code>.</td></tr>
+    <tr><td><code>input-required</code></td><td>The A2A task state in which an agent waits for a reply.</td></tr>
+    <tr><td>Lock</td><td>An operating-system lock on <code>apps/&lt;name&gt;/.factory/lock</code>. It stops two runs of one app.</td></tr>
+    <tr><td>Orchestrator</td><td>The program <code>pipeline.py</code>. It starts the agents, sends tasks and runs the gates.</td></tr>
+    <tr><td>POC</td><td>Proof of concept.</td></tr>
+    <tr><td>Protected file</td><td>A scaffold file that no agent can change.</td></tr>
+    <tr><td>RED</td><td>At least one test fails.</td></tr>
+    <tr><td>Round</td><td>One pass through implement and verify.</td></tr>
+    <tr><td>Run</td><td>One start of <code>pipeline.py</code> for one app.</td></tr>
+    <tr><td>Sandbox</td><td>The file-access mode of a Codex call: <code>read-only</code> or <code>workspace-write</code>.</td></tr>
+    <tr><td>Scaffold</td><td>The files in <code>templates/react-vite/</code> that each new app starts from.</td></tr>
+    <tr><td>Spec</td><td>The accepted text of the goal and the acceptance criteria. It is saved as <code>SPEC.json</code>.</td></tr>
+    <tr><td>Stage</td><td>One of requirements, tests, implement and verify.</td></tr>
+    <tr><td>Task</td><td>One unit of work that the orchestrator sends to an agent.</td></tr>
+    <tr><td>Tester</td><td>The role of the tests agent. It also judges a test edit.</td></tr>
+    <tr><td>Turn</td><td>One message in a task, from the user or from the agent.</td></tr>
+    <tr><td>Vitest</td><td>The test runner of the generated app.</td></tr>
+    <tr><td>Worker</td><td>An entry under <code>workers:</code> in <code>llm.yaml</code>: a harness, an endpoint and a list of models.</td></tr>
+    <tr><td>Workdir</td><td>The folder <code>apps/&lt;name&gt;/</code> of the app that a run builds.</td></tr>
+  </tbody>
+</table></div>
+
+</main>
+</body>
+</html>
