@@ -67,15 +67,15 @@ The line numbers apply to this version of the files. If a line number is differe
 | `Engine` – runs a plan | `src/factory/engine.py` | 147 |
 | `run()` – the driver of a run | `src/factory/engine.py` | 165 |
 | `loop()` – runs the rounds of a loop | `src/factory/engine.py` | 197 |
-| `step()` – runs the items of a step | `src/factory/engine.py` | 223 |
-| `attempt()` – runs one item with retries | `src/factory/engine.py` | 251 |
-| `_request()` – builds the task for an agent | `src/factory/engine.py` | 288 |
-| `_schema_ctx()` – the context for a schema | `src/factory/engine.py` | 327 |
-| `_on_input()` – asks the person | `src/factory/engine.py` | 334 |
-| `_check_files()` – reverts changes outside a role | `src/factory/engine.py` | 357 |
-| `_review_test_change()` – the tester judges a test change | `src/factory/engine.py` | 379 |
-| `_reset_scaffolds()` – resets the scaffolds before code is written | `src/factory/engine.py` | 453 |
-| `triage()` – asks the triage agent for a choice | `src/factory/engine.py` | 538 |
+| `step()` – runs the items of a step | `src/factory/engine.py` | 225 |
+| `attempt()` – runs one item with retries | `src/factory/engine.py` | 253 |
+| `_request()` – builds the task for an agent | `src/factory/engine.py` | 290 |
+| `_schema_ctx()` – the context for a schema | `src/factory/engine.py` | 329 |
+| `_on_input()` – asks the person | `src/factory/engine.py` | 336 |
+| `_check_files()` – reverts changes outside a role | `src/factory/engine.py` | 359 |
+| `_review_test_change()` – the tester judges a test change | `src/factory/engine.py` | 381 |
+| `_reset_scaffolds()` – resets the scaffolds before code is written | `src/factory/engine.py` | 455 |
+| `triage()` – asks the triage agent for a choice | `src/factory/engine.py` | 552 |
 | `Failure` – a failed gate, with a level | `src/factory/gates.py` | 36 |
 | `GATES` – the table of gates | `src/factory/gates.py` | 64 |
 | `run_tests()` – runs the suite of a surface | `src/factory/gates.py` | 124 |
@@ -521,18 +521,18 @@ A live run needs the workers and the network. This document quotes no output fro
 
 ## 7. Known limits
 
-- **A run can end with a draft.** In the `research` runbook, the `report` step saves `REPORT.md` before the `review` step runs. If the reviewer does not approve in 3 rounds, the run stops with status `stopped`. The last draft stays on disk. In 3 live runs, this happened.
+- **A run can end with a draft.** In the `research` runbook, the `report` step saves `REPORT.md` before the `review` step runs. If the reviewer does not approve in 3 rounds, the run stops with status `stopped` and exits with code 1. The draft stays on disk with a `> **NOT APPROVED.**` banner at its top. Read the banner before you use the file. In 3 live runs before this banner existed, this happened.
 - **Port race.** `free_port()` closes its socket before the agent binds the port (`gates.py` line 143). Another process can take the port. The fleet then gives up after 30 seconds (`fleet.py` line 22).
 - **The card check is weak.** The fleet compares only the tags `role:`, `worker:` and `model:` (`fleet.py` line 54). A different agent with the same tags passes.
 - **Agents keep state in memory.** `InMemoryTaskStore` (`a2a_transport.py` line 122) loses a task when the agent stops. A task cannot resume.
 - **Same folder.** The task carries the path of the workspace. An agent at a `url:` must see the same folder.
-- **Codex has no command list.** Any command makes the Codex sandbox writable (`invoke.py` line 46). The engine reverts the writes of a role with `writes: none` after the attempt (`engine.py` line 357).
+- **Codex has no command list.** Any command makes the Codex sandbox writable (`invoke.py` line 46). The engine reverts the writes of a role with `writes: none` after the attempt (`engine.py` line 359).
 - **The cost limit covers Claude only.** `per_task_usd` goes to the Claude command (`invoke.py` line 59). The Codex command has no cost limit. No code reads `per_day_usd` (`config.py` line 109).
 - **The reviewer candidates are not used in a run.** The reviewer model comes from `agents.yaml` and the roles. `reviewer.candidates` is only validated when `llm.yaml` loads. The checker rule uses `_check_independence()` (`runbook.py` line 365).
 - **A test gap is not retried.** If the tests are green and a criterion is not `PASS`, the run stops (`gates.py` line 296).
 - **Quotes under 20 characters fail.** `quote_on_page()` rejects them (`gates.py` line 338). The gate drops such a finding.
 - **Search has no retry.** `search()` reports the error of a source and goes on (`search.py` line 95). A rate limit removes that source from the result.
-- **Only 6 items run together.** A parallel step uses at most 6 threads (`engine.py` line 241).
+- **Only 6 items run together.** A parallel step uses at most 6 threads (`engine.py` line 243).
 - **No read timeout on a task.** A hung agent blocks the run until its LLM call reaches the limit (`a2a_transport.py` line 133).
 - **No person has checked the HTML.** The checks in section 6 do not include a review of the page by a person.
 

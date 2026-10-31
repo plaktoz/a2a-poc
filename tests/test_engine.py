@@ -135,6 +135,9 @@ def test_run_stops_when_rounds_run_out(cfg, staff, tmp_path):
     engine = make_engine(plan, cfg, tmp_path, agents)
     assert not engine.run()
     assert json.loads((engine.ws / ".factory" / "run.json").read_text())["status"] == "stopped"
+    draft = (engine.ws / "REPORT.md").read_text()
+    assert draft.startswith("> **NOT APPROVED.**") and "3 round(s)" in draft and "> - no" in draft
+    assert draft.count("NOT APPROVED") == 1 and f"[a]({URL})" in draft  # one banner; the draft is kept
 
 
 def test_checkpoint_asks_the_person(cfg, staff, tmp_path):

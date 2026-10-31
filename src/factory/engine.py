@@ -217,8 +217,10 @@ class Engine:
                     raise Stop(f.message) from None
                 feedback = {None: f.message}
                 self.say(f"  not accepted: {_console_reason(f.message)}")
-        raise Stop(f"{node.loop} was not accepted after {rounds} round(s). Last problem:\n"
-                   + "\n".join(feedback.values())[:3000])
+        problem = "\n".join(feedback.values())[:3000]
+        for s in node.steps:
+            self._mark_not_approved(s, rounds, problem)
+        raise Stop(f"{node.loop} was not accepted after {rounds} round(s). Last problem:\n{problem}")
 
     def step(self, s: StepDef, feedback: dict[str | None, str], only: set[str] | None = None) -> None:
         items = [i for i in self._items(s) if only is None or i.key in only]
@@ -482,6 +484,18 @@ class Engine:
         else:
             path.write_text(_dump(data))
         self.say(f"  saved {path.relative_to(self.ws)}")
+
+    def _mark_not_approved(self, s: StepDef, rounds: int, problem: str) -> None:
+        """Put a banner on a saved Markdown draft that its loop never got accepted."""
+        if not (s.save and s.output == "report"):
+            return
+        path = self.ws / fill(s.save, self._values(None))
+        if not path.exists():
+            return
+        quoted = "\n".join(f"> {line}" if line else ">" for line in problem[:1500].splitlines())
+        path.write_text(f"> **NOT APPROVED.** This is a draft. It was not accepted after {rounds} round(s).\n"
+                        f">\n{quoted}\n\n" + path.read_text())
+        self.say(f"  marked {path.relative_to(self.ws)} as not approved")
 
     def _save_artifacts(self) -> None:
         (self.ws / ".factory" / "artifacts.json").write_text(_dump(self.artifacts))

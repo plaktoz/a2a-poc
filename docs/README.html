@@ -201,15 +201,15 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>Engine</code> – runs a plan</td><td><code>src/factory/engine.py</code></td><td>147</td></tr>
     <tr><td><code>run()</code> – the driver of a run</td><td><code>src/factory/engine.py</code></td><td>165</td></tr>
     <tr><td><code>loop()</code> – runs the rounds of a loop</td><td><code>src/factory/engine.py</code></td><td>197</td></tr>
-    <tr><td><code>step()</code> – runs the items of a step</td><td><code>src/factory/engine.py</code></td><td>223</td></tr>
-    <tr><td><code>attempt()</code> – runs one item with retries</td><td><code>src/factory/engine.py</code></td><td>251</td></tr>
-    <tr><td><code>_request()</code> – builds the task for an agent</td><td><code>src/factory/engine.py</code></td><td>288</td></tr>
-    <tr><td><code>_schema_ctx()</code> – the context for a schema</td><td><code>src/factory/engine.py</code></td><td>327</td></tr>
-    <tr><td><code>_on_input()</code> – asks the person</td><td><code>src/factory/engine.py</code></td><td>334</td></tr>
-    <tr><td><code>_check_files()</code> – reverts changes outside a role</td><td><code>src/factory/engine.py</code></td><td>357</td></tr>
-    <tr><td><code>_review_test_change()</code> – the tester judges a test change</td><td><code>src/factory/engine.py</code></td><td>379</td></tr>
-    <tr><td><code>_reset_scaffolds()</code> – resets the scaffolds before code is written</td><td><code>src/factory/engine.py</code></td><td>453</td></tr>
-    <tr><td><code>triage()</code> – asks the triage agent for a choice</td><td><code>src/factory/engine.py</code></td><td>538</td></tr>
+    <tr><td><code>step()</code> – runs the items of a step</td><td><code>src/factory/engine.py</code></td><td>225</td></tr>
+    <tr><td><code>attempt()</code> – runs one item with retries</td><td><code>src/factory/engine.py</code></td><td>253</td></tr>
+    <tr><td><code>_request()</code> – builds the task for an agent</td><td><code>src/factory/engine.py</code></td><td>290</td></tr>
+    <tr><td><code>_schema_ctx()</code> – the context for a schema</td><td><code>src/factory/engine.py</code></td><td>329</td></tr>
+    <tr><td><code>_on_input()</code> – asks the person</td><td><code>src/factory/engine.py</code></td><td>336</td></tr>
+    <tr><td><code>_check_files()</code> – reverts changes outside a role</td><td><code>src/factory/engine.py</code></td><td>359</td></tr>
+    <tr><td><code>_review_test_change()</code> – the tester judges a test change</td><td><code>src/factory/engine.py</code></td><td>381</td></tr>
+    <tr><td><code>_reset_scaffolds()</code> – resets the scaffolds before code is written</td><td><code>src/factory/engine.py</code></td><td>455</td></tr>
+    <tr><td><code>triage()</code> – asks the triage agent for a choice</td><td><code>src/factory/engine.py</code></td><td>552</td></tr>
     <tr><td><code>Failure</code> – a failed gate, with a level</td><td><code>src/factory/gates.py</code></td><td>36</td></tr>
     <tr><td><code>GATES</code> – the table of gates</td><td><code>src/factory/gates.py</code></td><td>64</td></tr>
     <tr><td><code>run_tests()</code> – runs the suite of a surface</td><td><code>src/factory/gates.py</code></td><td>124</td></tr>
@@ -762,18 +762,18 @@ Scaffolds: web/ (react-vite), api/ (fastapi)</code></pre>
 <h2 id="limits">7. Known limits</h2>
 
 <ul>
-  <li><strong>A run can end with a draft.</strong> In the <code>research</code> runbook, the <code>report</code> step saves <code>REPORT.md</code> before the <code>review</code> step runs. If the reviewer does not approve in 3 rounds, the run stops with status <code>stopped</code>. The last draft stays on disk. In 3 live runs, this happened.</li>
+  <li><strong>A run can end with a draft.</strong> In the <code>research</code> runbook, the <code>report</code> step saves <code>REPORT.md</code> before the <code>review</code> step runs. If the reviewer does not approve in 3 rounds, the run stops with status <code>stopped</code> and exits with code 1. The draft stays on disk with a <code>&gt; **NOT APPROVED.**</code> banner at its top. Read the banner before you use the file. In 3 live runs before this banner existed, this happened.</li>
   <li><strong>Port race.</strong> <code>free_port()</code> closes its socket before the agent binds the port (<code>gates.py</code> line 143). Another process can take the port. The fleet then gives up after 30 seconds (<code>fleet.py</code> line 22).</li>
   <li><strong>The card check is weak.</strong> The fleet compares only the tags <code>role:</code>, <code>worker:</code> and <code>model:</code> (<code>fleet.py</code> line 54). A different agent with the same tags passes.</li>
   <li><strong>Agents keep state in memory.</strong> <code>InMemoryTaskStore</code> (<code>a2a_transport.py</code> line 122) loses a task when the agent stops. A task cannot resume.</li>
   <li><strong>Same folder.</strong> The task carries the path of the workspace. An agent at a <code>url:</code> must see the same folder.</li>
-  <li><strong>Codex has no command list.</strong> Any command makes the Codex sandbox writable (<code>invoke.py</code> line 46). The engine reverts the writes of a role with <code>writes: none</code> after the attempt (<code>engine.py</code> line 357).</li>
+  <li><strong>Codex has no command list.</strong> Any command makes the Codex sandbox writable (<code>invoke.py</code> line 46). The engine reverts the writes of a role with <code>writes: none</code> after the attempt (<code>engine.py</code> line 359).</li>
   <li><strong>The cost limit covers Claude only.</strong> <code>per_task_usd</code> goes to the Claude command (<code>invoke.py</code> line 59). The Codex command has no cost limit. No code reads <code>per_day_usd</code> (<code>config.py</code> line 109).</li>
   <li><strong>The reviewer candidates are not used in a run.</strong> The reviewer model comes from <code>agents.yaml</code> and the roles. <code>reviewer.candidates</code> is only validated when <code>llm.yaml</code> loads. The checker rule uses <code>_check_independence()</code> (<code>runbook.py</code> line 365).</li>
   <li><strong>A test gap is not retried.</strong> If the tests are green and a criterion is not <code>PASS</code>, the run stops (<code>gates.py</code> line 296).</li>
   <li><strong>Quotes under 20 characters fail.</strong> <code>quote_on_page()</code> rejects them (<code>gates.py</code> line 338). The gate drops such a finding.</li>
   <li><strong>Search has no retry.</strong> <code>search()</code> reports the error of a source and goes on (<code>search.py</code> line 95). A rate limit removes that source from the result.</li>
-  <li><strong>Only 6 items run together.</strong> A parallel step uses at most 6 threads (<code>engine.py</code> line 241).</li>
+  <li><strong>Only 6 items run together.</strong> A parallel step uses at most 6 threads (<code>engine.py</code> line 243).</li>
   <li><strong>No read timeout on a task.</strong> A hung agent blocks the run until its LLM call reaches the limit (<code>a2a_transport.py</code> line 133).</li>
   <li><strong>No person has checked the HTML.</strong> The checks in section 6 do not include a review of the page by a person.</li>
 </ul>
