@@ -211,7 +211,7 @@ New AXI work that the items above touch:
 
 Suggested order for J: P7, P11 (small, no dependencies). Then P5, P12, P9 and P6. P10 needs its own plan first. Do not build P13.
 
-Open question for FR-25: a checkpoint needs a person, and AXI says a command never prompts. See PRD section 15, question 8.
+FR-25 and checkpoints: resolved in PRD v0.4 (section 15, question 8). A run waits at a checkpoint with `awaiting: approval`, and `--yes` is the explicit agent approval. The `factory approve` command and the approver record are not built yet.
 
 ### K. Smaller naming and structure items (S5, S7, S8)
 

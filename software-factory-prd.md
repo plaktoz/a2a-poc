@@ -1,6 +1,6 @@
 # PRD: Multi-Harness, LLM-Agnostic Software Factory
 
-**Status:** Draft v0.3
+**Status:** Draft v0.4
 **Date:** 2026-10-31
 **Owner:** TBD
 **Basis:** Design reasoning from a research discussion (Oct 2026). Items marked *Assumption* or *Open question* are not yet validated.
@@ -223,7 +223,7 @@ No public benchmark compares these setups on your code. Run your own:
 5. What are the budget caps per task and per day?
 6. Which repositories and risk tiers are in the pilot?
 7. Who owns the scorecard and routing decisions?
-8. A checkpoint needs a person, and AXI says commands never prompt (FR-25). Should a stopped run wait on disk for `factory approve <run>`, or should an agent act as the approver when a person is not at the terminal?
+8. **Resolved in v0.4.** A checkpoint needs a person, and FR-25 says commands never prompt. A run that reaches a checkpoint stops and saves its state as `awaiting: approval`, with the command that answers it, such as `factory approve <run>`. An agent can approve a checkpoint with `--yes`, which is an explicit choice. The run must record whether a person or `--yes` approved each checkpoint. The approve command and this record are not built yet.
 
 ## 16. Assumptions
 
@@ -239,6 +239,7 @@ No public benchmark compares these setups on your code. Run your own:
 | v0.1 | 2026-10-28 | First draft. |
 | v0.2 | 2026-10-31 | Non-code workflows, the runbook format, triage and the command-line worker adapters moved into v1 scope (section 6). Non-goals in section 4 updated to match. Phase 6 narrowed to what is still undecided. Status and implementation gaps are tracked in `docs/code-review.md`, not here. |
 | v0.3 | 2026-10-31 | Added goal G6, the scope item and section 8.7 (FR-20 to FR-29): the command line follows the 10 AXI principles. Added open question 8. |
+| v0.4 | 2026-10-31 | Resolved open question 8: a run waits at a checkpoint with `awaiting: approval`, and `--yes` is the explicit approval for an agent. |
 
 ## 18. Evidence Notes
 
