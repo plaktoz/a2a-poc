@@ -31,7 +31,7 @@ from .roles import ROLES
 from .scaffold import Template, read_template
 
 ID = r"^[a-z][a-z0-9_-]*$"
-TEMPLATE_VARS = {"brief", "name", "target", "traits", "surfaces", "item", "test_files",
+TEMPLATE_VARS = {"brief", "name", "target", "traits", "surfaces", "repos", "item", "test_files",
                  "source_files", "test_command", "check_commands", "workspace"}
 _VAR = re.compile(r"\{\{\s*([A-Za-z_][\w.]*)\s*\}\}")
 
@@ -133,7 +133,7 @@ class StepDef(_Strict):
     role: str
     instructions: str
     when: str | None = None
-    for_each: str | list[str] | None = None  # "surfaces", "<step>.<field>", or a list of names
+    for_each: str | list[str] | None = None  # "surfaces", "repos", "<step>.<field>", or a list of names
     parallel: bool = False
     reads: list[str] = []
     output: str | None = None
@@ -141,7 +141,7 @@ class StepDef(_Strict):
     checkpoint: bool = False
     save: str | None = None
     retries: int = Field(default=1, ge=0)
-    cwd: Literal["workspace", "surface", "target"] | None = None
+    cwd: Literal["workspace", "surface", "target", "repo"] | None = None  # repo: the item's own repo
     writes: Literal["none", "tests", "source", "target"] = "none"  # target: any file of the repo worktree
 
     @model_validator(mode="after")
@@ -173,6 +173,7 @@ class Runbook(_Strict):
     description: str
     use_when: str
     needs_target: bool = False
+    needs_repos: bool = False  # one or more git repos to read, from --repo (impact-analysis)
     traits: dict[str, TraitDef] = {}
     scaffolds: dict[str, ScaffoldDef] = {}
     staff: dict[str, StaffDef] = {}
@@ -227,12 +228,19 @@ class Runbook(_Strict):
         if bad := [r for r in s.reads if r not in seen]:
             raise ValueError(f"{where}: reads {', '.join(bad)}, which no earlier step produces")
         condition(s.when, where)
-        if isinstance(s.for_each, str) and s.for_each != "surfaces":
+        if isinstance(s.for_each, str) and s.for_each not in ("surfaces", "repos"):
             src = s.for_each.split(".")[0]
             if "." not in s.for_each or src not in seen:
-                raise ValueError(f"{where}: for_each must be 'surfaces', a list, or '<earlier step>.<field>'")
+                raise ValueError(f"{where}: for_each must be 'surfaces', 'repos', a list, or "
+                                 "'<earlier step>.<field>'")
         if s.for_each == "surfaces" and not self.scaffolds:
             raise ValueError(f"{where}: for_each surfaces, but the runbook has no scaffolds")
+        if s.for_each == "repos" and not self.needs_repos:
+            raise ValueError(f"{where}: for_each repos needs needs_repos: true")
+        if s.for_each == "repos" and s.cwd != "repo":
+            raise ValueError(f"{where}: for_each repos needs cwd: repo")
+        if s.cwd == "repo" and s.for_each != "repos":
+            raise ValueError(f"{where}: cwd repo needs for_each: repos")
         if s.cwd == "surface" and s.for_each != "surfaces":
             raise ValueError(f"{where}: cwd surface needs for_each: surfaces")
         if s.cwd == "target" and not self.needs_target:
@@ -276,6 +284,8 @@ def describe_catalog(books: dict[str, Runbook]) -> str:
         out.append(f"- {rb.name}: {rb.title}. {rb.description.strip()}\n  Use when: {rb.use_when.strip()}")
         if rb.needs_target:
             out.append("  Needs a target: the path of existing code to work on.")
+        if rb.needs_repos:
+            out.append("  Needs one or more git repos to read: the paths, given with --repo.")
         for t, d in rb.traits.items():
             out.append(f"  trait {t} (default {str(d.default).lower()}): {d.description}")
     return "\n".join(out)
@@ -490,5 +500,7 @@ def _each(for_each: str | list, plan: Plan) -> str:
         return "of " + ", ".join(map(str, for_each))
     if for_each == "surfaces":
         return f"surface ({', '.join(plan.surfaces)})"
+    if for_each == "repos":
+        return "repo"
     step, _, field = for_each.partition(".")
     return f"item of {step}.{field}"

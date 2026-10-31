@@ -245,12 +245,14 @@ class Engine:
                  fetch: Callable[[str], str | None] = fetch_text, install: bool = True,
                  earlier_usage: list[Json] | None = None, run_id: str | None = None,
                  resume: bool = False, send_fallback: Send | None = None,
-                 worktree: repo.Worktree | None = None, test_command: str | None = None) -> None:
+                 worktree: repo.Worktree | None = None, test_command: str | None = None,
+                 repos: list[Path] | None = None) -> None:
         self.plan, self.cfg, self.ws, self.send = plan, cfg, workspace, send
         self.send_fallback = send_fallback
         self.run_id = run_id or new_run_id()
         self.brief, self.name, self.target = brief, name, target
         self.worktree, self.test_command = worktree, test_command  # P10: a change in a git worktree
+        self.repos = list(repos or [])  # impact-analysis: the repos to read, in place and never changed
         self.interactive, self.say, self.ask, self.fetch, self.install = interactive, say, ask, fetch, install
         self.artifacts: dict[str, Any] = {}
         self._artifacts_lock = threading.Lock()
@@ -265,8 +267,12 @@ class Engine:
             raise ConfigError(f"runbook {plan.runbook.name} needs --target, an existing directory")
         if any(s.writes == "target" for s in plan.steps()) and worktree is None:
             raise ConfigError(f"runbook {plan.runbook.name} writes to a repo, so it needs --repo")
+        if plan.runbook.needs_repos and not self.repos:
+            raise ConfigError(f"runbook {plan.runbook.name} reads one or more repos, so it needs --repo")
         if worktree is not None:
             self.log.data.update(worktree.fields)  # repo, base, branch, tree, commit (set after commit)
+        if self.repos:
+            self.log.data["repos"] = [str(r) for r in self.repos]  # the folders read in place (impact-analysis)
         if resume:
             self._resume()
 
@@ -424,11 +430,13 @@ class Engine:
         """Run one item of a step, retrying it with feedback. Raises RoundFailed or Stop."""
         cwd = self._cwd(s, item)
         in_tree = self._in_tree(cwd)  # a repo worktree: git tells what changed, not a folder snapshot
+        in_repo = s.cwd == "repo"  # a repo the user gave, read in place: git tells what changed too
         tag = f"{s.id}{f' [{item.key}]' if item.key else ''}"
         staff = self.plan.staff[s.role]
         for attempt in range(1 + s.retries):
             started = time.monotonic()
-            before = repo.snapshot_tree(cwd) if in_tree else snapshot(cwd)
+            git_checked = in_tree or in_repo
+            before = repo.snapshot_tree(cwd) if git_checked else snapshot(cwd)
             top_before = repo.dirty_files(self.worktree.repo) if in_tree else {}
             # On the last attempt, a role with a fallback uses its fallback worker (FR-7).
             # The last retry, so a step with no retries never switches.
@@ -441,11 +449,14 @@ class Engine:
                 reply = self._send(s.id, item.key, s.role, self._request(s, item, cwd, feedback),
                                    self._on_input(s), via=self.send_fallback if switch else None)
                 out = reply.get("output", {})
-                if in_tree:  # checked before the reply is read, so a bad reply cannot hide a change
+                # Checked before the reply is read, so a bad reply cannot hide a change.
+                if in_tree:
                     self._check_tree(s, item, cwd, before, top_before)
+                elif in_repo:
+                    self._check_repo(s, item, cwd, before)
                 if s.output:
                     out = schemas.validate(s.output, out, self._schema_ctx(s))
-                if not in_tree:
+                if not git_checked:
                     self._check_files(s, item, cwd, before, out)
                 ctx = self._ctx(item, cwd)
                 for g in s.gates:
@@ -518,6 +529,7 @@ class Engine:
             "brief": self.brief, "name": self.name, "workspace": str(self.ws),
             "target": str(self.target) if self.target else "",
             "traits": self.plan.traits, "surfaces": self.plan.surfaces,
+            "repos": [r.name for r in self.repos],
             "item": item.data if item else {},
             "test_files": list(tpl.test_files) if tpl else [],
             "source_files": list(tpl.source_files) if tpl else [],
@@ -610,6 +622,18 @@ class Engine:
         if problems:
             raise Failure("\n".join(problems), "step")
 
+    def _check_repo(self, s: StepDef, item: Item, cwd: Path, before: repo.TreeState) -> None:
+        """A step that reads a repo the user gave (impact-analysis) must leave it as it was. Any change
+        is put back, and the step goes on: a reader's scratch file or stray commit is not fatal."""
+        found = repo.revert_git(cwd, before)  # first: a reset puts the committed files back as changes
+        touched = repo.touched(before.files, repo.dirty_files(cwd))
+        if touched:
+            repo.revert_files(cwd, before.files, touched)
+        if reverted := [*found, *sorted(touched)]:
+            detail = ", ".join(reverted)[:300]
+            self.say(f"  reverted changes to {item.key}, which the {s.role} may not make: {detail}")
+            self.log.record(s.id, item.key, s.role, "files reverted", time.monotonic(), detail)
+
     def _in_tree(self, cwd: Path) -> bool:
         return self.worktree is not None and cwd.resolve() == self.worktree.tree
 
@@ -681,6 +705,8 @@ class Engine:
         if fe == "surfaces":
             return [Item(d, {"surface": d, "template": t.name, "kind": t.surface}, d)
                     for d, t in self.plan.templates.items()]
+        if fe == "repos":
+            return [Item(p.name, {"name": p.name, "path": str(p)}) for p in self.repos]
         if isinstance(fe, list):
             return [Item(str(x), {"name": x}) for x in fe]
         src, attr = fe.split(".", 1)
@@ -700,6 +726,8 @@ class Engine:
             self._scaffolds_reset = True
 
     def _cwd(self, s: StepDef, item: Item) -> Path:
+        if s.cwd == "repo":
+            return Path(item.data["path"])
         if s.cwd == "surface":
             return self.ws / item.surface
         if s.cwd == "target":
@@ -773,6 +801,8 @@ def _summary(s: StepDef, out: Json) -> str:
         return f"{len(out['findings'])} findings, {len(out.get('rejected', []))} rejected"
     if s.output == "verification":
         return f"passed={out['passed']} failed={out['failed']}"
+    if s.output == "service_links":
+        return f"{len(out['links'])} links, {len(out.get('rejected', []))} rejected"
     return str(out.get("summary") or out.get("title") or "")[:300]
 
 
@@ -789,7 +819,7 @@ def _summary_suffix(s: StepDef, out: Json) -> str:
     """The short result shown after "accepted" on the console, for the steps that report counts."""
     summary = _summary(s, out)
     return f" ({summary.splitlines()[0][:120]})" if summary and s.output in (
-        "findings", "audit_findings", "verification") else ""
+        "findings", "audit_findings", "verification", "service_links") else ""
 
 
 # --- triage -----------------------------------------------------------------

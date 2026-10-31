@@ -679,6 +679,35 @@ def evidence_verified(ctx: GateCtx, out: dict) -> None:
 
 
 @gate
+def link_verified(ctx: GateCtx, out: dict) -> None:
+    """Keep only service links whose evidence is in the cited file of this repo, near the cited line.
+
+    The same check as evidence_verified, for a link between services (impact-analysis). A repo that
+    has no link at all is a valid result: the gate accepts it."""
+    root = ctx.cwd.resolve()
+    kept, rejected = [], out.setdefault("rejected", [])
+    for link in out.get("links", []):
+        path = (root / link["file"]).resolve()
+        why = None
+        if not path.is_relative_to(root) or not path.is_file():
+            why = "no such file in this repo"
+        else:
+            lines = path.read_text(errors="replace").splitlines()
+            near = "\n".join(lines[max(0, link["line"] - 6): link["line"] + 5])
+            if normalize(link["evidence"]) not in normalize(near):
+                why = f"the evidence is not near line {link['line']}"
+        if why:
+            rejected.append({**link, "verified": False, "reason": why})
+        else:
+            kept.append({**link, "verified": True})
+    out["links"] = kept
+    if rejected and not kept:
+        raise Failure("no link could be verified. Copy the evidence exactly from the file, and give the "
+                      "line it is on:\n" + _capped([f"- {r['kind']} {r['target']}: {r['reason']}"
+                                                    for r in rejected]))
+
+
+@gate
 def review_approves(ctx: GateCtx, out: dict) -> None:
     if out["verdict"] != "approve":
         issues = "\n".join(f"- {i}" for i in out.get("issues", [])) or "(no issues listed)"

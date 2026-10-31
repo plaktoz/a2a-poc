@@ -35,7 +35,8 @@ def ids(plan):
 
 def test_shipped_runbooks_load():
     books = catalog()
-    assert set(books) == {"web-app", "research", "code-audit", "api-design", "change-request", "bug-fix"}
+    assert set(books) == {"web-app", "research", "code-audit", "api-design", "change-request", "bug-fix",
+                          "impact-analysis"}
     for p in RUNBOOKS_DIR.glob("*.yaml"):
         assert load_runbook(p).name == p.stem
 
@@ -206,6 +207,11 @@ def book(**changes):
     ({"steps__0__writes": "source"}, "only a step working in a surface"),
     ({"steps__0__for_each": "surfaces"}, "no scaffolds"),
     ({"steps__0__cwd": "target"}, "needs_target"),
+    ({"steps__0__for_each": "repos"}, "needs needs_repos"),
+    ({"needs_repos": True, "steps__0__for_each": "repos"}, "for_each repos needs cwd: repo"),
+    ({"needs_repos": True, "steps__0__for_each": "repos", "steps__0__cwd": "repo", "steps__0__writes": "target"},
+     "writes target needs cwd: target"),
+    ({"steps__0__cwd": "repo"}, "cwd repo needs for_each: repos"),
     ({"steps__0__surprise": 1}, "Extra inputs"),
 ])
 def test_bad_runbooks_are_rejected_with_a_reason(change, error):

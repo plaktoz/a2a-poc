@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 286 passed.
+Suite at the last check: 313 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -49,10 +49,11 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | P5 | Per-role `fallback` on the last retry | P19 | committed | the P-series commit, see note |
 | Budget | `budgets.per_task_usd` optional, not required | none | committed | the P-series commit, see note |
 | Check | `factory check`: one short prompt to each model, before any work | P19 | committed | the P-series commit, see note |
-| Codex cost | FR-30: `docs/model-prices.md` gives the cost of Codex calls, refreshed weekly from llm-prices.com | P19 | built | |
+| Codex cost | FR-30: `docs/model-prices.md` gives the cost of Codex calls, refreshed weekly from llm-prices.com | P19 | committed | `68c239d` |
 | P10 slice 1 | Worktree, `change-request` runbook, commit | P19 | committed | the P-series commit, see note |
-| Bug fix | `bug-fix` runbook: a failing test first, then the fix, in a worktree. `change-request` no longer takes bugs. | P10 slice 1 | committed | this commit |
+| Bug fix | `bug-fix` runbook: a failing test first, then the fix, in a worktree. `change-request` no longer takes bugs. | P10 slice 1 | committed | `a80a6ba` |
 | P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | todo | |
+| Impact | `impact-analysis` runbook: which services a change affects, across one or more repos. Report only. | P10 slice 1 | committed | the Impact commit, see `git log` |
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | todo | |
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | todo | |
 | Leftovers | C3, S4, S5, S6, S8, rest of F, unused `Path` import | none | todo | |
@@ -186,3 +187,21 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 
 - S4 (scaffold types) and the unused `Path` import in `tests/test_runbooks.py`: built. Not committed.
 - Still open: C3, S5, S6, S8, the rest of F. See `docs/code-review.md` section 1.
+
+### Impact: `impact-analysis` runbook
+
+Goal: read one or more repos (for example the services of a microservice system) and report which services a new feature or a change would affect.
+
+Decided by the owner (2026-10-31):
+- Repos are given by repeating `--repo PATH`. Each folder name is the service name.
+- Output is a report, `IMPACT.md`. No code changes.
+- Links between services come from reading the code, and from API specs (OpenAPI, AsyncAPI, protobuf, GraphQL) and deploy config (docker-compose, Kubernetes, Helm) when a repo has them.
+
+- Status: committed. The suite passes (313).
+- Files: `runbooks/impact-analysis.yaml`, `src/factory/schemas.py` (`service_links`), `src/factory/gates.py` (`link_verified`), `src/factory/runbook.py` (`needs_repos`, `for_each: repos`, `cwd: repo`), `src/factory/engine.py` (repo items, `_check_repo`), `src/factory/cli.py` (repeatable `--repo`, `_read_repos`, `_find_home`), `tests/test_impact.py`, `README.md`.
+- Verify: `.venv/bin/pytest -q`, `.venv/bin/factory runbooks`, `.venv/bin/factory plan impact-analysis`. A fake run on two git repos writes `IMPACT.md` and leaves both repos as they were.
+- [x] Runbook `runbooks/impact-analysis.yaml`, with `needs_repos` and a `repos` input that takes several `--repo` values.
+- [x] Evidence gate `link_verified`: each link cites a file and a line that the engine checks (like `evidence_verified`).
+- [x] The repos are read in place. A change or a commit that a reader makes is put back (`_check_repo`).
+- [x] Tests with fakes, plus a run on two small fake git repos (`tests/test_impact.py`, 23 tests).
+- [x] README and test count. Commit.

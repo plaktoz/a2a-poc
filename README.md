@@ -9,7 +9,8 @@ The factory can:
 - audit existing code and write a prioritized report,
 - design an HTTP API,
 - change an existing git repo and commit the change on its own branch,
-- fix a bug in an existing git repo, starting from a test that fails because of the bug.
+- fix a bug in an existing git repo, starting from a test that fails because of the bug,
+- say which services a change would affect, from one or more repos, and change none of them.
 
 ## Quick start
 
@@ -17,8 +18,8 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "286 passed"; no LLM is called
-uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, research and web-app
+uv run pytest                  # prints "313 passed"; no LLM is called
+uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
 ```
 
 Set the environment variables that `llm.yaml` names before a real run:
@@ -50,6 +51,7 @@ The factory shows its plan and waits for your OK. Add `--yes` to skip every ques
 | `api-design` | Turn a brief into a spec and an HTTP API contract. | spec, then a contract loop | `SPEC.json`, `API.json` |
 | `bug-fix` | Fix a bug, an error, a crash or a regression in an existing git repo. Needs `--repo` and `--test-command`. | spec (the bug report; you approve it), a tester writes one test that fails because of the bug and the factory runs your tests to prove it fails, then a fix loop: a developer fixes the cause, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
 | `change-request` | Add a feature to, or deliberately change, code in an existing git repo. Not for bugs: use `bug-fix`. Needs `--repo` and `--test-command`. | spec (you approve it), then a build loop: a developer changes the code in a worktree, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
+| `impact-analysis` | Find which services a new feature or a change would affect, across one or more repos (for example the services of a microservice system). Needs one `--repo` for each repo. Changes nothing. | one auditor per repo reads it in place and lists its links to other services, each checked against the cited line; then a writer works out the impact and a reviewer checks it | `IMPACT.md` |
 
 Examples:
 
@@ -64,6 +66,8 @@ uv run factory run --runbook change-request --repo ~/code/shop --test-command "n
     --brief "add a cart that shows the total" --name cart                    # a commit on factory/cart
 uv run factory run --runbook bug-fix --repo ~/code/shop --test-command "npm test" \
     --brief "the cart total still counts an item after it is removed" --name total   # a commit on factory/total
+uv run factory run --runbook impact-analysis --repo ~/code/orders --repo ~/code/payments \
+    --brief "add a refund endpoint to payments" --name refund                # IMPACT.md, no repo changed
 uv run factory run --brief "..." --staff writer=codex-gpt --staff verifier=codex-gemini
 ```
 
@@ -103,7 +107,7 @@ Each run works in `apps/<name>/`. Use `--name` to choose the name, or let the fa
 | Path in `apps/<name>/` | Content |
 |---|---|
 | `SPEC.json`, `API.json`, `PLAN.json` | Results that a step saves |
-| `REPORT.md`, `AUDIT.md` | Reports |
+| `REPORT.md`, `AUDIT.md`, `IMPACT.md` | Reports |
 | `web/`, `api/` | The apps |
 | `.factory/run.json` | Status, staff, one event for each attempt, the LLM usage, and the fields in "The run record" below |
 | `.factory/artifacts.json` | The result of every step |
@@ -123,6 +127,7 @@ The status in `run.json` is `running`, `accepted`, `stopped` or `error`. After a
 | `gates` | The names of the gates in the plan |
 | `resumes` | One entry for each `--resume`, with its start time |
 | `repo`, `base`, `branch`, `tree`, `commit` | Only for `change-request` and `bug-fix`. See "Change a git repo". |
+| `repos` | Only for `impact-analysis`: the folders it read. It has no branch and no commit. |
 
 ### Change a git repo
 
@@ -174,6 +179,29 @@ uv run factory run --runbook bug-fix --repo ~/code/shop --test-command "npm test
 
 The folders, the flags and the rules are those of "Change a git repo". Both runbooks need `--repo` and `--test-command`.
 
+### Impact across repos
+
+The `impact-analysis` runbook answers a question such as "which services does this feature touch?". Give it one `--repo` for each repo, for example each service of a microservice system.
+
+```bash
+uv run factory run --runbook impact-analysis --repo ~/code/orders --repo ~/code/payments \
+    --brief "add a refund endpoint to payments" --name refund
+```
+
+1. Each repo gets its own auditor. The auditor reads the repo **in place**, in parallel with the others.
+2. The auditor lists the links between its service and the others. A link has one of seven kinds: `calls`, `publishes`, `subscribes`, `reads`, `writes`, `deploys_with` or `owns_contract`. It cites the file, the line and the exact code. The sources are the code, the API specs (OpenAPI, AsyncAPI, protobuf, GraphQL) and the deploy config (docker-compose, Kubernetes, Helm).
+3. The gate `link_verified` checks each link against the cited file, as `evidence_verified` does for audit findings. A link that does not check is dropped. A repo with no links is a valid result.
+4. A writer reads the verified links from every repo and writes `IMPACT.md`: the services the change affects directly, the services it affects through them, and the gaps.
+5. A reviewer checks that each affected service is backed by a link.
+
+Rules:
+
+- Each folder name is a service name. Two `--repo` folders cannot have the same name.
+- `--repo` must be the top folder of a git repo that has a commit. A folder inside a repo is refused.
+- No repo is changed. The run never makes a worktree, a branch or a commit. If an agent changes a file or makes a commit in a repo, the engine puts it back and records a `files reverted` event.
+- The run lives in `apps/<name>/`, like `code-audit`. `--resume` finds it there.
+- `--base`, `--test-command` and `--target` are refused.
+
 ### What a run costs
 
 Every LLM call logs its worker, model, tokens and cost. `run.json` holds one row for each call, plus totals for the run and for each model. The console prints a `Usage:` line at the end. Claude reports its cost. Codex reports tokens only, so the factory prices its calls from `docs/model-prices.md` (FR-30). A model with no price there shows its cost as unknown. The file is refreshed weekly with the skill `update-model-prices` or `uv run python -m factory.prices`. An alias such as `gpt-advantage-assist` takes the price of its target model.
@@ -194,7 +222,7 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `--staff ROLE=WORKER[:MODEL]` | Sets who plays a role in this run |
 | `--name NAME` | Works in `apps/NAME` |
 | `--target PATH` | The code to audit |
-| `--repo PATH` | The git repo that `change-request` or `bug-fix` changes. The work happens in a worktree. |
+| `--repo PATH` | Repeatable. For `change-request` or `bug-fix`, the one git repo that changes; the work happens in a worktree. For `impact-analysis`, each repo that is read in place. |
 | `--base REF` | The commit that the new branch starts from. Default `HEAD`. |
 | `--test-command CMD` | The command that runs the repo's tests, such as `"npm test"`. Required for `change-request` and `bug-fix`. |
 | `--rebuild` | Redoes accepted work |
@@ -217,6 +245,7 @@ The engine never trusts a claim from an agent. It runs the tests itself and comp
 | `citations_verified` | Each finding quote is on the page that it cites. The gate drops the others. | retry the step |
 | `sources_cited` | The report links every verified source and no other source. | retry the step |
 | `evidence_verified` | Each audit finding has its evidence within 5 lines of the cited line. The gate drops the others. | retry the step |
+| `link_verified` | Each service link has its evidence within 5 lines of the cited line, in a file of that repo. The gate drops the others. A repo with no links passes (`impact-analysis`). | retry the step |
 | `review_approves` | The reviewer approved. Otherwise its issues go back to the author. | new round |
 | `secrets_clean` | No file the agent wrote holds what looks like a secret: a key, a token, a private key or a real value in an env file. The message masks each value. | retry the step |
 | `lint_clean` | The template's `lint` command exits 0 in each surface. A template with no `lint` command passes. | retry the step |
@@ -406,11 +435,12 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
 | `test_fallback.py` | 5 | A role's fallback takes the last attempt only, and a bad fallback fails to load. |
 | `test_bugfix.py` | 12 | `bug-fix` proves the bug with a failing test before the fix, makes one commit, and leaves the checkout unchanged. |
+| `test_impact.py` | 23 | `impact-analysis` keeps only the links whose evidence is in the cited file, reads each repo in place, reverts any change to a repo, and refuses bad `--repo` values. |
 | `test_gates_p6.py` | 35 | `secrets_clean`, `lint_clean` and `packages_exist` catch what they must, mask secrets and survive a registry outage. |
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
-| `test_runbooks.py` | 33 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. With only Claude enabled, every runbook plans and warns. |
+| `test_runbooks.py` | 37 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. With only Claude enabled, every runbook plans and warns. |
 | `test_runs.py` | 5 | `factory runs` sums the run records and changes nothing. |
 | `test_schemas.py` | 19 | Each deliverable schema accepts good data, rejects bad data and renders as text. Triage can answer `none`. |
 | `test_tracing.py` | 9 | The run ID, the factory commit and the gate names reach `run.json` and every request. |
@@ -434,6 +464,8 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | `<name> is already being worked on by another run` | Another process holds the lock. | Wait for that run, or choose another `--name`. |
 | `needs --target, an existing directory` | The `code-audit` runbook has no target. | Add `--target PATH`. |
 | `runbook change-request needs --test-command` or `--repo` (also `bug-fix`) | The runbook changes a git repo and runs your tests. | Add `--repo PATH` and `--test-command "..."`. |
+| `runbook impact-analysis reads git repos: pass --repo PATH once for each repo` | No repo was given. | Add one `--repo PATH` for each repo to read. |
+| `two --repo folders have the name orders` | Two repos share a folder name, and the folder name is the service name. | Rename one folder, or give the repo a folder with another name. |
 | `the bug is not reproduced: every test passes` | The tester's test passes, or the tester wrote no test. | Describe the steps to reproduce in the `--brief`, or check that `--test-command` runs the new test. |
 | `the failing output does not name your test` | The suite fails for another reason, or the command hides test names. | Fix the failing suite first, or use a test command that prints the name of each failing test. |
 | `branch factory/<name> already exists` | An earlier run used the name. | Choose another `--name`, or delete the branch. |

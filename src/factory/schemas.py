@@ -159,6 +159,22 @@ class Repro(_Open):
     summary: str = ""
 
 
+class ServiceLink(_Open):
+    kind: Literal["calls", "publishes", "subscribes", "reads", "writes", "deploys_with", "owns_contract"]
+    target: str = Field(min_length=1)  # the other service, or the contract or topic it uses
+    file: str
+    line: int = Field(ge=1)
+    evidence: str = Field(min_length=1)  # exact code copied from that line or the lines around it
+    verified: bool | None = None
+
+
+class ServiceLinks(_Open):
+    service: str = Field(min_length=1)  # the repo's folder name
+    summary: str = ""
+    links: list[ServiceLink] = []
+    rejected: list[dict] = []
+
+
 class Report(_Open):
     markdown: str = Field(min_length=1)
 
@@ -297,6 +313,12 @@ SCHEMAS: dict[str, Schema] = {
     "report": Schema(
         Report,
         """{"markdown": "<the whole report in Markdown>"}"""),
+    "service_links": Schema(
+        ServiceLinks,
+        """{"service": "<the repo's folder name>", "summary": str,
+ "links": [{"kind": "calls|publishes|subscribes|reads|writes|deploys_with|owns_contract",
+   "target": "<the other service, contract or topic>", "file": "<path relative to the repo root>",
+   "line": int, "evidence": "<exact code copied from that line or the lines around it>"}]}"""),
 }
 
 
@@ -358,6 +380,10 @@ def render(name: str | None, data: Any) -> str:
                          f"    quote: \"{f['quote']}\"")
         lines += _bullets("Gaps", data.get("gaps", []))
         return "\n".join(lines)
+    if name == "service_links":
+        lines = [f"Service: {data['service']}", data.get("summary", "")]
+        lines += [f"  {x['kind']} {x['target']} ({x['file']}:{x['line']})" for x in data["links"]]
+        return "\n".join(lines) if data["links"] else "\n".join([*lines, "  no links found"])
     if name == "verification":
         return f"passed={data['passed']} failed={data['failed']}\n" + "\n".join(
             f"  {k}: {v}" for k, v in data["verdicts"].items())

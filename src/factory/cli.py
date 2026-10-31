@@ -119,12 +119,21 @@ def _changes_repo(rb: Runbook) -> bool:
 
 
 def _check_repo_args(args, rb: Runbook) -> None:
-    """--repo, --base and --test-command are for a runbook that changes a git repo, and that runbook needs them."""
-    given = [flag for flag, value in (("--repo", args.repo), ("--base", args.base),
+    """--repo is for a runbook that works on git repos. A runbook that changes one repo (change-request,
+    bug-fix) takes one --repo and a test command. A runbook that only reads repos (impact-analysis)
+    takes one or more --repo and no other repo flag."""
+    repos = args.repo or []
+    given = [flag for flag, value in (("--repo", repos), ("--base", args.base),
                                       ("--test-command", args.test_command)) if value]
-    if _changes_repo(rb):
-        if not args.repo:
-            raise ConfigError(f"runbook {rb.name} changes a git repo: pass --repo PATH, the repo folder")
+    if rb.needs_repos:
+        if not repos:
+            raise ConfigError(f"runbook {rb.name} reads git repos: pass --repo PATH once for each repo")
+        if args.base or args.test_command or args.target:
+            raise ConfigError(f"--base, --test-command and --target do not apply to {rb.name}, "
+                              "which only reads the repos")
+    elif _changes_repo(rb):
+        if len(repos) != 1:
+            raise ConfigError(f"runbook {rb.name} changes one git repo: pass --repo PATH once, the repo folder")
         if not args.test_command:
             raise ConfigError(f"runbook {rb.name} needs --test-command, the command that runs the repo's "
                               'tests, for example --test-command "npm test"')
@@ -132,18 +141,48 @@ def _check_repo_args(args, rb: Runbook) -> None:
             raise ConfigError("--target is not used with --repo: the repo is the target")
     elif given:
         raise ConfigError(f"{', '.join(given)} only applies to a runbook that changes a git repo "
-                          "(change-request, bug-fix)")
+                          "(change-request, bug-fix) or reads git repos (impact-analysis)")
 
 
-def _workdir(args) -> tuple[Path, Path | None]:
-    """Where a run's folders go: apps/ for a plain run, <scratch>/<repo>/ for a git repo (P10).
-    Also the repo's top folder, or None."""
-    if not args.repo:
+def _read_repos(args) -> list[Path]:
+    """The repos a read-only runbook reads in place. Each --repo is the top folder of a git repo that has
+    a commit. Each folder name is a service name, so two repos cannot share one."""
+    paths = []
+    for given in args.repo:
+        path = Path(given).expanduser().resolve()
+        if repo.toplevel(path) != path:
+            raise ConfigError(f"--repo {given!r} must be the top folder of a git repo, not a folder inside one")
+        repo.resolve_base(path, None)  # raises when the repo has no commit yet
+        paths.append(path)
+    names = [p.name for p in paths]
+    if dup := sorted({n for n in names if names.count(n) > 1}):
+        raise ConfigError(f"two --repo folders have the name {', '.join(dup)}; each folder name is a "
+                          "service name, so give one of them another folder name")
+    return paths
+
+
+def _workdir(args, rb: Runbook | None = None) -> tuple[Path, Path | None]:
+    """Where a run's folders go: apps/ for a plain run and for a read-only runbook, <scratch>/<repo>/ for a
+    runbook that changes a git repo (P10). Also the repo's top folder, or None."""
+    if not args.repo or (rb is not None and not _changes_repo(rb)):
         return APPS_DIR, None
-    top = repo.toplevel(args.repo)
+    top = repo.toplevel(args.repo[0])
     workdir = repo.scratch_root() / top.name
     repo.check_scratch(top, workdir)
     return workdir, top
+
+
+def _find_home(args) -> Path:
+    """The folder of the run --resume continues. A change lives in its repo's scratch folder, and a plain run
+    or a read-only runbook lives in apps/. The first folder that holds the run wins."""
+    if not args.name:
+        raise ConfigError("--resume needs --name, the folder of the run to continue")
+    homes = [*([_workdir(args)[0]] if args.repo else []), APPS_DIR]
+    for home in homes:
+        if (home / args.name / ".factory" / "run.json").exists():
+            return home
+    raise ConfigError(f"nothing to resume: {args.name} has no run record in "
+                      f"{', '.join(_shown(h) for h in homes)}")
 
 
 def resume_record(args, workdir: Path) -> Json:
@@ -193,7 +232,8 @@ def cmd_run(args) -> int:
         target = target or (str(Path(choice["target"]).resolve()) if choice.get("target") else None)
 
     _check_repo_args(args, rb)
-    workdir, top = _workdir(args)
+    workdir, top = _workdir(args, rb)
+    repos = _read_repos(args) if rb.needs_repos else []
     plan = _plan(args, cfg, rb, traits)
     print(outline(plan))
     if interactive and not _ask_yes("\nRun this plan? [Y/n] "):
@@ -201,13 +241,14 @@ def cmd_run(args) -> int:
         return 1
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=name, brief=args.brief,
                      interactive=interactive, run_id=run_id, earlier_usage=triage_usage,
-                     target=target, resume=False, rebuild=args.rebuild, record=None)
+                     target=target, resume=False, rebuild=args.rebuild, record=None, repos=repos)
 
 
 def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, brief: str,
               interactive: bool, run_id: str, earlier_usage: list | None, target: str | None,
-              resume: bool, rebuild: bool, record: Json | None) -> int:
-    """Lock <workdir>/<name>, make the repo worktree when the plan changes a repo, and run the engine."""
+              resume: bool, rebuild: bool, record: Json | None, repos: list[Path]) -> int:
+    """Lock <workdir>/<name>, make the repo worktree when the plan changes a repo, and run the engine.
+    `repos` are the repos a read-only runbook reads in place; no worktree is made for them."""
     ws, lock = open_workspace(workdir, name, rebuild)  # the lock comes first: one run per feature
     try:
         print(f"\nWorking in {_shown(ws)}")
@@ -222,20 +263,24 @@ def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, br
                             target=Path(target) if target else None, interactive=interactive,
                             earlier_usage=earlier_usage, run_id=run_id, resume=resume,
                             send_fallback=fleet.send_fallback, worktree=worktree,
-                            test_command=args.test_command)
+                            test_command=args.test_command, repos=repos)
             return 0 if engine.run() else 1
     finally:
         lock.close()
 
 
 def _resume(args, cfg, books, interactive: bool) -> int:
-    """Continue <workdir>/<name> from its run record: items it accepted are kept, the rest run again."""
-    workdir, top = _workdir(args)
-    record = resume_record(args, workdir)
+    """Continue the run's folder from its run record: items it accepted are kept, the rest run again."""
+    home = _find_home(args)
+    record = resume_record(args, home)
     if record["runbook"] not in books:
         raise ConfigError(f"the run used runbook {record['runbook']!r}, which is not in the catalog")
     rb = books[record["runbook"]]
     _check_repo_args(args, rb)
+    workdir, top = _workdir(args, rb)
+    if workdir != home:
+        raise ConfigError(f"run {args.name} is in {_shown(home)}, but runbook {rb.name} works in {_shown(workdir)}")
+    repos = _read_repos(args) if rb.needs_repos else []
     traits = {k: bool(v) for k, v in record.get("traits", {}).items()}
     plan = _plan(args, cfg, rb, traits)
     print(f"Resuming run {record['run_id']} in {_shown(workdir / args.name)}")
@@ -246,7 +291,8 @@ def _resume(args, cfg, books, interactive: bool) -> int:
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=args.name, brief=record["brief"],
                      interactive=interactive, run_id=record["run_id"], earlier_usage=None,
                      target=record.get("target"), resume=True, rebuild=True,
-                     record=record if top is not None else None)  # accepted runs were refused above
+                     record=record if top is not None else None,  # accepted runs were refused above
+                     repos=repos)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -283,7 +329,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="who plays a role in this run")
     p.add_argument("--name", help="work in apps/<name> (default: chosen from the brief)")
     p.add_argument("--target", help="existing code to work on (code-audit)")
-    p.add_argument("--repo", help="git repo to change (change-request, bug-fix): work happens in a worktree of it")
+    p.add_argument("--repo", action="append", default=[], metavar="PATH",
+                   help="git repo: change-request and bug-fix change one (work happens in a worktree of it); "
+                        "impact-analysis reads each one you give, in place (repeatable)")
     p.add_argument("--base", help="commit the new branch starts from (change-request, bug-fix; default: HEAD)")
     p.add_argument("--test-command", metavar="CMD",
                    help='the command that runs the repo\'s tests, e.g. "npm test" (change-request, bug-fix)')

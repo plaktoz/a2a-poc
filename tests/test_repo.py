@@ -385,4 +385,4 @@ def test_repo_flags_are_refused_for_other_runbooks(monkeypatch, tmp_path, capsys
 def test_the_cli_takes_the_folder_from_the_repo_name(repo_dir, scratch):
     from factory import cli
 
-    assert cli._workdir(type("A", (), {"repo": str(repo_dir)})()) == (scratch / "shop", repo_dir.resolve())
+    assert cli._workdir(type("A", (), {"repo": [str(repo_dir)]})()) == (scratch / "shop", repo_dir.resolve())
