@@ -209,21 +209,6 @@ class Config(_Strict):
             raise ModelNotAllowed(f"model {chosen!r} is not allowed for worker {worker_name!r}")
         return chosen
 
-    def reviewer_for(self, author_model: str) -> str:
-        """Pick the reviewer model for a PR written with `author_model` (gate 5).
-
-        Takes the first candidate served by an enabled worker that differs from
-        the author's model.
-        """
-        served = {m for w in self.enabled_workers() for m in w.models}
-        for m in self.reviewer.candidates:
-            if m not in served:
-                continue
-            if self.reviewer.must_differ_from_author and m == author_model:
-                continue
-            return m
-        raise ConfigError(f"no reviewer model available for author model {author_model!r}")
-
 
 def _check_url(v: str) -> str:
     if _unresolved(v):

@@ -252,8 +252,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>Budgets</code> – the cost and retry limits</td><td><code>src/factory/config.py</code></td><td>107</td></tr>
     <tr><td><code>Config</code> – the checked <code>llm.yaml</code></td><td><code>src/factory/config.py</code></td><td>128</td></tr>
     <tr><td><code>worker()</code> – finds a worker by name</td><td><code>src/factory/config.py</code></td><td>176</td></tr>
-    <tr><td><code>reviewer_for()</code> – picks a reviewer model (no run uses it)</td><td><code>src/factory/config.py</code></td><td>212</td></tr>
-    <tr><td><code>load_config()</code> – reads <code>llm.yaml</code> and fills the variables</td><td><code>src/factory/config.py</code></td><td>286</td></tr>
+    <tr><td><code>load_config()</code> – reads <code>llm.yaml</code> and fills the variables</td><td><code>src/factory/config.py</code></td><td>271</td></tr>
     <tr><td><code>MODELS</code> – the schema of each deliverable</td><td><code>src/factory/schemas.py</code></td><td>156</td></tr>
     <tr><td><code>SHAPES</code> – the reply format shown to an agent</td><td><code>src/factory/schemas.py</code></td><td>169</td></tr>
     <tr><td><code>validate()</code> – checks a reply</td><td><code>src/factory/schemas.py</code></td><td>198</td></tr>
@@ -277,8 +276,8 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>ROLES_FILE</code> – the default <code>roles.yaml</code></td><td><code>src/factory/paths.py</code></td><td>10</td></tr>
     <tr><td><code>CMD_TIMEOUT</code> – the limit of a command</td><td><code>src/factory/process.py</code></td><td>9</td></tr>
     <tr><td><code>workers:</code> – the LLM workers</td><td><code>llm.yaml</code></td><td>21</td></tr>
-    <tr><td><code>reviewer:</code> – the reviewer candidates</td><td><code>llm.yaml</code></td><td>48</td></tr>
-    <tr><td><code>budgets:</code> – the cost and retry limits</td><td><code>llm.yaml</code></td><td>52</td></tr>
+    <tr><td><code>reviewer:</code> – the reviewer candidates</td><td><code>llm.yaml</code></td><td>49</td></tr>
+    <tr><td><code>budgets:</code> – the cost and retry limits</td><td><code>llm.yaml</code></td><td>53</td></tr>
     <tr><td><code>roles:</code> – who plays each role</td><td><code>agents.yaml</code></td><td>10</td></tr>
     <tr><td><code>roles:</code> – the definition of each role</td><td><code>roles.yaml</code></td><td>17</td></tr>
     <tr><td><code>rounds:</code> – the rounds of the research write loop</td><td><code>runbooks/research.yaml</code></td><td>49</td></tr>
@@ -555,7 +554,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>workers.&lt;name&gt;.enabled</code></td><td><code>true</code> for all 3 workers</td><td>A disabled worker needs no variables</td></tr>
     <tr><td><code>workers.&lt;name&gt;.harness</code></td><td><code>claude-agent-sdk</code> or <code>codex</code></td><td>The command that runs the worker</td></tr>
     <tr><td><code>workers.&lt;name&gt;.models</code></td><td>one model each</td><td>The models that the worker serves</td></tr>
-    <tr><td><code>reviewer.candidates</code></td><td><code>gpt-6.1-sol</code>, <code>${ANTHROPIC_MODEL}</code>, <code>gemini-3.6-flash</code></td><td>Read by <code>reviewer_for()</code> only. No run uses it.</td></tr>
+    <tr><td><code>reviewer.candidates</code></td><td><code>gpt-6.1-sol</code>, <code>${ANTHROPIC_MODEL}</code>, <code>gemini-3.6-flash</code></td><td>Checked at load time only. Each must be an allowed model, and two must be served by enabled workers. No run picks a reviewer from them.</td></tr>
     <tr><td><code>reviewer.must_differ_from_author</code></td><td><code>true</code></td><td>Turns on the checker rule</td></tr>
     <tr><td><code>budgets.per_task_usd</code></td><td><code>30</code></td><td>The cost limit of one Claude call</td></tr>
     <tr><td><code>budgets.per_day_usd</code></td><td>not set</td><td>No code reads it</td></tr>
@@ -680,7 +679,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
 <pre><code>uv run pytest
 uv run factory runbooks</code></pre>
 
-<p>The test run must print <code>126 passed</code>. The second command must list <code>api-design</code>, <code>code-audit</code>, <code>research</code> and <code>web-app</code>. Neither command calls an LLM.</p>
+<p>The test run must print <code>124 passed</code>. The second command must list <code>api-design</code>, <code>code-audit</code>, <code>research</code> and <code>web-app</code>. Neither command calls an LLM.</p>
 
 <h3 id="h-5-4">5.4 Run the factory</h3>
 
@@ -708,7 +707,7 @@ uv run factory run --runbook code-audit --target apps/kanban-react --brief &quot
 
 <p>Last line of the real run:</p>
 
-<pre><code>============================= 126 passed in 2.05s ==============================</code></pre>
+<pre><code>============================= 124 passed in 2.06s ==============================</code></pre>
 
 <p>The engine tests use fake agents. No test calls an LLM or the network.</p>
 
@@ -734,7 +733,7 @@ Scaffolds: web/ (react-vite), api/ (fastapi)</code></pre>
   <thead><tr><th>File</th><th>Tests</th><th>What it proves</th></tr></thead>
   <tbody>
     <tr><td><code>tests/test_a2a_transport.py</code></td><td>5</td><td>A task returns its result, asks for input on the same task, fails with a reason, and serves its card.</td></tr>
-    <tr><td><code>tests/test_config.py</code></td><td>34</td><td><code>llm.yaml</code> loads, rejects literal keys and unknown models, and picks a reviewer that differs from the author.</td></tr>
+    <tr><td><code>tests/test_config.py</code></td><td>29</td><td><code>llm.yaml</code> loads, rejects literal keys and unknown models, and needs two reviewer candidates when the checker rule is on.</td></tr>
     <tr><td><code>tests/test_engine.py</code></td><td>24</td><td>Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents.</td></tr>
     <tr><td><code>tests/test_roles.py</code></td><td>17</td><td><code>roles.yaml</code> loads, rejects bad files with a reason, and can be replaced with <code>FACTORY_ROLES</code>.</td></tr>
     <tr><td><code>tests/test_runbooks.py</code></td><td>28</td><td>The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused.</td></tr>
@@ -770,7 +769,7 @@ Scaffolds: web/ (react-vite), api/ (fastapi)</code></pre>
   <li><strong>Same folder.</strong> The task carries the path of the workspace. An agent at a <code>url:</code> must see the same folder.</li>
   <li><strong>Codex has no command list.</strong> Any command makes the Codex sandbox writable (<code>invoke.py</code> line 46). The engine reverts the writes of a role with <code>writes: none</code> after the attempt (<code>engine.py</code> line 357).</li>
   <li><strong>The cost limit covers Claude only.</strong> <code>per_task_usd</code> goes to the Claude command (<code>invoke.py</code> line 59). The Codex command has no cost limit. No code reads <code>per_day_usd</code> (<code>config.py</code> line 109).</li>
-  <li><strong>The reviewer settings are not used in a run.</strong> No run code calls <code>reviewer_for()</code> (<code>config.py</code> line 212). Only tests call it. The checker rule uses <code>_check_independence()</code> (<code>runbook.py</code> line 365).</li>
+  <li><strong>The reviewer candidates are not used in a run.</strong> The reviewer model comes from <code>agents.yaml</code> and the roles. <code>reviewer.candidates</code> is only validated when <code>llm.yaml</code> loads. The checker rule uses <code>_check_independence()</code> (<code>runbook.py</code> line 365).</li>
   <li><strong>A test gap is not retried.</strong> If the tests are green and a criterion is not <code>PASS</code>, the run stops (<code>gates.py</code> line 296).</li>
   <li><strong>Quotes under 20 characters fail.</strong> <code>quote_on_page()</code> rejects them (<code>gates.py</code> line 338). The gate drops such a finding.</li>
   <li><strong>Search has no retry.</strong> <code>search()</code> reports the error of a source and goes on (<code>search.py</code> line 95). A rate limit removes that source from the result.</li>

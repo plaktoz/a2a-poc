@@ -43,8 +43,9 @@ workers:
     models: [gemini-3.6-flash]
     default_model: gemini-3.6-flash
 
-# Independence: the reviewer must use a different model than the author. Picks the
-# first candidate that is served by an enabled worker and is not the author's.
+# Independence: the reviewer must use a different model than the author. The roles
+# decide the reviewer model (agents.yaml). The candidates are only checked when the
+# file loads: each must be an allowed model, and two must be served by enabled workers.
 reviewer:
   candidates: [gpt-6.1-sol, "${ANTHROPIC_MODEL}", gemini-3.6-flash]
   must_differ_from_author: true

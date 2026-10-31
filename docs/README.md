@@ -118,8 +118,7 @@ The line numbers apply to this version of the files. If a line number is differe
 | `Budgets` – the cost and retry limits | `src/factory/config.py` | 107 |
 | `Config` – the checked `llm.yaml` | `src/factory/config.py` | 128 |
 | `worker()` – finds a worker by name | `src/factory/config.py` | 176 |
-| `reviewer_for()` – picks a reviewer model (no run uses it) | `src/factory/config.py` | 212 |
-| `load_config()` – reads `llm.yaml` and fills the variables | `src/factory/config.py` | 286 |
+| `load_config()` – reads `llm.yaml` and fills the variables | `src/factory/config.py` | 271 |
 | `MODELS` – the schema of each deliverable | `src/factory/schemas.py` | 156 |
 | `SHAPES` – the reply format shown to an agent | `src/factory/schemas.py` | 169 |
 | `validate()` – checks a reply | `src/factory/schemas.py` | 198 |
@@ -143,8 +142,8 @@ The line numbers apply to this version of the files. If a line number is differe
 | `ROLES_FILE` – the default `roles.yaml` | `src/factory/paths.py` | 10 |
 | `CMD_TIMEOUT` – the limit of a command | `src/factory/process.py` | 9 |
 | `workers:` – the LLM workers | `llm.yaml` | 21 |
-| `reviewer:` – the reviewer candidates | `llm.yaml` | 48 |
-| `budgets:` – the cost and retry limits | `llm.yaml` | 52 |
+| `reviewer:` – the reviewer candidates | `llm.yaml` | 49 |
+| `budgets:` – the cost and retry limits | `llm.yaml` | 53 |
 | `roles:` – who plays each role | `agents.yaml` | 10 |
 | `roles:` – the definition of each role | `roles.yaml` | 17 |
 | `rounds:` – the rounds of the research write loop | `runbooks/research.yaml` | 49 |
@@ -328,7 +327,7 @@ The file `llm.yaml` holds the endpoints, the workers, the allowed models and the
 | `workers.<name>.enabled` | `true` for all 3 workers | A disabled worker needs no variables |
 | `workers.<name>.harness` | `claude-agent-sdk` or `codex` | The command that runs the worker |
 | `workers.<name>.models` | one model each | The models that the worker serves |
-| `reviewer.candidates` | `gpt-6.1-sol`, `${ANTHROPIC_MODEL}`, `gemini-3.6-flash` | Read by `reviewer_for()` only. No run uses it. |
+| `reviewer.candidates` | `gpt-6.1-sol`, `${ANTHROPIC_MODEL}`, `gemini-3.6-flash` | Checked at load time only. Each must be an allowed model, and two must be served by enabled workers. No run picks a reviewer from them. |
 | `reviewer.must_differ_from_author` | `true` | Turns on the checker rule |
 | `budgets.per_task_usd` | `30` | The cost limit of one Claude call |
 | `budgets.per_day_usd` | not set | No code reads it |
@@ -438,7 +437,7 @@ uv run pytest
 uv run factory runbooks
 ```
 
-The test run must print `126 passed`. The second command must list `api-design`, `code-audit`, `research` and `web-app`. Neither command calls an LLM.
+The test run must print `124 passed`. The second command must list `api-design`, `code-audit`, `research` and `web-app`. Neither command calls an LLM.
 
 ### 5.4 Run the factory
 
@@ -469,7 +468,7 @@ uv run pytest
 Last line of the real run:
 
 ```
-============================= 126 passed in 2.05s ==============================
+============================= 124 passed in 2.06s ==============================
 ```
 
 The engine tests use fake agents. No test calls an LLM or the network.
@@ -499,7 +498,7 @@ A live run needs the workers and the network. This document quotes no output fro
 | File | Tests | What it proves |
 |------|-------|----------------|
 | `tests/test_a2a_transport.py` | 5 | A task returns its result, asks for input on the same task, fails with a reason, and serves its card. |
-| `tests/test_config.py` | 34 | `llm.yaml` loads, rejects literal keys and unknown models, and picks a reviewer that differs from the author. |
+| `tests/test_config.py` | 29 | `llm.yaml` loads, rejects literal keys and unknown models, and needs two reviewer candidates when the checker rule is on. |
 | `tests/test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
 | `tests/test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
 | `tests/test_runbooks.py` | 28 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. |
@@ -529,7 +528,7 @@ A live run needs the workers and the network. This document quotes no output fro
 - **Same folder.** The task carries the path of the workspace. An agent at a `url:` must see the same folder.
 - **Codex has no command list.** Any command makes the Codex sandbox writable (`invoke.py` line 46). The engine reverts the writes of a role with `writes: none` after the attempt (`engine.py` line 357).
 - **The cost limit covers Claude only.** `per_task_usd` goes to the Claude command (`invoke.py` line 59). The Codex command has no cost limit. No code reads `per_day_usd` (`config.py` line 109).
-- **The reviewer settings are not used in a run.** No run code calls `reviewer_for()` (`config.py` line 212). Only tests call it. The checker rule uses `_check_independence()` (`runbook.py` line 365).
+- **The reviewer candidates are not used in a run.** The reviewer model comes from `agents.yaml` and the roles. `reviewer.candidates` is only validated when `llm.yaml` loads. The checker rule uses `_check_independence()` (`runbook.py` line 365).
 - **A test gap is not retried.** If the tests are green and a criterion is not `PASS`, the run stops (`gates.py` line 296).
 - **Quotes under 20 characters fail.** `quote_on_page()` rejects them (`gates.py` line 338). The gate drops such a finding.
 - **Search has no retry.** `search()` reports the error of a source and goes on (`search.py` line 95). A rate limit removes that source from the result.

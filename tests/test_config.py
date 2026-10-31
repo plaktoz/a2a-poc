@@ -223,19 +223,6 @@ def test_check_request_rejects_disabled_and_unknown_workers():
         cfg.check_request("nope")
 
 
-def test_reviewer_differs_from_author():
-    cfg = default_cfg()
-    assert cfg.reviewer_for("claude-test") == "gpt-6.1-sol"
-    assert cfg.reviewer_for("gpt-6.1-sol") == "claude-test"
-
-
-def test_reviewer_skips_models_of_disabled_workers():
-    cfg = default_cfg()
-    # gemini is a candidate but its worker is disabled, so it is never picked.
-    assert cfg.reviewer_for("claude-test") != "gemini-3.6-flash"
-    assert cfg.reviewer_for("gpt-6.1-sol") != "gemini-3.6-flash"
-
-
 # ---- adapters ---------------------------------------------------------------
 
 
