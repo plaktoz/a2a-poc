@@ -1,6 +1,6 @@
 # PRD: Multi-Harness, LLM-Agnostic Software Factory
 
-**Status:** Draft v0.10
+**Status:** Draft v0.11
 **Date:** 2026-10-31
 **Owner:** TBD
 **Basis:** Design reasoning from a research discussion (Oct 2026). Items marked *Assumption* or *Open question* are not yet validated.
@@ -148,7 +148,7 @@ The factory command line has two kinds of user: a person and an agent that runs 
 - **FR-27 (AXI 8, content first):** Running `factory` with no arguments prints live data and not help text. The data is the executable path (with `~` for the home directory), a 1-sentence description, the runs in the current directory and the runbooks.
 - **FR-28 (AXI 9, contextual disclosure):** Every command ends with `help[]` lines. Each line is a command template for a likely next step. Fixed flags stay. Runtime values stay as placeholders such as `<run>`.
 - **FR-29 (AXI 10, consistent help):** Every subcommand has a short `--help` with 1 example.
-- **FR-30 (cost of every call):** Every call reports its cost. A worker whose provider does not report cost (Codex today) gets its cost from a price table in `llm.yaml`, per model and per token type (input, cached input, output). A call with no price in the table reports its cost as unknown and the run total says how many calls are unknown. The prices carry a date. Requirement added by the owner on 2026-10-31. Not built.
+- **FR-30 (cost of every call):** Every call reports its cost. A worker whose provider does not report cost (Codex today) gets its cost from a price table, `docs/model-prices.md`, per model and per token type (input, cached input, output). The table takes its prices from https://www.llm-prices.com/ (feed `current-v1.json`) and is refreshed weekly by the skill `update-model-prices`. An alias takes the price of its target model: `gpt-advantage-assist` is `gpt-6.1-sol`, and `claude-advantage-assist` is `claude-opus-5-5` (owner, 2026-10-31). A call with no price in the table reports its cost as unknown, and the run total says how many calls are unknown. The table and each refresh carry a date. Requirement added by the owner on 2026-10-31. Built.
 
 ## 9. Non-Functional Requirements
 
@@ -156,7 +156,7 @@ The factory command line has two kinds of user: a person and an agent that runs 
 - **Isolation:** Sandboxed execution per task; no shared mutable state except git.
 - **Portability:** Orchestrator must not depend on any single vendor SDK. Vendor-specific code lives only in worker adapters.
 - **Reliability:** Failed or hung workers time out and release resources; tasks are resumable or restartable. Next: `factory run --resume` skips the steps that `run.json` records as accepted.
-- **Cost control:** Every LLM call logs its model, tokens and cost. The owner chose logging only for now. An optional per-task cap covers one Claude call. It is not required (owner, 2026-10-31). Codex cost is unknown until FR-30 is built. A budget for a run or a day, with a hard stop, is deferred.
+- **Cost control:** Every LLM call logs its model, tokens and cost. The owner chose logging only for now. An optional per-task cap covers one Claude call. It is not required (owner, 2026-10-31). Codex cost comes from the price table (FR-30). A budget for a run or a day, with a hard stop, is deferred.
 - **Auditability:** Every PR links to its spec, trace, worker, model and gate results.
 - **Cross-platform:** Workers run on Linux and macOS. Windows is deferred (decided, question 3). The code is Unix-only today (`fcntl` lock, `.venv/bin/...` paths). Tracked as P18.
 
@@ -243,6 +243,7 @@ No public benchmark compares these setups on your code. Run your own:
 | v0.2 | 2026-10-31 | Non-code workflows, the runbook format, triage and the command-line worker adapters moved into v1 scope (section 6). Non-goals in section 4 updated to match. Phase 6 narrowed to what is still undecided. Status and implementation gaps are tracked in `docs/code-review.md`, not here. |
 | v0.3 | 2026-10-31 | Added goal G6, the scope item and section 8.7 (FR-20 to FR-29): the command line follows the 10 AXI principles. Added open question 8. |
 | v0.4 | 2026-10-31 | Resolved open question 8: a run waits at a checkpoint with `awaiting: approval`, and `--yes` is the explicit approval for an agent. |
+| v0.11 | 2026-10-31 | FR-30 built: the price table is `docs/model-prices.md`, from llm-prices.com, refreshed weekly by a skill. Aliases set by the owner. |
 | v0.10 | 2026-10-31 | Added FR-30: a price table gives the cost of calls whose provider reports no cost (Codex). Owner request. |
 | v0.9 | 2026-10-31 | Question 3 changed: no Windows support for now (NFR cross-platform, P18 deferred). Question 1: the plugin is a module path named in `llm.yaml` (P19). |
 | v0.8 | 2026-10-31 | Recorded the owner answers to questions 1, 2, 4, 6 and 7. Question 1 requires a plugin design for workers (P19). Redaction is not required (FR-17). Question 5 stays deferred. |

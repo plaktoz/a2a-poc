@@ -76,6 +76,8 @@ def render(results: list[Result]) -> str:
     cost = sum((r.usage or {}).get("cost_usd") or 0.0 for r in results)
     tokens = sum((r.usage or {}).get("input_tokens", 0) + (r.usage or {}).get("output_tokens", 0)
                  for r in results)
+    n_unpriced = sum(1 for r in results if r.usage and r.usage.get("cost_usd") is None)
+    unpriced = f" ({n_unpriced} calls have no price in docs/model-prices.md)" if n_unpriced else ""
     lines.append(f"\n{passed}/{len(results)} models answered. Check cost: "
-                 f"{tokens} tokens, ${cost:.4f} (codex cost is not reported).")
+                 f"{tokens} tokens, ${cost:.4f}{unpriced}.")
     return "\n".join(lines)

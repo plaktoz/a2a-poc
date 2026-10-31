@@ -16,7 +16,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "255 passed"; no LLM is called
+uv run pytest                  # prints "270 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, change-request, code-audit, research and web-app
 ```
 
@@ -154,7 +154,7 @@ Rules:
 
 ### What a run costs
 
-Every LLM call logs its worker, model, tokens and cost. `run.json` holds one row for each call, plus totals for the run and for each model. The console prints a `Usage:` line at the end. Claude reports a cost. Codex reports tokens only, so its cost shows as unknown.
+Every LLM call logs its worker, model, tokens and cost. `run.json` holds one row for each call, plus totals for the run and for each model. The console prints a `Usage:` line at the end. Claude reports its cost. Codex reports tokens only, so the factory prices its calls from `docs/model-prices.md` (FR-30). A model with no price there shows its cost as unknown. The file is refreshed weekly with the skill `update-model-prices` or `uv run python -m factory.prices`. An alias such as `gpt-advantage-assist` takes the price of its target model.
 
 The factory logs the cost. It does not limit it by default. A cap is optional: set `budgets.per_task_usd` to cap each Claude call, or leave it unset for no cap. Nothing limits a whole run or a day.
 
@@ -164,7 +164,7 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 |---|---|
 | `factory runbooks` | Lists the runbooks and when to use each |
 | `factory plan RUNBOOK` | Shows the plan without a run. Add `--mermaid` for a flowchart. |
-| `factory check [--worker NAME]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost. Exit code 0 only when every model answers. Run it before a long job. |
+| `factory check [--worker NAME]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost, with Codex calls priced from the table. Exit code 0 only when every model answers. Run it before a long job. |
 | `factory runs [--json]` | Sums the runs in `apps/`: runs by status, how often a step was accepted on its first attempt, rounds per loop, and the cost of each model. It only reads `run.json` files. |
 | `factory run --brief TEXT` | Runs the factory. `--brief` is required. |
 | `--runbook NAME` | Skips triage |
@@ -364,7 +364,8 @@ The code is in `src/factory/`:
 | `roles.py`, `config.py` | `roles.yaml` and `llm.yaml` loading |
 | `agent.py` | The generic role agent: prompt, worker call, reply check |
 | `fleet.py` | Starts and stops the agent processes |
-| `invoke.py` | The one entry for an LLM call. It runs the worker's plugin and logs its usage. |
+| `invoke.py` | The one entry for an LLM call. It runs the worker's plugin and prices a call whose worker reports no cost. |
+| `prices.py`, `docs/model-prices.md` | The price table and its weekly refresh from llm-prices.com (FR-30) |
 | `workers/` | The plugin interface (`base.py`), the loader, and the `claude` and `codex` plugins |
 | `repo.py` | Worktrees, the write guard and the commit for `change-request` |
 | `check.py` | `factory check` |
@@ -390,6 +391,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_schemas.py` | 19 | Each deliverable schema accepts good data, rejects bad data and renders as text. Triage can answer `none`. |
 | `test_tracing.py` | 9 | The run ID, the factory commit and the gate names reach `run.json` and every request. |
 | `test_usage.py` | 17 | Each LLM call reports its tokens and cost, and `run.json` sums them per step and per model. |
+| `test_prices.py` | 14 | The price table prices each Codex model and alias, refreshes from the feed without changing the file on a failure, and fills a missing Codex cost. |
 | `test_workers.py` | 22 | The plugin loader accepts a good plugin, rejects bad ones, and the shipped plugins build their commands. |
 
 No person has run the factory live for this README. The live run calls the workers and the network. The tests do not.
@@ -434,7 +436,7 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 - **A wrong test command gives a false green.** `repo_tests_pass` trusts `--test-command`. A command that runs no tests passes. Check the command yourself.
 - **Worktrees stay.** The factory never removes a worktree or a branch. Use the command that the run prints.
 - **No pull request.** `change-request` makes a commit only. It does not push or open a pull request.
-- **Codex cost is not reported.** Codex gives tokens only, so a run total counts the Claude cost only.
+- **Codex prices come from a table.** `docs/model-prices.md` is refreshed weekly. A price can lag the provider by days. A prompt over 272k tokens costs more than the lower tier the table lists. A model with no price shows an unknown cost, and the run total counts it as unknown.
 
 ## Glossary
 

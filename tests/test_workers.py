@@ -111,7 +111,8 @@ def test_the_built_in_plugins_still_produce_the_same_usage(monkeypatch, tmp_path
     assert (text, u["cost_usd"]) == ("ok", 0.0895)
     fake_run(monkeypatch, CODEX_OK)
     text, u = invoke(cfg, "codex-gpt", "gpt-6.1-sol", "p", tmp_path, Tools())
-    assert (text, u["cost_usd"], u["input_tokens"]) == ("ok", None, 9537)
+    # Codex reports no cost, so invoke prices it from docs/model-prices.md: 9437 fresh x $2, 100 cached x $0.10, 118 out x $10 per 1M
+    assert (text, u["cost_usd"], u["input_tokens"]) == ("ok", 0.020064, 9537)
 
 
 def test_usage_helper_is_the_one_shape_every_plugin_reports():

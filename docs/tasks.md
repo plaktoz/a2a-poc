@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 255 passed.
+Suite at the last check: 270 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -49,7 +49,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | P5 | Per-role `fallback` on the last retry | P19 | committed | the P-series commit, see note |
 | Budget | `budgets.per_task_usd` optional, not required | none | committed | the P-series commit, see note |
 | Check | `factory check`: one short prompt to each model, before any work | P19 | committed | the P-series commit, see note |
-| Codex cost | FR-30: a price table in `llm.yaml` gives the cost of Codex calls | P19 | todo | |
+| Codex cost | FR-30: `docs/model-prices.md` gives the cost of Codex calls, refreshed weekly from llm-prices.com | P19 | built | |
 | P10 slice 1 | Worktree, `change-request` runbook, commit | P19 | committed | the P-series commit, see note |
 | P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | todo | |
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | todo | |
@@ -131,12 +131,13 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 
 ### Codex cost: FR-30
 
-- Files: `src/factory/workers/codex.py`, `llm.yaml` (price table), `usage` in `invoke.py`, `tests/test_usage.py`.
+- Files: `src/factory/prices.py`, `docs/model-prices.md`, `src/factory/invoke.py`, `src/factory/check.py`, `tests/test_prices.py`, `tests/test_workers.py`, `.claude/skills/update-model-prices/SKILL.md`.
+- Decided by the owner (2026-10-31): the prices come from https://www.llm-prices.com/ (`current-v1.json`). The table lives in `docs/model-prices.md`, not in `llm.yaml`. `gpt-advantage-assist` is priced as `gpt-6.1-sol`. `claude-advantage-assist` is priced as `claude-opus-5-5`.
 - Verify: a Codex call with a priced model reports a cost. A model with no price reports `unknown`, and the run total counts it.
-- Open question for the owner: where the prices come from (a list typed into `llm.yaml`, or a fetch from the provider). Not decided.
-- [ ] Price table in `llm.yaml`, with the date of each price.
-- [ ] Cost in `codex_result` from the table, per token type.
-- [ ] Tests, README, PRD v0.10 reference, test count. Commit.
+- [x] Price table in `docs/model-prices.md`, with the feed date and the fetch date.
+- [x] Cost from the table per token type (`prices.cost_usd`), filled in by `invoke` when the worker reports none.
+- [x] Tests (`tests/test_prices.py`), README, skill `update-model-prices`.
+- [x] PRD v0.11 reference. Commit.
 
 ### P10 slice 1: worktree and commit
 
