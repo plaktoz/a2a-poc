@@ -173,7 +173,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>cmd_runbooks()</code> – the <code>runbooks</code> command</td><td><code>src/factory/cli.py</code></td><td>63</td></tr>
     <tr><td><code>cmd_plan()</code> – the <code>plan</code> command</td><td><code>src/factory/cli.py</code></td><td>73</td></tr>
     <tr><td><code>cmd_run()</code> – the <code>run</code> command</td><td><code>src/factory/cli.py</code></td><td>83</td></tr>
-    <tr><td><code>main()</code> – the argument parser and the error exit</td><td><code>src/factory/cli.py</code></td><td>123</td></tr>
+    <tr><td><code>main()</code> – the argument parser and the error exit</td><td><code>src/factory/cli.py</code></td><td>126</td></tr>
     <tr><td><code>holds()</code> – tests a trait condition</td><td><code>src/factory/runbook.py</code></td><td>62</td></tr>
     <tr><td><code>fill()</code> – fills <code>{{ variable }}</code> in a text</td><td><code>src/factory/runbook.py</code></td><td>88</td></tr>
     <tr><td><code>StaffDef</code> – a staff entry: worker, model, url</td><td><code>src/factory/runbook.py</code></td><td>121</td></tr>
@@ -197,19 +197,21 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>snapshot()</code> – reads every project file</td><td><code>src/factory/engine.py</code></td><td>84</td></tr>
     <tr><td><code>changed()</code> – lists the files that differ</td><td><code>src/factory/engine.py</code></td><td>93</td></tr>
     <tr><td><code>restore()</code> – puts files back</td><td><code>src/factory/engine.py</code></td><td>97</td></tr>
-    <tr><td><code>RunLog</code> – writes <code>run.json</code></td><td><code>src/factory/engine.py</code></td><td>109</td></tr>
-    <tr><td><code>Engine</code> – runs a plan</td><td><code>src/factory/engine.py</code></td><td>147</td></tr>
-    <tr><td><code>run()</code> – the driver of a run</td><td><code>src/factory/engine.py</code></td><td>165</td></tr>
-    <tr><td><code>loop()</code> – runs the rounds of a loop</td><td><code>src/factory/engine.py</code></td><td>197</td></tr>
-    <tr><td><code>step()</code> – runs the items of a step</td><td><code>src/factory/engine.py</code></td><td>225</td></tr>
-    <tr><td><code>attempt()</code> – runs one item with retries</td><td><code>src/factory/engine.py</code></td><td>253</td></tr>
-    <tr><td><code>_request()</code> – builds the task for an agent</td><td><code>src/factory/engine.py</code></td><td>290</td></tr>
-    <tr><td><code>_schema_ctx()</code> – the context for a schema</td><td><code>src/factory/engine.py</code></td><td>329</td></tr>
-    <tr><td><code>_on_input()</code> – asks the person</td><td><code>src/factory/engine.py</code></td><td>336</td></tr>
-    <tr><td><code>_check_files()</code> – reverts changes outside a role</td><td><code>src/factory/engine.py</code></td><td>359</td></tr>
-    <tr><td><code>_review_test_change()</code> – the tester judges a test change</td><td><code>src/factory/engine.py</code></td><td>381</td></tr>
-    <tr><td><code>_reset_scaffolds()</code> – resets the scaffolds before code is written</td><td><code>src/factory/engine.py</code></td><td>455</td></tr>
-    <tr><td><code>triage()</code> – asks the triage agent for a choice</td><td><code>src/factory/engine.py</code></td><td>552</td></tr>
+    <tr><td><code>RunLog</code> – writes <code>run.json</code></td><td><code>src/factory/engine.py</code></td><td>124</td></tr>
+    <tr><td><code>add_usage()</code> – logs the calls of a step</td><td><code>src/factory/engine.py</code></td><td>144</td></tr>
+    <tr><td><code>Engine</code> – runs a plan</td><td><code>src/factory/engine.py</code></td><td>185</td></tr>
+    <tr><td><code>run()</code> – the driver of a run</td><td><code>src/factory/engine.py</code></td><td>205</td></tr>
+    <tr><td><code>loop()</code> – runs the rounds of a loop</td><td><code>src/factory/engine.py</code></td><td>239</td></tr>
+    <tr><td><code>step()</code> – runs the items of a step</td><td><code>src/factory/engine.py</code></td><td>267</td></tr>
+    <tr><td><code>attempt()</code> – runs one item with retries</td><td><code>src/factory/engine.py</code></td><td>295</td></tr>
+    <tr><td><code>_send()</code> – sends a task and logs its usage</td><td><code>src/factory/engine.py</code></td><td>331</td></tr>
+    <tr><td><code>_request()</code> – builds the task for an agent</td><td><code>src/factory/engine.py</code></td><td>344</td></tr>
+    <tr><td><code>_schema_ctx()</code> – the context for a schema</td><td><code>src/factory/engine.py</code></td><td>383</td></tr>
+    <tr><td><code>_on_input()</code> – asks the person</td><td><code>src/factory/engine.py</code></td><td>390</td></tr>
+    <tr><td><code>_check_files()</code> – reverts changes outside a role</td><td><code>src/factory/engine.py</code></td><td>413</td></tr>
+    <tr><td><code>_review_test_change()</code> – the tester judges a test change</td><td><code>src/factory/engine.py</code></td><td>435</td></tr>
+    <tr><td><code>_reset_scaffolds()</code> – resets the scaffolds before code is written</td><td><code>src/factory/engine.py</code></td><td>510</td></tr>
+    <tr><td><code>triage()</code> – asks the triage agent for a choice</td><td><code>src/factory/engine.py</code></td><td>607</td></tr>
     <tr><td><code>Failure</code> – a failed gate, with a level</td><td><code>src/factory/gates.py</code></td><td>36</td></tr>
     <tr><td><code>GATES</code> – the table of gates</td><td><code>src/factory/gates.py</code></td><td>64</td></tr>
     <tr><td><code>run_tests()</code> – runs the suite of a surface</td><td><code>src/factory/gates.py</code></td><td>124</td></tr>
@@ -232,17 +234,20 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>Fleet</code> – starts and stops the agents</td><td><code>src/factory/fleet.py</code></td><td>25</td></tr>
     <tr><td><code>_wait()</code> – waits for a card and checks its tags</td><td><code>src/factory/fleet.py</code></td><td>54</td></tr>
     <tr><td><code>send()</code> – sends a task to a role</td><td><code>src/factory/fleet.py</code></td><td>80</td></tr>
-    <tr><td><code>LLM_ATTEMPTS</code> – the tries for a usable reply</td><td><code>src/factory/agent.py</code></td><td>43</td></tr>
-    <tr><td><code>extract_json()</code> – reads the last JSON block</td><td><code>src/factory/agent.py</code></td><td>46</td></tr>
-    <tr><td><code>prompt_for()</code> – builds the prompt of a task</td><td><code>src/factory/agent.py</code></td><td>60</td></tr>
-    <tr><td><code>produce()</code> – calls the worker and validates the reply</td><td><code>src/factory/agent.py</code></td><td>91</td></tr>
-    <tr><td><code>handle()</code> – turns a reply into questions, a review or a result</td><td><code>src/factory/agent.py</code></td><td>106</td></tr>
-    <tr><td><code>card_for()</code> – the agent card with its tags</td><td><code>src/factory/agent.py</code></td><td>119</td></tr>
-    <tr><td><code>main()</code> – starts one agent</td><td><code>src/factory/agent.py</code></td><td>127</td></tr>
-    <tr><td><code>CODEX_TIMEOUT</code> – the limits of one LLM call</td><td><code>src/factory/invoke.py</code></td><td>20</td></tr>
-    <tr><td><code>Tools</code> – the tools of a role in a folder</td><td><code>src/factory/invoke.py</code></td><td>24</td></tr>
-    <tr><td><code>claude_allowlist()</code> – the Claude tool flags</td><td><code>src/factory/invoke.py</code></td><td>36</td></tr>
-    <tr><td><code>invoke()</code> – runs Claude or Codex</td><td><code>src/factory/invoke.py</code></td><td>43</td></tr>
+    <tr><td><code>LLM_ATTEMPTS</code> – the tries for a usable reply</td><td><code>src/factory/agent.py</code></td><td>47</td></tr>
+    <tr><td><code>extract_json()</code> – reads the last JSON block</td><td><code>src/factory/agent.py</code></td><td>50</td></tr>
+    <tr><td><code>prompt_for()</code> – builds the prompt of a task</td><td><code>src/factory/agent.py</code></td><td>64</td></tr>
+    <tr><td><code>produce()</code> – calls the worker and validates the reply</td><td><code>src/factory/agent.py</code></td><td>95</td></tr>
+    <tr><td><code>handle()</code> – turns a reply into questions, a review or a result</td><td><code>src/factory/agent.py</code></td><td>118</td></tr>
+    <tr><td><code>card_for()</code> – the agent card with its tags</td><td><code>src/factory/agent.py</code></td><td>137</td></tr>
+    <tr><td><code>main()</code> – starts one agent</td><td><code>src/factory/agent.py</code></td><td>145</td></tr>
+    <tr><td><code>CODEX_TIMEOUT</code> – the limits of one LLM call</td><td><code>src/factory/invoke.py</code></td><td>26</td></tr>
+    <tr><td><code>LLMFailed</code> – a worker call that failed, with its usage</td><td><code>src/factory/invoke.py</code></td><td>31</td></tr>
+    <tr><td><code>claude_result()</code> – reads the reply and usage of Claude</td><td><code>src/factory/invoke.py</code></td><td>45</td></tr>
+    <tr><td><code>codex_result()</code> – reads the reply and usage of Codex</td><td><code>src/factory/invoke.py</code></td><td>67</td></tr>
+    <tr><td><code>Tools</code> – the tools of a role in a folder</td><td><code>src/factory/invoke.py</code></td><td>90</td></tr>
+    <tr><td><code>claude_allowlist()</code> – the Claude tool flags</td><td><code>src/factory/invoke.py</code></td><td>102</td></tr>
+    <tr><td><code>invoke()</code> – runs Claude or Codex</td><td><code>src/factory/invoke.py</code></td><td>109</td></tr>
     <tr><td><code>SEARCH</code> – the command line of the factory search</td><td><code>src/factory/roles.py</code></td><td>30</td></tr>
     <tr><td><code>Role</code> – one role</td><td><code>src/factory/roles.py</code></td><td>39</td></tr>
     <tr><td><code>_RoleDef</code> – the checked form of a role in the file</td><td><code>src/factory/roles.py</code></td><td>57</td></tr>
@@ -268,10 +273,11 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
     <tr><td><code>search()</code> – queries the sources in parallel</td><td><code>src/factory/search.py</code></td><td>95</td></tr>
     <tr><td><code>Reply</code> – a reply from an agent</td><td><code>src/factory/a2a_transport.py</code></td><td>47</td></tr>
     <tr><td><code>StageFailed</code> – a task that did not finish</td><td><code>src/factory/a2a_transport.py</code></td><td>55</td></tr>
-    <tr><td><code>agent_card()</code> – builds an agent card</td><td><code>src/factory/a2a_transport.py</code></td><td>99</td></tr>
-    <tr><td><code>build_app()</code> – builds the agent server</td><td><code>src/factory/a2a_transport.py</code></td><td>119</td></tr>
-    <tr><td><code>fetch_card()</code> – reads an agent card</td><td><code>src/factory/a2a_transport.py</code></td><td>127</td></tr>
-    <tr><td><code>call()</code> – sends a task and handles input requests</td><td><code>src/factory/a2a_transport.py</code></td><td>133</td></tr>
+    <tr><td><code>TaskError</code> – a failure that carries data to the caller</td><td><code>src/factory/a2a_transport.py</code></td><td>66</td></tr>
+    <tr><td><code>agent_card()</code> – builds an agent card</td><td><code>src/factory/a2a_transport.py</code></td><td>117</td></tr>
+    <tr><td><code>build_app()</code> – builds the agent server</td><td><code>src/factory/a2a_transport.py</code></td><td>137</td></tr>
+    <tr><td><code>fetch_card()</code> – reads an agent card</td><td><code>src/factory/a2a_transport.py</code></td><td>145</td></tr>
+    <tr><td><code>call()</code> – sends a task and handles input requests</td><td><code>src/factory/a2a_transport.py</code></td><td>151</td></tr>
     <tr><td><code>ROLES_FILE</code> – the default <code>roles.yaml</code></td><td><code>src/factory/paths.py</code></td><td>10</td></tr>
     <tr><td><code>CMD_TIMEOUT</code> – the limit of a command</td><td><code>src/factory/process.py</code></td><td>9</td></tr>
     <tr><td><code>workers:</code> – the LLM workers</td><td><code>llm.yaml</code></td><td>21</td></tr>
@@ -493,10 +499,11 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
 
 <ol>
   <li>Build the prompt from the role, the stack, the task, the context and the feedback.</li>
-  <li>Call the worker. The function <code>invoke()</code> runs <code>codex</code> or <code>claude</code>.</li>
+  <li>Call the worker. The function <code>invoke()</code> runs <code>codex</code> or <code>claude</code> and returns the reply and the usage of the call.</li>
   <li>Read the last <code>json</code> block of the reply.</li>
   <li>Validate it against the schema of the step.</li>
   <li>If the reply is not usable, call the worker once more with the error.</li>
+  <li>Send the reply and the usage of every call back to the engine. The engine writes the usage to <code>run.json</code>.</li>
 </ol>
 
 <p>The agent makes at most 2 calls (<code>LLM_ATTEMPTS</code>). The function <code>call()</code> has no read timeout. Each LLM call has its own limit: 900 seconds for Codex and 1500 seconds for Claude.</p>
@@ -524,7 +531,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
 <div class="table-wrap"><table>
   <thead><tr><th>Path in <code>apps/&lt;name&gt;/</code></th><th>Content</th></tr></thead>
   <tbody>
-    <tr><td><code>.factory/run.json</code></td><td>The status, the staff, and one event for each attempt</td></tr>
+    <tr><td><code>.factory/run.json</code></td><td>The status, the staff, one event for each attempt, the usage totals and one row for each LLM call</td></tr>
     <tr><td><code>.factory/artifacts.json</code></td><td>The result of every step</td></tr>
     <tr><td><code>.factory/lock</code></td><td>The lock that stops a second run with the same name</td></tr>
     <tr><td><code>.factory/agents/&lt;role&gt;.log</code></td><td>The log of one agent</td></tr>
@@ -534,7 +541,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
   </tbody>
 </table></div>
 
-<p>The status in <code>run.json</code> is <code>running</code>, <code>accepted</code>, <code>stopped</code> or <code>error</code>. A second run with the same name needs <code>--rebuild</code> after an accepted run.</p>
+<p>The status in <code>run.json</code> is <code>running</code>, <code>accepted</code>, <code>stopped</code> or <code>error</code>. The usage is logged only. No run or day limit stops a run. A second run with the same name needs <code>--rebuild</code> after an accepted run.</p>
 
 <h2 id="settings">4. Settings</h2>
 
@@ -678,7 +685,7 @@ A software factory that runs a runbook of A2A agents. It builds web apps, writes
 <pre><code>uv run pytest
 uv run factory runbooks</code></pre>
 
-<p>The test run must print <code>124 passed</code>. The second command must list <code>api-design</code>, <code>code-audit</code>, <code>research</code> and <code>web-app</code>. Neither command calls an LLM.</p>
+<p>The test run must print <code>141 passed</code>. The second command must list <code>api-design</code>, <code>code-audit</code>, <code>research</code> and <code>web-app</code>. Neither command calls an LLM.</p>
 
 <h3 id="h-5-4">5.4 Run the factory</h3>
 
@@ -706,7 +713,7 @@ uv run factory run --runbook code-audit --target apps/kanban-react --brief &quot
 
 <p>Last line of the real run:</p>
 
-<pre><code>============================= 124 passed in 2.06s ==============================</code></pre>
+<pre><code>============================= 141 passed in 2.90s ==============================</code></pre>
 
 <p>The engine tests use fake agents. No test calls an LLM or the network.</p>
 
@@ -732,11 +739,12 @@ Scaffolds: web/ (react-vite), api/ (fastapi)</code></pre>
   <thead><tr><th>File</th><th>Tests</th><th>What it proves</th></tr></thead>
   <tbody>
     <tr><td><code>tests/test_a2a_transport.py</code></td><td>5</td><td>A task returns its result, asks for input on the same task, fails with a reason, and serves its card.</td></tr>
-    <tr><td><code>tests/test_config.py</code></td><td>29</td><td><code>llm.yaml</code> loads, rejects literal keys and unknown models, and needs two reviewer candidates when the checker rule is on.</td></tr>
+    <tr><td><code>tests/test_config.py</code></td><td>32</td><td><code>llm.yaml</code> loads, rejects literal keys and unknown models, and needs two reviewer candidates when the checker rule is on.</td></tr>
     <tr><td><code>tests/test_engine.py</code></td><td>24</td><td>Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents.</td></tr>
     <tr><td><code>tests/test_roles.py</code></td><td>17</td><td><code>roles.yaml</code> loads, rejects bad files with a reason, and can be replaced with <code>FACTORY_ROLES</code>.</td></tr>
-    <tr><td><code>tests/test_runbooks.py</code></td><td>28</td><td>The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused.</td></tr>
+    <tr><td><code>tests/test_runbooks.py</code></td><td>29</td><td>The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused.</td></tr>
     <tr><td><code>tests/test_schemas.py</code></td><td>17</td><td>Each deliverable schema accepts good data, rejects bad data and renders as text.</td></tr>
+    <tr><td><code>tests/test_usage.py</code></td><td>17</td><td>Each LLM call reports its tokens and cost, and <code>run.json</code> sums them per step and per model, also when a step fails.</td></tr>
   </tbody>
 </table></div>
 
@@ -763,17 +771,17 @@ Scaffolds: web/ (react-vite), api/ (fastapi)</code></pre>
 <ul>
   <li><strong>A run can end with a draft.</strong> In the <code>research</code> runbook, the <code>report</code> step saves <code>REPORT.md</code> before the <code>review</code> step runs. If the reviewer does not approve in 3 rounds, the run stops with status <code>stopped</code> and exits with code 1. The draft stays on disk with a <code>&gt; **NOT APPROVED.**</code> banner at its top. Read the banner before you use the file. In 3 live runs before this banner existed, this happened.</li>
   <li><strong>Port race.</strong> <code>free_port()</code> closes its socket before the agent binds the port (<code>gates.py</code> line 143). Another process can take the port. The fleet then gives up after 30 seconds (<code>fleet.py</code> line 22).</li>
-  <li><strong>The card check is weak.</strong> The fleet compares only the tags <code>role:</code>, <code>worker:</code> and <code>model:</code> (<code>fleet.py</code> line 54). A different agent with the same tags passes.</li>
-  <li><strong>Agents keep state in memory.</strong> <code>InMemoryTaskStore</code> (<code>a2a_transport.py</code> line 122) loses a task when the agent stops. A task cannot resume.</li>
+  <li><strong>The card check is weak.</strong> The fleet compares only the tags <code>role:</code>, <code>worker:</code> and <code>model:</code> (<code>fleet.py</code> line 68). A different agent with the same tags passes.</li>
+  <li><strong>Agents keep state in memory.</strong> <code>InMemoryTaskStore</code> (<code>a2a_transport.py</code> line 140) loses a task when the agent stops. A task cannot resume.</li>
   <li><strong>Same folder.</strong> The task carries the path of the workspace. An agent at a <code>url:</code> must see the same folder.</li>
-  <li><strong>Codex has no command list.</strong> Any command makes the Codex sandbox writable (<code>invoke.py</code> line 46). The engine reverts the writes of a role with <code>writes: none</code> after the attempt (<code>engine.py</code> line 359).</li>
-  <li><strong>The cost limit covers Claude only.</strong> <code>per_task_usd</code> goes to the Claude command (<code>invoke.py</code> line 59). The Codex command has no cost limit. No code reads <code>per_day_usd</code> (<code>config.py</code> line 109).</li>
+  <li><strong>Codex has no command list.</strong> Any command makes the Codex sandbox writable (<code>invoke.py</code> line 114). The engine reverts the writes of a role with <code>writes: none</code> after the attempt (<code>engine.py</code> line 413).</li>
+  <li><strong>The cost is logged, not limited.</strong> Every LLM call writes its tokens to <code>run.json</code>. Claude reports a cost. Codex reports tokens only, so its cost shows as unknown. <code>per_task_usd</code> is the cost limit of one Claude call (<code>invoke.py</code> line 128). No limit covers a run or a day, and no code reads <code>per_day_usd</code> (<code>config.py</code> line 109).</li>
   <li><strong>The reviewer candidates are not used in a run.</strong> The reviewer model comes from <code>agents.yaml</code> and the roles. <code>reviewer.candidates</code> is only validated when <code>llm.yaml</code> loads. The checker rule uses <code>_check_independence()</code> (<code>runbook.py</code> line 365).</li>
   <li><strong>A test gap is not retried.</strong> If the tests are green and a criterion is not <code>PASS</code>, the run stops (<code>gates.py</code> line 296).</li>
   <li><strong>Quotes under 20 characters fail.</strong> <code>quote_on_page()</code> rejects them (<code>gates.py</code> line 338). The gate drops such a finding.</li>
   <li><strong>Search has no retry.</strong> <code>search()</code> reports the error of a source and goes on (<code>search.py</code> line 95). A rate limit removes that source from the result.</li>
-  <li><strong>Only 6 items run together.</strong> A parallel step uses at most 6 threads (<code>engine.py</code> line 243).</li>
-  <li><strong>No read timeout on a task.</strong> A hung agent blocks the run until its LLM call reaches the limit (<code>a2a_transport.py</code> line 133).</li>
+  <li><strong>Only 6 items run together.</strong> A parallel step uses at most 6 threads (<code>engine.py</code> line 285).</li>
+  <li><strong>No read timeout on a task.</strong> A hung agent blocks the run until its LLM call reaches the limit (<code>a2a_transport.py</code> line 151).</li>
   <li><strong>No person has checked the HTML.</strong> The checks in section 6 do not include a review of the page by a person.</li>
 </ul>
 

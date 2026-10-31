@@ -105,10 +105,10 @@ They then fetch the pages they cite, and the `citations_verified` gate checks ev
 
 ## Runs
 
-Work happens in `apps/<name>/`, one directory per run, so runs can overlap. `apps/<name>/.factory/` holds `run.json` (status, steps, attempts, gate results), `artifacts.json` and each agent's log. A second run of the same name is refused while the first holds the lock, and accepted work isn't redone without `--rebuild`.
+Work happens in `apps/<name>/`, one directory per run, so runs can overlap. `apps/<name>/.factory/` holds `run.json` (status, steps, attempts, gate results, and the LLM usage with tokens and cost per call and in total), `artifacts.json` and each agent's log. A second run of the same name is refused while the first holds the lock, and accepted work isn't redone without `--rebuild`.
 
 ## Code
 
-`src/factory/`: `cli.py` (commands), `runbook.py` (loading, validation, trait resolution, staffing, plan outline), `engine.py` (runs a plan: steps, loops, retries, role checks, checkpoints), `gates.py`, `schemas.py` (deliverables), `roles.py` (loads `roles.yaml`), `agent.py` (the generic role agent), `fleet.py` (launches agents), `invoke.py` (Claude / Codex calls with per-role tools), `scaffold.py`, `search.py`, `a2a_transport.py`.
+`src/factory/`: `cli.py` (commands), `runbook.py` (loading, validation, trait resolution, staffing, plan outline), `engine.py` (runs a plan: steps, loops, retries, role checks, checkpoints), `gates.py`, `schemas.py` (deliverables), `roles.py` (loads `roles.yaml`), `agent.py` (the generic role agent), `fleet.py` (launches agents), `invoke.py` (Claude / Codex calls with per-role tools, and their usage), `scaffold.py`, `search.py`, `a2a_transport.py`.
 
 Tests: `uv run pytest`. The engine tests use fake agents, so no LLM is called.

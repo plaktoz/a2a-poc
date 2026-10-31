@@ -39,7 +39,7 @@ The line numbers apply to this version of the files. If a line number is differe
 | `cmd_runbooks()` – the `runbooks` command | `src/factory/cli.py` | 63 |
 | `cmd_plan()` – the `plan` command | `src/factory/cli.py` | 73 |
 | `cmd_run()` – the `run` command | `src/factory/cli.py` | 83 |
-| `main()` – the argument parser and the error exit | `src/factory/cli.py` | 123 |
+| `main()` – the argument parser and the error exit | `src/factory/cli.py` | 126 |
 | `holds()` – tests a trait condition | `src/factory/runbook.py` | 62 |
 | `fill()` – fills `{{ variable }}` in a text | `src/factory/runbook.py` | 88 |
 | `StaffDef` – a staff entry: worker, model, url | `src/factory/runbook.py` | 121 |
@@ -63,19 +63,21 @@ The line numbers apply to this version of the files. If a line number is differe
 | `snapshot()` – reads every project file | `src/factory/engine.py` | 84 |
 | `changed()` – lists the files that differ | `src/factory/engine.py` | 93 |
 | `restore()` – puts files back | `src/factory/engine.py` | 97 |
-| `RunLog` – writes `run.json` | `src/factory/engine.py` | 109 |
-| `Engine` – runs a plan | `src/factory/engine.py` | 147 |
-| `run()` – the driver of a run | `src/factory/engine.py` | 165 |
-| `loop()` – runs the rounds of a loop | `src/factory/engine.py` | 197 |
-| `step()` – runs the items of a step | `src/factory/engine.py` | 225 |
-| `attempt()` – runs one item with retries | `src/factory/engine.py` | 253 |
-| `_request()` – builds the task for an agent | `src/factory/engine.py` | 290 |
-| `_schema_ctx()` – the context for a schema | `src/factory/engine.py` | 329 |
-| `_on_input()` – asks the person | `src/factory/engine.py` | 336 |
-| `_check_files()` – reverts changes outside a role | `src/factory/engine.py` | 359 |
-| `_review_test_change()` – the tester judges a test change | `src/factory/engine.py` | 381 |
-| `_reset_scaffolds()` – resets the scaffolds before code is written | `src/factory/engine.py` | 455 |
-| `triage()` – asks the triage agent for a choice | `src/factory/engine.py` | 552 |
+| `RunLog` – writes `run.json` | `src/factory/engine.py` | 124 |
+| `add_usage()` – logs the calls of a step | `src/factory/engine.py` | 144 |
+| `Engine` – runs a plan | `src/factory/engine.py` | 185 |
+| `run()` – the driver of a run | `src/factory/engine.py` | 205 |
+| `loop()` – runs the rounds of a loop | `src/factory/engine.py` | 239 |
+| `step()` – runs the items of a step | `src/factory/engine.py` | 267 |
+| `attempt()` – runs one item with retries | `src/factory/engine.py` | 295 |
+| `_send()` – sends a task and logs its usage | `src/factory/engine.py` | 331 |
+| `_request()` – builds the task for an agent | `src/factory/engine.py` | 344 |
+| `_schema_ctx()` – the context for a schema | `src/factory/engine.py` | 383 |
+| `_on_input()` – asks the person | `src/factory/engine.py` | 390 |
+| `_check_files()` – reverts changes outside a role | `src/factory/engine.py` | 413 |
+| `_review_test_change()` – the tester judges a test change | `src/factory/engine.py` | 435 |
+| `_reset_scaffolds()` – resets the scaffolds before code is written | `src/factory/engine.py` | 510 |
+| `triage()` – asks the triage agent for a choice | `src/factory/engine.py` | 607 |
 | `Failure` – a failed gate, with a level | `src/factory/gates.py` | 36 |
 | `GATES` – the table of gates | `src/factory/gates.py` | 64 |
 | `run_tests()` – runs the suite of a surface | `src/factory/gates.py` | 124 |
@@ -98,17 +100,20 @@ The line numbers apply to this version of the files. If a line number is differe
 | `Fleet` – starts and stops the agents | `src/factory/fleet.py` | 25 |
 | `_wait()` – waits for a card and checks its tags | `src/factory/fleet.py` | 54 |
 | `send()` – sends a task to a role | `src/factory/fleet.py` | 80 |
-| `LLM_ATTEMPTS` – the tries for a usable reply | `src/factory/agent.py` | 43 |
-| `extract_json()` – reads the last JSON block | `src/factory/agent.py` | 46 |
-| `prompt_for()` – builds the prompt of a task | `src/factory/agent.py` | 60 |
-| `produce()` – calls the worker and validates the reply | `src/factory/agent.py` | 91 |
-| `handle()` – turns a reply into questions, a review or a result | `src/factory/agent.py` | 106 |
-| `card_for()` – the agent card with its tags | `src/factory/agent.py` | 119 |
-| `main()` – starts one agent | `src/factory/agent.py` | 127 |
-| `CODEX_TIMEOUT` – the limits of one LLM call | `src/factory/invoke.py` | 20 |
-| `Tools` – the tools of a role in a folder | `src/factory/invoke.py` | 24 |
-| `claude_allowlist()` – the Claude tool flags | `src/factory/invoke.py` | 36 |
-| `invoke()` – runs Claude or Codex | `src/factory/invoke.py` | 43 |
+| `LLM_ATTEMPTS` – the tries for a usable reply | `src/factory/agent.py` | 47 |
+| `extract_json()` – reads the last JSON block | `src/factory/agent.py` | 50 |
+| `prompt_for()` – builds the prompt of a task | `src/factory/agent.py` | 64 |
+| `produce()` – calls the worker and validates the reply | `src/factory/agent.py` | 95 |
+| `handle()` – turns a reply into questions, a review or a result | `src/factory/agent.py` | 118 |
+| `card_for()` – the agent card with its tags | `src/factory/agent.py` | 137 |
+| `main()` – starts one agent | `src/factory/agent.py` | 145 |
+| `CODEX_TIMEOUT` – the limits of one LLM call | `src/factory/invoke.py` | 26 |
+| `LLMFailed` – a worker call that failed, with its usage | `src/factory/invoke.py` | 31 |
+| `claude_result()` – reads the reply and usage of Claude | `src/factory/invoke.py` | 45 |
+| `codex_result()` – reads the reply and usage of Codex | `src/factory/invoke.py` | 67 |
+| `Tools` – the tools of a role in a folder | `src/factory/invoke.py` | 90 |
+| `claude_allowlist()` – the Claude tool flags | `src/factory/invoke.py` | 102 |
+| `invoke()` – runs Claude or Codex | `src/factory/invoke.py` | 109 |
 | `SEARCH` – the command line of the factory search | `src/factory/roles.py` | 30 |
 | `Role` – one role | `src/factory/roles.py` | 39 |
 | `_RoleDef` – the checked form of a role in the file | `src/factory/roles.py` | 57 |
@@ -134,10 +139,11 @@ The line numbers apply to this version of the files. If a line number is differe
 | `search()` – queries the sources in parallel | `src/factory/search.py` | 95 |
 | `Reply` – a reply from an agent | `src/factory/a2a_transport.py` | 47 |
 | `StageFailed` – a task that did not finish | `src/factory/a2a_transport.py` | 55 |
-| `agent_card()` – builds an agent card | `src/factory/a2a_transport.py` | 99 |
-| `build_app()` – builds the agent server | `src/factory/a2a_transport.py` | 119 |
-| `fetch_card()` – reads an agent card | `src/factory/a2a_transport.py` | 127 |
-| `call()` – sends a task and handles input requests | `src/factory/a2a_transport.py` | 133 |
+| `TaskError` – a failure that carries data to the caller | `src/factory/a2a_transport.py` | 66 |
+| `agent_card()` – builds an agent card | `src/factory/a2a_transport.py` | 117 |
+| `build_app()` – builds the agent server | `src/factory/a2a_transport.py` | 137 |
+| `fetch_card()` – reads an agent card | `src/factory/a2a_transport.py` | 145 |
+| `call()` – sends a task and handles input requests | `src/factory/a2a_transport.py` | 151 |
 | `ROLES_FILE` – the default `roles.yaml` | `src/factory/paths.py` | 10 |
 | `CMD_TIMEOUT` – the limit of a command | `src/factory/process.py` | 9 |
 | `workers:` – the LLM workers | `llm.yaml` | 21 |
@@ -273,10 +279,11 @@ The fleet waits up to 30 seconds for each agent card. It checks that the card ha
 An agent handles a task in this order:
 
 1. Build the prompt from the role, the stack, the task, the context and the feedback.
-2. Call the worker. The function `invoke()` runs `codex` or `claude`.
+2. Call the worker. The function `invoke()` runs `codex` or `claude` and returns the reply and the usage of the call.
 3. Read the last `json` block of the reply.
 4. Validate it against the schema of the step.
 5. If the reply is not usable, call the worker once more with the error.
+6. Send the reply and the usage of every call back to the engine. The engine writes the usage to `run.json`.
 
 The agent makes at most 2 calls (`LLM_ATTEMPTS`). The function `call()` has no read timeout. Each LLM call has its own limit: 900 seconds for Codex and 1500 seconds for Claude.
 
@@ -300,7 +307,7 @@ The first step that writes code resets each scaffold to its template. The reset 
 
 | Path in `apps/<name>/` | Content |
 |------------------------|---------|
-| `.factory/run.json` | The status, the staff, and one event for each attempt |
+| `.factory/run.json` | The status, the staff, one event for each attempt, the usage totals and one row for each LLM call |
 | `.factory/artifacts.json` | The result of every step |
 | `.factory/lock` | The lock that stops a second run with the same name |
 | `.factory/agents/<role>.log` | The log of one agent |
@@ -308,7 +315,7 @@ The first step that writes code resets each scaffold to its template. The reset 
 | `REPORT.md`, `AUDIT.md` | Reports that a step saves with `save:` |
 | `web/`, `api/` | The scaffolds of a web app |
 
-The status in `run.json` is `running`, `accepted`, `stopped` or `error`. A second run with the same name needs `--rebuild` after an accepted run.
+The status in `run.json` is `running`, `accepted`, `stopped` or `error`. The usage is logged only. No run or day limit stops a run. A second run with the same name needs `--rebuild` after an accepted run.
 
 ## 4. Settings
 
@@ -436,7 +443,7 @@ uv run pytest
 uv run factory runbooks
 ```
 
-The test run must print `124 passed`. The second command must list `api-design`, `code-audit`, `research` and `web-app`. Neither command calls an LLM.
+The test run must print `141 passed`. The second command must list `api-design`, `code-audit`, `research` and `web-app`. Neither command calls an LLM.
 
 ### 5.4 Run the factory
 
@@ -467,7 +474,7 @@ uv run pytest
 Last line of the real run:
 
 ```
-============================= 124 passed in 2.06s ==============================
+============================= 141 passed in 2.90s ==============================
 ```
 
 The engine tests use fake agents. No test calls an LLM or the network.
@@ -497,11 +504,12 @@ A live run needs the workers and the network. This document quotes no output fro
 | File | Tests | What it proves |
 |------|-------|----------------|
 | `tests/test_a2a_transport.py` | 5 | A task returns its result, asks for input on the same task, fails with a reason, and serves its card. |
-| `tests/test_config.py` | 29 | `llm.yaml` loads, rejects literal keys and unknown models, and needs two reviewer candidates when the checker rule is on. |
+| `tests/test_config.py` | 32 | `llm.yaml` loads, rejects literal keys and unknown models, and needs two reviewer candidates when the checker rule is on. |
 | `tests/test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
 | `tests/test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
-| `tests/test_runbooks.py` | 28 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. |
+| `tests/test_runbooks.py` | 29 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. |
 | `tests/test_schemas.py` | 17 | Each deliverable schema accepts good data, rejects bad data and renders as text. |
+| `tests/test_usage.py` | 17 | Each LLM call reports its tokens and cost, and `run.json` sums them per step and per model, also when a step fails. |
 
 ### 6.5 Problems and solutions
 
@@ -522,17 +530,17 @@ A live run needs the workers and the network. This document quotes no output fro
 
 - **A run can end with a draft.** In the `research` runbook, the `report` step saves `REPORT.md` before the `review` step runs. If the reviewer does not approve in 3 rounds, the run stops with status `stopped` and exits with code 1. The draft stays on disk with a `> **NOT APPROVED.**` banner at its top. Read the banner before you use the file. In 3 live runs before this banner existed, this happened.
 - **Port race.** `free_port()` closes its socket before the agent binds the port (`gates.py` line 143). Another process can take the port. The fleet then gives up after 30 seconds (`fleet.py` line 22).
-- **The card check is weak.** The fleet compares only the tags `role:`, `worker:` and `model:` (`fleet.py` line 54). A different agent with the same tags passes.
-- **Agents keep state in memory.** `InMemoryTaskStore` (`a2a_transport.py` line 122) loses a task when the agent stops. A task cannot resume.
+- **The card check is weak.** The fleet compares only the tags `role:`, `worker:` and `model:` (`fleet.py` line 68). A different agent with the same tags passes.
+- **Agents keep state in memory.** `InMemoryTaskStore` (`a2a_transport.py` line 140) loses a task when the agent stops. A task cannot resume.
 - **Same folder.** The task carries the path of the workspace. An agent at a `url:` must see the same folder.
-- **Codex has no command list.** Any command makes the Codex sandbox writable (`invoke.py` line 46). The engine reverts the writes of a role with `writes: none` after the attempt (`engine.py` line 359).
-- **The cost limit covers Claude only.** `per_task_usd` goes to the Claude command (`invoke.py` line 59). The Codex command has no cost limit. No code reads `per_day_usd` (`config.py` line 109).
+- **Codex has no command list.** Any command makes the Codex sandbox writable (`invoke.py` line 114). The engine reverts the writes of a role with `writes: none` after the attempt (`engine.py` line 413).
+- **The cost is logged, not limited.** Every LLM call writes its tokens to `run.json`. Claude reports a cost. Codex reports tokens only, so its cost shows as unknown. `per_task_usd` is the cost limit of one Claude call (`invoke.py` line 128). No limit covers a run or a day, and no code reads `per_day_usd` (`config.py` line 109).
 - **The reviewer candidates are not used in a run.** The reviewer model comes from `agents.yaml` and the roles. `reviewer.candidates` is only validated when `llm.yaml` loads. The checker rule uses `_check_independence()` (`runbook.py` line 365).
 - **A test gap is not retried.** If the tests are green and a criterion is not `PASS`, the run stops (`gates.py` line 296).
 - **Quotes under 20 characters fail.** `quote_on_page()` rejects them (`gates.py` line 338). The gate drops such a finding.
 - **Search has no retry.** `search()` reports the error of a source and goes on (`search.py` line 95). A rate limit removes that source from the result.
-- **Only 6 items run together.** A parallel step uses at most 6 threads (`engine.py` line 243).
-- **No read timeout on a task.** A hung agent blocks the run until its LLM call reaches the limit (`a2a_transport.py` line 133).
+- **Only 6 items run together.** A parallel step uses at most 6 threads (`engine.py` line 285).
+- **No read timeout on a task.** A hung agent blocks the run until its LLM call reaches the limit (`a2a_transport.py` line 151).
 - **No person has checked the HTML.** The checks in section 6 do not include a review of the page by a person.
 
 ## 8. Glossary

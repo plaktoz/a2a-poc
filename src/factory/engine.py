@@ -106,6 +106,21 @@ def restore(root: Path, before: Snapshot, paths: set[str]) -> None:
 # --- run log ----------------------------------------------------------------
 
 
+def _empty_usage() -> Json:
+    return {"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0,
+            "cost_usd": 0.0, "calls_without_cost": 0}  # a call with no known cost adds no dollars
+
+
+def _add_usage(total: Json, call: Json) -> None:
+    total["calls"] += 1
+    for k in ("input_tokens", "cached_input_tokens", "output_tokens"):
+        total[k] += call.get(k) or 0
+    if call.get("cost_usd") is None:
+        total["calls_without_cost"] += 1
+    else:
+        total["cost_usd"] = round(total["cost_usd"] + call["cost_usd"], 6)
+
+
 class RunLog:
     def __init__(self, path: Path, plan: Plan, brief: str) -> None:
         self.path, self.lock = path, threading.Lock()
@@ -114,7 +129,8 @@ class RunLog:
             "surfaces": {d: t.name for d, t in plan.templates.items()},
             "staff": {r: {"worker": s.worker, "model": s.model} for r, s in plan.staff.items()
                       if r in plan.roles()},
-            "status": "running", "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "events": [],
+            "status": "running", "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "usage": {**_empty_usage(), "by_model": {}}, "events": [], "calls": [],
         }
 
     def record(self, step: str, item: str | None, role: str, status: str, started: float,
@@ -124,6 +140,28 @@ class RunLog:
                                         "seconds": round(time.monotonic() - started, 1),
                                         "detail": detail[:1000]})
             self._write()
+
+    def add_usage(self, step: str, item: str | None, role: str, calls: list[Json] | None) -> None:
+        """Log the LLM calls of one step: one row each in `calls`, and the sums in `usage`."""
+        if not calls:
+            return
+        with self.lock:
+            total = self.data["usage"]
+            for c in calls:
+                self.data["calls"].append({"step": step, "item": item, "role": role, **c})
+                _add_usage(total, c)
+                _add_usage(total["by_model"].setdefault(c["model"], _empty_usage()), c)
+            self._write()
+
+    def usage_line(self) -> str:
+        u = self.data["usage"]
+        if not u["calls"]:
+            return ""
+        cost = f"${u['cost_usd']:.4f}" if u["calls"] > u["calls_without_cost"] else "cost unknown"
+        if 0 < u["calls_without_cost"] < u["calls"]:
+            cost += f" ({u['calls_without_cost']} of {u['calls']} calls report no cost)"
+        return (f"Usage: {u['calls']} LLM calls, {u['input_tokens']:,} input tokens "
+                f"({u['cached_input_tokens']:,} cached), {u['output_tokens']:,} output tokens, {cost}")
 
     def save(self, status: str, detail: str = "") -> None:
         with self.lock:
@@ -148,12 +186,14 @@ class Engine:
     def __init__(self, plan: Plan, cfg: Config, workspace: Path, send: Send, *, brief: str,
                  name: str, target: Path | None = None, interactive: bool = True,
                  say: Callable[[str], None] = print, ask: Callable[[str], str] = input,
-                 fetch: Callable[[str], str | None] = fetch_text, install: bool = True) -> None:
+                 fetch: Callable[[str], str | None] = fetch_text, install: bool = True,
+                 earlier_usage: list[Json] | None = None) -> None:
         self.plan, self.cfg, self.ws, self.send = plan, cfg, workspace, send
         self.brief, self.name, self.target = brief, name, target
         self.interactive, self.say, self.ask, self.fetch, self.install = interactive, say, ask, fetch, install
         self.artifacts: dict[str, Any] = {}
         self.log = RunLog(workspace / ".factory" / "run.json", plan, brief)
+        self.log.add_usage("triage", None, "triage", earlier_usage)  # made before the engine existed
         self._scaffolds_reset = False
         self._cache: dict[str, str | None] = {}
         self._cache_lock = threading.Lock()
@@ -181,6 +221,7 @@ class Engine:
             self._save_artifacts()
             self.log.save("stopped", str(e))
             self.say(f"\nStopped: {e}")
+            self.say(self.log.usage_line())
             return False
         except BaseException as e:
             self._save_artifacts()
@@ -189,6 +230,7 @@ class Engine:
         self._save_artifacts()
         self.log.save("accepted")
         self.say("\nDone.")
+        self.say(self.log.usage_line())
         for f in self.plan.runbook.finish:
             if holds(f.when, self.plan.traits):
                 self.say(fill(f.text, self._values(None)).strip())
@@ -258,7 +300,8 @@ class Engine:
             started = time.monotonic()
             before = snapshot(cwd)
             try:
-                reply = self.send(s.role, self._request(s, item, cwd, feedback), self._on_input(s))
+                reply = self._send(s.id, item.key, s.role, self._request(s, item, cwd, feedback),
+                                   self._on_input(s))
                 out = reply.get("output", {})
                 if s.output:
                     out = schemas.validate(s.output, out, self._schema_ctx(s))
@@ -284,6 +327,17 @@ class Engine:
                 raise RoundFailed({item.key: problem})
             feedback = problem
         raise AssertionError("unreachable")
+
+    def _send(self, step: str, item: str | None, role: str, request: Json,
+              on_input: Callable[[Json], Json] | None) -> Json:
+        """Send a request to an agent and log the LLM calls it made, also when it fails."""
+        try:
+            reply = self.send(role, request, on_input)
+        except StageFailed as e:
+            self.log.add_usage(step, item, role, e.data.get("usage"))
+            raise
+        self.log.add_usage(step, item, role, reply.get("usage"))
+        return reply
 
     # --- requests
 
@@ -407,7 +461,8 @@ class Engine:
                    {"title": "Diff of the tests", "body": f"```diff\n{diff[:12000]}```"}],
             }
             try:
-                verdict = schemas.validate("verdict", self.send("tester", req, None).get("output", {}))
+                reply = self._send(f"{s.id}:test-review", item.key, "tester", req, None)
+                verdict = schemas.validate("verdict", reply.get("output", {}))
             except (StageFailed, ValueError) as e:
                 verdict = {"verdict": "revise", "issues": [f"the tester could not review the change: {e}"]}
         why = "; ".join(verdict.get("issues", [])) or "no reason given"
@@ -550,8 +605,11 @@ def _summary_suffix(s: StepDef, out: Json) -> str:
 
 
 def triage(send: Send, brief: str, books: dict[str, Runbook], *, target: str | None,
-           on_input: Callable[[Json], Json] | None, cwd: Path) -> Json:
-    """Ask the triage agent which runbook and traits fit the brief."""
+           on_input: Callable[[Json], Json] | None, cwd: Path,
+           usage: list[Json] | None = None) -> Json:
+    """Ask the triage agent which runbook and traits fit the brief.
+
+    The LLM calls it makes are added to `usage`, for the run log."""
     req = {
         "task": "triage", "item": None, "output": "triage", "cwd": str(cwd), "commands": {},
         "instructions": (
@@ -564,5 +622,12 @@ def triage(send: Send, brief: str, books: dict[str, Runbook], *, target: str | N
         "schema_ctx": {"runbooks": {n: list(rb.traits) for n, rb in books.items()}},
         "interactive": False, "checkpoint": on_input is not None, "feedback": "",
     }
-    out = send("triage", req, on_input).get("output", {})
-    return schemas.validate("triage", out, req["schema_ctx"])
+    try:
+        reply = send("triage", req, on_input)
+    except StageFailed as e:
+        if usage is not None:
+            usage.extend(e.data.get("usage") or [])
+        raise
+    if usage is not None:
+        usage.extend(reply.get("usage") or [])
+    return schemas.validate("triage", reply.get("output", {}), req["schema_ctx"])

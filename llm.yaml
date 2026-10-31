@@ -51,5 +51,5 @@ reviewer:
   must_differ_from_author: true
 
 budgets:
-  per_task_usd: 30                      # hard stop
+  per_task_usd: 30                      # the cost limit of one Claude call
   max_retries: 1

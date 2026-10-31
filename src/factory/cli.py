@@ -87,6 +87,7 @@ def cmd_run(args) -> int:
     interactive = not args.yes
     target = str(Path(args.target).resolve()) if args.target else None
 
+    triage_usage: list = []  # the LLM calls of triage, logged in the run
     if args.runbook:
         if args.runbook not in books:
             raise ConfigError(f"no runbook {args.runbook!r}; runbooks are {', '.join(books)}")
@@ -95,7 +96,8 @@ def cmd_run(args) -> int:
         staff = load_staff(args.agents, cfg, parse_staff(args.staff))
         print("Choosing a runbook for the brief...")
         with Fleet(staff, ["triage"], APPS_DIR / ".factory" / "triage") as fleet:
-            choice = triage(fleet.send, args.brief, books, target=target, on_input=None, cwd=ROOT)
+            choice = triage(fleet.send, args.brief, books, target=target, on_input=None, cwd=ROOT,
+                            usage=triage_usage)
         print(f"\n{render('triage', choice)}\n")
         rb = books[choice["runbook"]]
         traits = {**choice["traits"], **traits}  # traits given on the command line win
@@ -114,7 +116,8 @@ def cmd_run(args) -> int:
         with Fleet(plan.staff, plan.roles(), ws / ".factory" / "agents", args.config) as fleet:
             print("A2A agents:", *(f"  {line}" for line in fleet.describe()), sep="\n")
             engine = Engine(plan, cfg, ws, fleet.send, brief=args.brief, name=name,
-                            target=Path(target) if target else None, interactive=interactive)
+                            target=Path(target) if target else None, interactive=interactive,
+                            earlier_usage=triage_usage)
             return 0 if engine.run() else 1
     finally:
         lock.close()

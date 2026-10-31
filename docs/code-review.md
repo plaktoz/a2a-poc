@@ -46,13 +46,13 @@ Not found: commented-out code, Middle Man (`_LazyRoles` is justified), Refused B
 |---|---|---|
 | P1 | §8.4 gate 5: independent review by a different model | `_check_independence` (`runbook.py:365`) compares only reviewer/writer and verifier/developer. `api-design` has an `architect` and a `reviewer` but no `writer`, so the check is skipped. `docs/README.md:26` says the factory refuses such a plan. That is false for this runbook. |
 | P2 | Reviewer chosen from `reviewer.candidates` | `Config.reviewer_for()` (`config.py:212`) is called only from tests. `docs/README.md:121` and `:331` present it as live. |
-| P3 | §9 and FR-7: per-task budget with hard stop | `per_task_usd` is passed only as `--max-budget-usd` to each `claude -p` call (`invoke.py:59`). It is a per-call cap. Codex calls have no cap. Nothing sums spend across a run. |
+| P3 | §9 and FR-7: per-task budget with hard stop | `per_task_usd` is passed only as `--max-budget-usd` to each `claude -p` call (`invoke.py:128`). It is a per-call cap. Codex calls have no cap. Action D (done) now logs the usage of every call in `run.json`, but nothing limits spend across a run. |
 
 ### Missing or partial (10)
 
 | # | Item | State |
 |---|---|---|
-| P4 | Per-day budget | `Budgets.per_day_usd` is parsed and never enforced. |
+| P4 | Per-day budget | `Budgets.per_day_usd` is parsed and never read. |
 | P5 | FR-7 failover to a different worker | Retries go back to the same worker, with feedback. |
 | P6 | Gates 2, 3, 4, 6 | No security scan, no dependency or licence check, no diff-size limit. Gate 1 is partial. Human approval is only an optional `checkpoint`. |
 | P7 | FR-13 | Gate configuration is not versioned. |
@@ -105,19 +105,25 @@ If you do B, A needs only the `reviewer_for` part.
 | C2. Wire them in | Matches the PRD. The reviewer choice becomes data-driven. | Needs design: how it interacts with `agents.yaml` and `--staff`. More tests. Larger change. |
 | C3. Keep and document as unused | No code change. | The dead code stays. A reader must keep this in mind. |
 
-Recommendation: C1 for `reviewer_for`, C3 for `per_day_usd` until a cost total exists (see D).
+Recommendation: C1 for `reviewer_for`, C3 for `per_day_usd`. D now logs the spend, but the owner chose not to set a budget for now.
 
-### D. Add a run-level cost total (P3)
+### D. Track the model, tokens and cost of every LLM call (P3)
 
-Sum spend per run and stop at `per_task_usd`.
+Status: done. The owner chose to log the usage and not to set a budget for now.
 
-| Pros | Cons |
-|---|---|
-| Makes the budget a real hard stop. | Codex calls may not report cost, so the total would be partial. |
-| Gives `per_day_usd` something to build on. | Needs a cost field in the A2A reply and in `run.json`. |
-| | Medium size. Touches `invoke.py`, `agent.py` and `engine.py`. |
+What the code does now:
 
-Alternative: rename the setting to `per_call_usd` and document it. This is cheap but breaks existing `llm.yaml` files.
+- Each LLM call returns its worker, model, input tokens, cached input tokens, output tokens and cost (`invoke.py`).
+- The agent sends the usage of every call in its reply. A failed task carries the usage it spent.
+- `run.json` holds a `usage` object (totals, with one entry for each model) and a `calls` list (one row for each call, with its step, item and role). The console prints a `Usage:` line when a run ends.
+- Claude reports a cost. Codex reports tokens only, so its cost is `null`. The totals count those calls in `calls_without_cost`.
+
+What is not done:
+
+- Nothing stops a run on cost. `per_task_usd` is still the cap of one Claude call, and `per_day_usd` is still unread.
+- A cost total for Codex needs a price table. No such table exists.
+
+To add a budget later, read `run.json` `usage.cost_usd` in `Engine` after each step and stop the run when it passes a limit.
 
 ### E. Remove small dead code and duplicates (S1, S2, S6 partly, S9)
 
@@ -181,18 +187,18 @@ Recommendation: I2 with a visible banner in the file and a non-zero exit code.
 
 Not recommended as one change. The method for each item: state the outcome the requirement protects, then pick the cheapest change that protects it. Some requirements protect an outcome the factory already gets in another way. Those items are cheaper than they look, or not needed.
 
-AXI means the 10 principles at https://axi.md/, added to the PRD as FR-20 to FR-29. "Needs D" means the item depends on run-level cost tracking (action D).
+AXI means the 10 principles at https://axi.md/, added to the PRD as FR-20 to FR-29. Action D, the cost and token log, is done, so the items that needed it can start.
 
 | # | Outcome the PRD protects | What the code gives today | Recommendation | Size |
 |---|---|---|---|---|
-| P5 | A bad answer from one model does not block the run. A second model fails independently of the first. | A retry goes to the same worker, with feedback. The same model tends to repeat the same error. | **Do, after D.** On the last retry of a step, switch to another allowed worker. Keep the independence check true for the new pair. Count the cost of both workers. | Medium |
+| P5 | A bad answer from one model does not block the run. A second model fails independently of the first. | A retry goes to the same worker, with feedback. The same model tends to repeat the same error. | **Do (D is done).** On the last retry of a step, switch to another allowed worker. Keep the independence check true for the new pair. Count the cost of both workers. | Medium |
 | P6 | Output is safe to ship, not only green. | Gate 1 exists (tests, serves, counts). Gate 5 exists (independent reviewer). | **Do 3 of the 6.** Secret scan (a regex pass over the written files). Lint, through the commands that each scaffold already declares. Check that each npm or PyPI package named in a manifest exists, because the real risk is an invented package. **Defer** the security scanner and licences (heavy, no consumer yet). **Defer** diff-size, which only means something when a run edits an existing repo (P10). Gate 6 stays the `checkpoint`. | Medium |
 | P7 | The same gates apply to every worker, and a result can be traced to the gate version. | Gates are Python code and runbook YAML in git. A gate belongs to a step, not to a worker, so they are already identical across workers. | **Do the small part.** Write the git commit and the gate names of each step into `run.json`. Nothing else is needed. | Small |
 | P8 | A person approved the spec before any code. Risk drives stricter review. | The spec step has a checkpoint. `--yes` accepts it with no person. Risk has no consumer: no routing table, no PR rules. | **Do not add risk fields yet.** They would have no reader. Do record in `run.json` whether a person or `--yes` approved each checkpoint. | Small |
-| P9 | Routing improves from evidence. | `run.json` holds events per step. After D it also holds the model, tokens and cost per call. | **Do the read-only part.** A `factory runs` command that sums `apps/*/.factory/run.json`: runs, first-pass rate, rounds, cost per model. It needs no new store. It also meets AXI 4 and 8. **Defer** weight shifting: FR-6 asks for 30 or more tasks per type first. | Medium |
-| P10 | The factory turns a spec into a change on a real repo. | It builds new apps in `apps/<name>`. `code-audit` reads an existing path but does not change it. | **Decide first.** This changes what the product is. If the owner wants edits to existing code, build in 2 slices: a git worktree per run with a patch as output, then PR creation. If not, change the PRD. | Large |
+| P9 | Routing improves from evidence. | `run.json` holds events per step. It also holds the model, tokens and cost per call (D). | **Do the read-only part.** A `factory runs` command that sums `apps/*/.factory/run.json`: runs, first-pass rate, rounds, cost per model. It needs no new store. It also meets AXI 4 and 8. **Defer** weight shifting: FR-6 asks for 30 or more tasks per type first. | Medium |
+| P10 | The factory turns a spec into a change on a real repo. | It builds new apps in `apps/<name>`. `code-audit` reads an existing path but does not change it. | **Decided: build it, with its own plan first.** The owner wants to point the factory at a git folder and work on a requirement. The factory creates a worktree in a scratch folder outside the repo (for example `~/.a2a-scratch/<repo>/<feature>`), commits the change on a branch named from the brief, and tells the person to review it. Several features of one repo can run together, so the lock is per repo and branch. Build in 2 slices: the worktree with a commit, then PR creation. | Large |
 | P11 | A person can follow one run across every agent and call. | `run.json` is a trace of steps. Each agent keeps its own log. There is no shared ID. | **Do the cheap part.** Create a run ID, send it in each request and write it in each log line. **Defer** OpenTelemetry until a backend exists. **Defer** redaction. A regex redactor gives false comfort. The secret scan from P6 and the clean environment in `invoke.py` cover more. | Small |
-| P12 | A crash at step 8 of 9 does not lose the money spent on steps 1 to 7. | `artifacts.json` and `run.json` are saved. A second run needs `--rebuild` and starts again. | **Do, after D.** `factory run --resume` skips each step and item that `run.json` records as accepted, and reads its output from `artifacts.json`. AXI 6 asks for idempotent commands, so the same command run twice on finished work must change nothing. | Medium |
+| P12 | A crash at step 8 of 9 does not lose the money spent on steps 1 to 7. | `artifacts.json` and `run.json` are saved. A second run needs `--rebuild` and starts again. | **Do (D is done).** `factory run --resume` skips each step and item that `run.json` records as accepted, and reads its output from `artifacts.json`. AXI 6 asks for idempotent commands, so the same command run twice on finished work must change nothing. | Medium |
 | P13 | A worker owned in-house costs no extra network hop. | Each role runs as an A2A agent in its own process. Start-up takes seconds. An LLM call takes minutes. | **Do not build.** The saving is too small to measure. Change the PRD to say direct calls are optional. | None |
 
 New AXI work that the items above touch:
@@ -203,7 +209,7 @@ New AXI work that the items above touch:
 | FR-20, 21, 22, 23, 24 (TOON output, small default fields, truncation, totals, empty states) | All output is prose. | P9 |
 | FR-26, 27, 28, 29 (ambient context, content first, `help[]` lines, help) | `factory` with no arguments prints an argparse error. | P9 |
 
-Suggested order for J: P7, P11 (small, no dependencies). Then D. Then P5, P12, P9 and P6. Then decide P10. Do not build P13.
+Suggested order for J: P7, P11 (small, no dependencies). Then P5, P12, P9 and P6. P10 needs its own plan first. Do not build P13.
 
 Open question for FR-25: a checkpoint needs a person, and AXI says a command never prompts. See PRD section 15, question 8.
 
@@ -226,7 +232,7 @@ Recommendation: do the renames and the docstring. Defer the file split.
 | 2 | E, G, K (renames only) | Small. One commit. Done, except the items listed under "Step 2 status" below. |
 | 3 | C1 for `reviewer_for`, H | Small. Done: C1 deletes `reviewer_for()` and its 2 tests, and `reviewer.candidates` stays because the config still validates it. H updates the PRD to v0.2. |
 | 4 | I2 | Small to medium. Done: a stopped run marks its saved Markdown draft "NOT APPROVED" and exits with code 1. |
-| 5 | D | Medium. Own branch. |
+| 5 | D | Medium. Done as logging only: see action D. |
 | 6 | F (rest), J | F: first step done (`SCHEMAS`). J: see the per-item table in action J. |
 
 ### Step 2 status

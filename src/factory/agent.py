@@ -13,10 +13,14 @@ Request (JSON data part):
    commands, cwd, feedback, interactive, checkpoint}
 
 Replies:
-  final      {output}
-  questions  {kind: "questions", questions, output}   answer {answers: [str]}
-  review     {kind: "review", output, rendered}       answer {accept: true} or
+  final      {output, usage}
+  questions  {kind: "questions", questions, output, usage}   answer {answers: [str]}
+  review     {kind: "review", output, rendered, usage}       answer {accept: true} or
                                                              {accept: false, changes: str}
+
+`usage` lists the LLM calls made for the reply: worker, model, tokens and cost (see invoke.py).
+The final reply lists the calls of every draft in the conversation. A failed task carries the
+`usage` it spent in its error message.
 
 `interactive` lets a role that `asks` put open questions to the user; `checkpoint` makes the
 user approve the output before the task completes. Either way the conversation stays on one
@@ -34,9 +38,9 @@ from pathlib import Path
 import uvicorn
 
 from . import schemas
-from .a2a_transport import Reply, Turn, agent_card, build_app
+from .a2a_transport import Reply, TaskError, Turn, agent_card, build_app
 from .config import Config, load_config
-from .invoke import invoke
+from .invoke import LLMFailed, Usage, invoke
 from .paths import LLM_CONFIG
 from .roles import ROLES, Role
 
@@ -88,32 +92,46 @@ def conversation(turns: list[Turn]) -> str:
     return "\n\n".join(out)
 
 
-def produce(cfg: Config, role: Role, worker: str, model: str, req: dict, history: str) -> dict:
+def produce(cfg: Config, role: Role, worker: str, model: str, req: dict,
+            history: str) -> tuple[dict, list[Usage]]:
+    """The validated output and the usage of every LLM call made for it. A failure is a TaskError
+    that carries the usage."""
     tools = role.tools(req.get("commands", {}))
     cwd = Path(req["cwd"])
-    retry = ""
+    retry, spent = "", []
     for _ in range(LLM_ATTEMPTS):
-        out = invoke(cfg, worker, model, prompt_for(role, req, history + retry), cwd, tools)
-        if not req.get("output"):
-            return {"summary": out.strip()[-1500:]}
         try:
-            return schemas.validate(req["output"], extract_json(out), req.get("schema_ctx"))
+            out, used = invoke(cfg, worker, model, prompt_for(role, req, history + retry), cwd, tools)
+        except LLMFailed as e:
+            raise TaskError(f"{type(e).__name__}: {e}", {"usage": [*spent, e.usage]}) from e
+        spent.append(used)
+        if not req.get("output"):
+            return {"summary": out.strip()[-1500:]}, spent
+        try:
+            return schemas.validate(req["output"], extract_json(out), req.get("schema_ctx")), spent
         except ValueError as e:
             retry = f"\n\nYour previous reply was rejected: {e}. Follow the reply format exactly."
-    raise RuntimeError(f"no usable {req['output']} after {LLM_ATTEMPTS} attempts:{retry}")
+    raise TaskError(f"RuntimeError: no usable {req['output']} after {LLM_ATTEMPTS} attempts:{retry}",
+                    {"usage": spent})
 
 
 def handle(cfg: Config, role: Role, worker: str, model: str, turns: list[Turn]) -> Reply:
     req, last = turns[0]["data"], turns[-1]["data"]
+    # The calls made for the drafts that were already sent back to the caller.
+    earlier = [u for t in turns if t["role"] == "agent" for u in t["data"].get("usage", [])]
     if len(turns) > 1 and turns[-2]["data"]["kind"] == "review" and last.get("accept"):
-        return Reply({"output": turns[-2]["data"]["output"]})
-    output = produce(cfg, role, worker, model, req, conversation(turns))
+        return Reply({"output": turns[-2]["data"]["output"], "usage": earlier})
+    try:
+        output, spent = produce(cfg, role, worker, model, req, conversation(turns))
+    except TaskError as e:
+        raise TaskError(str(e), {"usage": [*earlier, *e.data["usage"]]}) from e
     if role.asks and req.get("interactive") and output.get("questions"):
-        return Reply({"kind": "questions", "questions": output["questions"], "output": output}, final=False)
+        return Reply({"kind": "questions", "questions": output["questions"], "output": output,
+                      "usage": spent}, final=False)
     if req.get("checkpoint"):
         rendered = schemas.render(req.get("output"), output)
-        return Reply({"kind": "review", "output": output, "rendered": rendered}, final=False)
-    return Reply({"output": output})
+        return Reply({"kind": "review", "output": output, "rendered": rendered, "usage": spent}, final=False)
+    return Reply({"output": output, "usage": [*earlier, *spent]})
 
 
 def card_for(role: Role, worker: str, model: str, url: str):

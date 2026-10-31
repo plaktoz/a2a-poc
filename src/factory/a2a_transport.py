@@ -53,7 +53,22 @@ Handler = Callable[[list[Turn]], Reply]
 
 
 class StageFailed(Exception):
-    """The agent ended the task failed, or in a state the caller cannot continue from."""
+    """The agent ended the task failed, or in a state the caller cannot continue from.
+
+    `data` is the failure message's data, such as the usage of the LLM calls made before it failed.
+    """
+
+    def __init__(self, message: str, data: Json | None = None) -> None:
+        super().__init__(message)
+        self.data = data or {}
+
+
+class TaskError(Exception):
+    """Raised by a handler to fail its task with `data` added to the error message."""
+
+    def __init__(self, message: str, data: Json) -> None:
+        super().__init__(message)
+        self.data = data
 
 
 def _data(parts: list[Part]) -> Json:
@@ -80,7 +95,10 @@ class _Executor(AgentExecutor):
             reply = await asyncio.to_thread(self._handler, list(turns))
         except Exception as e:
             self._turns.pop(task.id, None)
-            error = {"error": f"{type(e).__name__}: {e}"}
+            if isinstance(e, TaskError):
+                error = {"error": str(e), **e.data}
+            else:
+                error = {"error": f"{type(e).__name__}: {e}"}
             await updater.failed(updater.new_agent_message([new_data_part(error)]))
             return
         if reply.final:
@@ -163,6 +181,6 @@ async def call(url: str, request: Json, on_input: Callable[[Json], Json] | None 
                         on_input(status), role=Role.ROLE_USER, task_id=task_id, context_id=context_id
                     )
                     continue
-                raise StageFailed(status.get("error") or f"task ended in {TaskState.Name(state)}")
+                raise StageFailed(status.get("error") or f"task ended in {TaskState.Name(state)}", status)
         finally:
             await client.close()
