@@ -61,7 +61,8 @@ steps:
       Design the HTTP API between the web frontend and the api backend: every endpoint the UI
       needs for the web criteria, and every endpoint the api criteria name. The frontend and
       the backend are built separately from this contract, so be exact about paths, bodies,
-      field names and status codes.
+      field names and status codes. Every path starts with /api/, because the web dev server
+      proxies /api to the backend.
     output: api_contract
     checkpoint: true
     save: API.json

@@ -31,7 +31,9 @@ steps:
         role: architect
         reads: [spec]
         instructions: |
-          Design the HTTP API contract that satisfies every acceptance criterion.
+          Design the HTTP API contract that satisfies every acceptance criterion. Use the paths,
+          methods and field names that the spec names, exactly as written. Do not add a path
+          prefix, extra endpoints or behaviour the spec does not ask for.
         output: api_contract
         save: API.json
 

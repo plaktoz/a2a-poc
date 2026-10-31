@@ -54,9 +54,9 @@ class Endpoint(_Open):
 
     @field_validator("path")
     @classmethod
-    def _api_prefix(cls, v: str) -> str:
-        if not v.startswith("/api/"):
-            raise ValueError(f"path {v!r} must start with /api/")
+    def _absolute(cls, v: str) -> str:
+        if not v.startswith("/"):
+            raise ValueError(f"path {v!r} must start with /")
         return v
 
 
@@ -168,7 +168,7 @@ SHAPES: dict[str, str] = {
     "spec": """{"title": str, "goal": str,
  "acceptance_criteria": [{"id": "AC1", "text": str, "surface": str}],
  "constraints": [str], "out_of_scope": [str], "assumptions": [str], "questions": [str]}""",
-    "api_contract": """{"endpoints": [{"method": "GET|POST|PUT|PATCH|DELETE", "path": "/api/...",
+    "api_contract": """{"endpoints": [{"method": "GET|POST|PUT|PATCH|DELETE", "path": "/...",
    "summary": str, "request": <JSON example body or null>, "response": <JSON example body>,
    "status": [int]}],
  "models": {<Name>: <JSON example object>}, "notes": [str]}""",
@@ -236,8 +236,12 @@ def _check_ids(prefix: str, field: str):
 
 
 def _check_contract(data: dict, ctx: dict) -> None:
+    """ctx["api_prefix"], when set, is a prefix every path must start with (a full-stack app's proxy)."""
+    prefix = ctx.get("api_prefix")
     seen = set()
     for e in data["endpoints"]:
+        if prefix and not e["path"].startswith(prefix):
+            raise ValueError(f"path {e['path']!r} must start with {prefix}")
         key = (e["method"], e["path"])
         if key in seen:
             raise ValueError(f"duplicate endpoint {e['method']} {e['path']}")

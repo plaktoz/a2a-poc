@@ -38,6 +38,7 @@ Json = dict[str, Any]
 Send = Callable[[str, Json, Callable[[Json], Json] | None], Json]
 APP_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 MAX_CONVERSATION = 6  # questions and reviews on one checkpoint before the run stops
+API_PREFIX = "/api/"
 
 
 class Stop(Exception):
@@ -217,7 +218,7 @@ class Engine:
                 if f.level == "run":
                     raise Stop(f.message) from None
                 feedback = {None: f.message}
-                self.say(f"  not accepted: {f.message.splitlines()[0][:200]}")
+                self.say(f"  not accepted: {_problem(f.message)}")
         raise Stop(f"{node.loop} was not accepted after {rounds} round(s). Last problem:\n"
                    + "\n".join(feedback.values())[:3000])
 
@@ -276,7 +277,7 @@ class Engine:
                 self.say(f"  {tag}: accepted{_brief(s, out)}")
                 return out
             self.log.record(s.id, item.key, s.role, "rejected", started, problem)
-            self.say(f"  {tag}: not accepted: {problem.splitlines()[0][:200]}")
+            self.say(f"  {tag}: not accepted: {_problem(problem)}")
             if level == "run":
                 raise Stop(problem)
             if level == "round" or attempt == s.retries:
@@ -328,6 +329,8 @@ class Engine:
     def _schema_ctx(self, s: StepDef) -> Json:
         if s.output == "spec":
             return {"surfaces": self.plan.surfaces}
+        if s.output == "api_contract" and {"web", "api"} <= set(self.plan.surfaces):
+            return {"api_prefix": API_PREFIX}  # the web dev server proxies /api to the backend
         return {}
 
     def _on_input(self, s: StepDef) -> Callable[[Json], Json] | None:
@@ -510,6 +513,15 @@ def _summary(s: StepDef, out: Json) -> str:
         return f"passed={out['passed']} failed={out['failed']}"
     return str(out.get("summary") or out.get("title") or "")[:300]
 
+
+
+def _problem(msg: str, lines: int = 12, width: int = 300) -> str:
+    """A rejection reason for the console: the first line, then the bullet lines indented, capped."""
+    rows = [r[:width] for r in msg.splitlines() if r.strip()]
+    shown = rows[:lines]
+    if len(rows) > lines:
+        shown.append(f"... ({len(rows) - lines} more lines in .factory/run.json)")
+    return "\n    ".join(shown)
 
 def _brief(s: StepDef, out: Json) -> str:
     summary = _summary(s, out)

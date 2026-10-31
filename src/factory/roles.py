@@ -60,7 +60,7 @@ ROLES: dict[str, Role] = {r.name: r for r in [
         "architect", "API designer",
         "Designs the contract between a frontend and a backend before either is built.",
         "Do not create, edit or run anything. Design the smallest API that serves every acceptance "
-        "criterion: resource-oriented paths under /api/, JSON bodies, conventional status codes "
+        "criterion: resource-oriented paths, JSON bodies, conventional status codes "
         "(201 on create, 404 for a missing resource, 422 for invalid input). Give a literal example "
         "for every request and response body.",
     ),

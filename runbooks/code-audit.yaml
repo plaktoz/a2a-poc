@@ -52,6 +52,13 @@ steps:
         instructions: |
           Review the audit report against the verified findings: is every finding in it, is
           the prioritization sound, is each recommendation concrete and correct?
+
+          The writer works only from the verified findings and cannot inspect the code or run
+          anything further. Judge the report against those findings. Ask for changes only to what
+          the writer can fix from them: a finding that is missing, misstated or wrongly
+          prioritized, or a recommendation that contradicts its finding. Do not ask for
+          evidence or checks beyond the findings; where a recommendation depends on something
+          unverified, it is enough that the report says so.
         output: verdict
         gates: [review_approves]
 

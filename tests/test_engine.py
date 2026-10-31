@@ -131,7 +131,8 @@ def test_reviewer_rejection_starts_a_new_round_with_its_issues(cfg, staff, tmp_p
 def test_run_stops_when_rounds_run_out(cfg, staff, tmp_path):
     plan = resolve(catalog()["research"], {}, staff, cfg)
     no = {"verdict": "revise", "issues": ["no"]}
-    agents = research_agents([report(f"[a]({URL})")] * 2, [no, no])
+    # research's write loop has its own round count (3), so it runs out after three rejections.
+    agents = research_agents([report(f"[a]({URL})")] * 3, [no, no, no])
     engine = make_engine(plan, cfg, tmp_path, agents)
     assert not engine.run()
     assert json.loads((engine.ws / ".factory" / "run.json").read_text())["status"] == "stopped"

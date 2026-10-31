@@ -46,7 +46,7 @@ steps:
     gates: [citations_verified]
 
   - loop: write
-    rounds: budget
+    rounds: 3
     steps:
       - id: report
         role: writer
@@ -68,6 +68,15 @@ steps:
           Review the report against the plan and the verified findings. Check that it answers
           the question for the audience, that every claim is backed by a finding, that nothing
           is overstated, and that the gaps are honest.
+
+          The writer cannot do new research: the verified findings are fixed. Do not ask for
+          findings that are not supplied. Where evidence is missing, approve a report that says so
+          plainly and does not claim more than the findings show. Ask for changes only to what
+          the writer can fix from the findings: unsupported or overstated claims, misread
+          findings, missing coverage of findings it was given, and unclear writing.
+          Approve a report whose remaining problems are only minor wording or style. If you
+          ask for changes, list every substantive problem now, most important first, rather than
+          holding some back for a later round.
         output: verdict
         gates: [review_approves]
 

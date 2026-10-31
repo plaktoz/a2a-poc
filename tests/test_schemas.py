@@ -46,8 +46,12 @@ def test_missing_fields_are_reported():
 def test_api_contract():
     ep = {"method": "get", "path": "/api/items", "response": []}
     assert validate("api_contract", {"endpoints": [ep]})["endpoints"][0]["method"] == "GET"
-    with pytest.raises(ValueError, match="/api/"):
-        validate("api_contract", {"endpoints": [{**ep, "path": "/items"}]})
+    with pytest.raises(ValueError, match="must start with /"):
+        validate("api_contract", {"endpoints": [{**ep, "path": "items"}]})
+    bare = {"endpoints": [{**ep, "path": "/links"}]}
+    assert validate("api_contract", bare)["endpoints"][0]["path"] == "/links"  # a standalone API sets its own paths
+    with pytest.raises(ValueError, match="must start with /api/"):
+        validate("api_contract", bare, {"api_prefix": "/api/"})  # a full-stack app is proxied under /api
     with pytest.raises(ValueError, match="duplicate"):
         validate("api_contract", {"endpoints": [ep, ep]})
 
