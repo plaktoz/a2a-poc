@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "330 passed"; no LLM is called
+uv run pytest                  # prints "343 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
 ```
 
@@ -111,6 +111,7 @@ Each run works in `apps/<name>/`. Use `--name` to choose the name, or let the fa
 | `web/`, `api/` | The apps |
 | `.factory/run.json` | Status, staff, one event for each attempt, the LLM usage, and the fields in "The run record" below |
 | `.factory/artifacts.json` | The result of every step |
+| `.factory/tasks.json`, `.factory/TASKS.md` | The task list. See "The task list" below. |
 | `.factory/agents/<role>.log` | The log of one agent |
 | `.factory/lock` | Stops a second run with the same name |
 
@@ -129,6 +130,34 @@ The status in `run.json` is `running`, `accepted`, `stopped` or `error`. After a
 | `repo`, `base`, `branch`, `tree`, `commit` | Only for `change-request` and `bug-fix`. See "Change a git repo". |
 | `pull_request` | Only after `--pr` opened one: `remote`, `branch`, `base`, `url`, `approved_by` and `approved_at`. |
 | `repos` | Only for `impact-analysis`: the folders it read. It has no branch and no commit. |
+
+#### The task list
+
+The task list shows how far a run got. A stopped run continues from it. The engine writes it when the run starts and keeps it current. `TASKS.md` is for a person. `tasks.json` is for `--resume`. The console prints the list at the start of a run, and `factory plan` prints the list a run starts with.
+
+- An entry is one step, or one item of a step. Its status is `todo`, `running`, `accepted` or `failed`.
+- A **sub-task** is one acceptance criterion of the spec. Only a step that reads the spec and writes code has sub-tasks, for example `change`, `fix`, `tests` and `develop`. An item for one surface gets the criteria of that surface.
+- The agent names the criteria its work meets in `criteria_done` (in `dev_result` and `repro`). The engine marks them done after the files pass the write checks. An attempt whose files were reverted marks nothing.
+- A step inside a loop is accepted for good only when the loop is accepted. When a round fails, the items it redoes go back to `todo`. The run record gets a `reopened` event for each.
+- On `--resume`, an accepted item is not sent again. Any other item is sent with its open sub-tasks (`subtasks`) and the ids of its done ones (`subtasks_done`). A context block "Sub-tasks (this run was resumed)" tells the agent that the done work is already in the folder.
+- A reset of the scaffolds throws the code away, so it reopens the sub-tasks.
+
+```text
+# Run task list
+
+- [x] spec: analyst, accepted
+- [!] change (build): developer, failed
+  - [x] AC1: Adding an item shows it in the cart
+  - [ ] AC2: The cart total is shown
+- [ ] verify (build): reviewer, todo
+```
+
+A run that stops prints the command that continues it, for example after the LLM or the network went away:
+
+```text
+Stopped by an error: ConnectionError: connection reset
+The work so far is kept. Continue it with: factory run --resume --name cart --repo /work/shop --test-command 'pytest -q'
+```
 
 ### Change a git repo
 
@@ -244,7 +273,7 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `--test-command CMD` | The command that runs the repo's tests, such as `"npm test"`. Required for `change-request` and `bug-fix`. |
 | `--pr` | `change-request` and `bug-fix` only. After the commit, pushes the branch to `origin` and opens a pull request. Needs `--yes`. See "Open a pull request". |
 | `--rebuild` | Redoes accepted work |
-| `--resume` | Continues the stopped run in `--name`. It keeps the items that were accepted and does the rest again. It refuses a run that is accepted. |
+| `--resume` | Continues the stopped run in `--name`. It keeps the items that were accepted. It sends the other items with their open sub-tasks only (see "The task list"). It refuses a run that is accepted. |
 | `--yes` | Asks nothing. The agents decide and every checkpoint is accepted. With `--pr`, it is also the approval to push. |
 | `--config`, `--agents`, `--runbooks` | Use other settings files |
 
@@ -429,6 +458,7 @@ The code is in `src/factory/`:
 | `cli.py` | The commands and options |
 | `runbook.py` | Runbook loading and validation, trait resolution, staffing, the plan outline |
 | `engine.py` | Steps, loops, retries, role checks, checkpoints, the workspace lock, `run.json` |
+| `tasks.py` | The task list: `tasks.json`, `TASKS.md` and the sub-tasks |
 | `gates.py` | The gates and the test and serve runners |
 | `schemas.py` | The `SCHEMAS` table: the model, reply format and run rule of each deliverable |
 | `roles.py`, `config.py` | `roles.yaml` and `llm.yaml` loading |
@@ -457,6 +487,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_impact.py` | 23 | `impact-analysis` keeps only the links whose evidence is in the cited file, reads each repo in place, reverts any change to a repo, and refuses bad `--repo` values. |
 | `test_gates_p6.py` | 35 | `secrets_clean`, `lint_clean` and `packages_exist` catch what they must, mask secrets and survive a registry outage. |
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
+| `test_tasks.py` | 13 | The task list is written at the start, a stop mid-item keeps the done sub-tasks, a resume sends only the open ones, a reverted attempt marks none, and every stop prints the `--resume` command. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
 | `test_runbooks.py` | 37 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. With only Claude enabled, every runbook plans and warns. |
@@ -501,7 +532,7 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 - **A run can end with a draft.** In `research`, the `report` step saves `REPORT.md` before `review` runs. If the reviewer does not approve in 3 rounds, the run stops with exit code 1. The draft stays on disk with a `> **NOT APPROVED.**` banner at its top. Read the banner before you use the file.
 - **Port race.** `free_port()` closes its socket before the agent binds the port. Another process can take it. The fleet then gives up after 30 seconds.
 - **The card check is weak.** The fleet compares only the tags `role:`, `worker:` and `model:`. A different agent with the same tags passes.
-- **Agents keep state in memory.** A task is lost when its agent stops. `--resume` keeps accepted items only. A half-done item starts again.
+- **Agents keep state in memory.** A task is lost when its agent stops. `--resume` keeps accepted items and the done sub-tasks of the rest. A sub-task is done only when the agent names it in `criteria_done`. Work that the agent did not name is sent again.
 - **Same folder.** The task carries the path of the workspace. An agent at a `url:` must see the same folder.
 - **Codex has no command list.** Any command makes the Codex sandbox writable. The engine reverts the writes of a role with `writes: none` after the attempt.
 - **The reviewer candidates are not used in a run.** The reviewer model comes from `agents.yaml`. `reviewer.candidates` is only validated at load time. The checker rule is `_check_independence()` in `runbook.py`, which covers only the pairs in "Roles and staffing".

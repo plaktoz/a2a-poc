@@ -152,11 +152,13 @@ class Triage(_Open):
 class DevResult(_Open):
     summary: str = ""
     test_change: str = ""
+    criteria_done: list[str] = []  # P20: the acceptance criteria this work meets, by id
 
 
 class Repro(_Open):
     test_name: str = Field(min_length=1)  # the test that reproduces the bug
     summary: str = ""
+    criteria_done: list[str] = []
 
 
 class ServiceLink(_Open):
@@ -306,10 +308,12 @@ SCHEMAS: dict[str, Schema] = {
    project name, at most 40 characters>", "rationale": str, "target": "<path or null>"}""", _check_triage),
     "dev_result": Schema(
         DevResult,
-        """{"summary": str, "test_change": "<which test you changed and why, or empty>"}"""),
+        """{"summary": str, "test_change": "<which test you changed and why, or empty>",
+ "criteria_done": ["<id of each acceptance criterion your work meets, e.g. AC1>"]}"""),
     "repro": Schema(
         Repro,
-        """{"test_name": "<the name of the one test that reproduces the bug>", "summary": str}"""),
+        """{"test_name": "<the name of the one test that reproduces the bug>", "summary": str,
+ "criteria_done": ["<id of each acceptance criterion your test covers, e.g. AC1>"]}"""),
     "report": Schema(
         Report,
         """{"markdown": "<the whole report in Markdown>"}"""),

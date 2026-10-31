@@ -1,6 +1,6 @@
 # Task list: `plaktoz/feat-thinkbig`
 
-Date: 2026-10-31
+Date: 2026-11-01
 
 This file is the single list of work on this branch. An agent that starts or restarts work reads it first.
 Update a task's status in this file whenever the task changes state, in the same commit as the change.
@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 330 passed.
+Suite at the last check: 343 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -52,9 +52,9 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | Codex cost | FR-30: `docs/model-prices.md` gives the cost of Codex calls, refreshed weekly from llm-prices.com | P19 | committed | `68c239d` |
 | P10 slice 1 | Worktree, `change-request` runbook, commit | P19 | committed | the P-series commit, see note |
 | Bug fix | `bug-fix` runbook: a failing test first, then the fix, in a worktree. `change-request` no longer takes bugs. | P10 slice 1 | committed | `a80a6ba` |
-| P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | todo | |
+| P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | committed | see `git log` |
 | Impact | `impact-analysis` runbook: which services a change affects, across one or more repos. Report only. | P10 slice 1 | committed | `4773e48` |
-| P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | see `git log` |
+| P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | `37a6a49` |
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | todo | |
 | Leftovers | C3, S4, S5, S6, S8, rest of F, unused `Path` import | none | todo | |
 | P13 | A2A direct-call adapter | | not built | |
@@ -150,15 +150,20 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 
 ### P20: run task list
 
-Goal: a run that stops (tokens used up, LLM down, network down) continues from its last done sub-task. Today `--resume` keeps accepted items only. A half-done item starts again.
+Goal: a run that stops (tokens used up, LLM down, network down) continues from its last done sub-task.
 
-- [ ] The engine writes `.factory/tasks.json` and `.factory/TASKS.md` when the run starts. One entry per step and item: `todo`, `running`, `accepted` or `failed`.
-- [ ] `factory plan` and the run start print the task list.
-- [ ] Each agent request carries the item's sub-task list. The agent marks each sub-task done in its reply and in the file.
-- [ ] `--resume` sends the open sub-tasks only, and the work already in the folder.
-- [ ] A stop from an LLM or network error prints the `--resume` command.
-- [ ] Tests with fake agents: stop mid-item, resume, check that done sub-tasks are not sent again.
-- [ ] README and test count. Commit.
+- Status: committed. The suite passes (343).
+- Decided by the owner (2026-11-01): a sub-task is one acceptance criterion of the spec.
+- Files: `src/factory/tasks.py`, `src/factory/engine.py`, `src/factory/schemas.py` (`criteria_done`), `src/factory/cli.py` (`factory plan`), `tests/test_tasks.py`, `README.md`.
+- Verify: `.venv/bin/pytest -q`, `.venv/bin/factory plan change-request` (prints the task list).
+- A step inside a loop is accepted for good only when the loop is accepted. A failed round reopens its items with a `reopened` event, so a resume runs them again.
+- [x] The engine writes `.factory/tasks.json` and `.factory/TASKS.md` when the run starts. One entry per step and item: `todo`, `running`, `accepted` or `failed`.
+- [x] `factory plan` and the run start print the task list.
+- [x] Each agent request carries the item's sub-task list. The agent marks each sub-task done in its reply (`criteria_done`), and the engine marks it in the file.
+- [x] `--resume` sends the open sub-tasks only, and the work already in the folder.
+- [x] A stop from an LLM or network error prints the `--resume` command.
+- [x] Tests with fake agents: stop mid-item, resume, check that done sub-tasks are not sent again.
+- [x] README and test count. Commit.
 
 ### Bug fix: `bug-fix` runbook
 

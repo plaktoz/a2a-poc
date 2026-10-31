@@ -37,7 +37,7 @@ from .config import ConfigError, FactoryError, load_config
 from .engine import Engine, name_from, new_run_id, open_workspace, triage
 from .fleet import Fleet
 from .paths import APPS_DIR, LLM_CONFIG, ROOT, RUNBOOKS_DIR
-from . import check, repo, runs
+from . import check, repo, runs, tasks
 from .check import check_all
 from .runbook import (LoopDef, Runbook, StaffDef, catalog, describe_catalog, load_staff, mermaid,
                       outline, resolve)
@@ -102,7 +102,11 @@ def cmd_plan(args) -> int:
     if args.runbook not in books:
         raise ConfigError(f"no runbook {args.runbook!r}; runbooks are {', '.join(books)}")
     plan = _plan(args, cfg, books[args.runbook], parse_traits(args.trait))
-    print(mermaid(plan) if args.mermaid else outline(plan))
+    if args.mermaid:
+        print(mermaid(plan))
+    else:
+        print(outline(plan))
+        print(f"\nTask list (a run writes it to .factory/TASKS.md):\n{tasks.plan_text(plan)}")
     return 0
 
 

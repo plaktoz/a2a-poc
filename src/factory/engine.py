@@ -34,6 +34,7 @@ from .a2a_transport import Json, StageFailed
 from .config import Config, ConfigError
 from .gates import GATES, Failure, GateCtx, fetch_text, scan_files
 from . import repo
+from .tasks import TaskList, has_subtasks
 from .paths import ROOT
 from .roles import ROLES
 from .runbook import LoopDef, Plan, Runbook, StepDef, describe_catalog, fill, holds
@@ -271,6 +272,7 @@ class Engine:
         self._scaffolds_reset = False
         self._cache: dict[str, str | None] = {}
         self._cache_lock = threading.Lock()
+        self.tasks = TaskList(workspace / ".factory")  # P20: tasks.json and TASKS.md
         if plan.runbook.needs_target and (target is None or not target.is_dir()):
             raise ConfigError(f"runbook {plan.runbook.name} needs --target, an existing directory")
         if any(s.writes == "target" for s in plan.steps()) and worktree is None:
@@ -283,6 +285,9 @@ class Engine:
             self.log.data["repos"] = [str(r) for r in self.repos]  # the folders read in place (impact-analysis)
         if resume:
             self._resume()
+        if resume:
+            self.tasks.load(self._done)  # first: `plan` writes the file, and keeps the entries it has
+        self.tasks.plan(plan)
 
     def _resume(self) -> None:
         """Load the record of the earlier attempt. Every step item it accepted is kept, not run again."""
@@ -308,6 +313,7 @@ class Engine:
 
     def run(self) -> bool:
         """True if the run finished with its deliverable accepted."""
+        self.say(f"\nTask list ({_rel(self.tasks.md_path, self.ws)}):\n{self.tasks.text()}")
         try:
             for d, tpl in self.plan.templates.items():
                 if not (self.ws / d).exists():
@@ -336,10 +342,13 @@ class Engine:
             self.log.save("stopped", str(e))
             self.say(f"\nStopped: {e}")
             self.say(self.log.usage_line())
+            self.say(f"Continue it with: {self.resume_command()}")
             return False
         except BaseException as e:
             self._save_artifacts()
             self.log.save("error", f"{type(e).__name__}: {e}")
+            self.say(f"\nStopped by an error: {type(e).__name__}: {e}")
+            self.say(f"The work so far is kept. Continue it with: {self.resume_command()}")
             raise
         self._save_artifacts()
         self.log.save("accepted")
@@ -384,11 +393,16 @@ class Engine:
     def _criteria(self) -> list[str]:
         return [c["text"] for c in (self.artifacts.get("spec") or {}).get("acceptance_criteria", [])]
 
-    def _resume_command(self) -> str:
-        """The command that continues this change, with the pull request flag: the same repo and test command."""
-        assert self.worktree is not None
-        return (f"factory run --resume --name {self.name} --repo {shlex.quote(str(self.worktree.repo))} "
-                f"--test-command {shlex.quote(self.test_command or '')} --pr")
+    def resume_command(self) -> str:
+        """The command that continues this run: the same name, and the same repos and test command."""
+        parts = ["factory", "run", "--resume", "--name", self.name]
+        if self.worktree is not None:
+            parts += ["--repo", str(self.worktree.repo), "--test-command", self.test_command or ""]
+        for r in self.repos:
+            parts += ["--repo", str(r)]
+        if self.pr:
+            parts.append("--pr")
+        return shlex.join(parts)
 
     def _pull_request(self) -> None:
         """Push the committed branch to origin and open a pull request (P10 slice 2).
@@ -404,10 +418,10 @@ class Engine:
         base = repo.current_branch(wt.repo)
         if base is None:
             raise Stop("the checkout is on no branch, so the pull request has no base. Check out the branch "
-                       f"that the change should merge into, then run: {self._resume_command()}")
+                       f"that the change should merge into, then run: {self.resume_command()}")
         if not repo.has_remote(wt.tree):
             raise Stop(f"the repo {wt.repo} has no remote named origin, so there is nowhere to push. Add one "
-                       f"(git remote add origin URL), then run: {self._resume_command()}")
+                       f"(git remote add origin URL), then run: {self.resume_command()}")
         approver = self._approver(wt.branch, repo.remote_url(wt.tree))
         started = time.monotonic()
         try:
@@ -416,7 +430,7 @@ class Engine:
         except repo.GitError as e:
             self.log.record(self.plan.steps()[-1].id, None, "pull request", "push failed", started, str(e))
             raise Stop(f"{e}\nThe commit is kept on {wt.branch}. Fix the cause, then run: "
-                       f"{self._resume_command()}") from None
+                       f"{self.resume_command()}") from None
         self.log.update(pull_request={"remote": "origin", "branch": wt.branch, "base": base, "url": url,
                                       "approved_by": approver, "approved_at": time.strftime("%Y-%m-%dT%H:%M:%S")})
         self.say(f"Pushed {wt.branch} to origin. Pull request: {url}")
@@ -427,7 +441,7 @@ class Engine:
         if self.approved:
             return "--yes"
         raise Awaiting(f"Waiting for approval: {branch} is committed but not pushed to {remote}. To approve, run: "
-                       f"{self._resume_command()} --yes")
+                       f"{self.resume_command()} --yes")
 
     def _pr_body(self, approver: str) -> str:
         """The acceptance criteria, the gates that checked each step, the usage and who approved the push."""
@@ -465,6 +479,7 @@ class Engine:
                     GATES[g](ctx, {})
                 self.log.loop_round(node.loop, r, True)
                 self.log.record(node.loop, None, "loop", "accepted", started, f"round {r}/{rounds}")
+                self.tasks.settle(node.loop)
                 return
             except RoundFailed as e:
                 feedback = e.feedback
@@ -475,6 +490,7 @@ class Engine:
                     raise Stop(f.message) from None
                 feedback = {None: f.message}
                 self.say(f"  not accepted: {_console_reason(f.message)}")
+            self._reopen(node, feedback, time.monotonic())
         problem = "\n".join(feedback.values())[:3000]
         self.log.loop_round(node.loop, rounds, False)
         for s in node.steps:
@@ -483,6 +499,8 @@ class Engine:
 
     def step(self, s: StepDef, feedback: dict[str | None, str], only: set[str] | None = None) -> None:
         items = [i for i in self._items(s) if only is None or i.key in only]
+        self.tasks.items(s, self._loop_of(s), [i.key for i in items],
+                         (self.artifacts.get("spec") or {}).get("acceptance_criteria", []))
         staff = self.plan.staff[s.role]
         label = f" for {', '.join(str(i.key) for i in items)}" if s.for_each else ""
         self.say(f"\n--- {s.id}{label}: {ROLES[s.role].title} ({staff.worker} / {staff.model})")
@@ -531,6 +549,7 @@ class Engine:
             if switch:
                 self.say(f"  {tag}: last attempt on the fallback worker "
                          f"({staff.fallback.worker} / {staff.fallback.model})")
+            self.tasks.set(s.id, item.key, "running")
             try:
                 reply = self._send(s.id, item.key, s.role, self._request(s, item, cwd, feedback),
                                    self._on_input(s), via=self.send_fallback if switch else None)
@@ -544,6 +563,7 @@ class Engine:
                     out = schemas.validate(s.output, out, self._schema_ctx(s))
                 if not git_checked:
                     self._check_files(s, item, cwd, before, out)
+                self._mark_subtasks(s, item, out)  # the files are checked and kept: the claims stand
                 ctx = self._ctx(item, cwd)
                 for g in s.gates:
                     GATES[g](ctx, out)
@@ -553,10 +573,16 @@ class Engine:
                 problem, level = f"your reply was not usable: {e}", "step"
             except Failure as f:
                 problem, level = f.message, f.level
+            except BaseException:  # the LLM or the network went away, or the run was stopped
+                self.tasks.set(s.id, item.key, "failed")
+                raise
             else:
                 self.log.record(s.id, item.key, s.role, "accepted", started, _summary(s, out))
+                self.tasks.set(s.id, item.key, "accepted", settled=self._loop_of(s) is None)
                 self.say(f"  {tag}: accepted{_summary_suffix(s, out)}")
                 return out
+            self.tasks.set(s.id, item.key, "failed" if level == "run" or level == "round"
+                           or attempt == s.retries else "todo")
             self.log.record(s.id, item.key, s.role, "rejected", started, problem)
             self.say(f"  {tag}: not accepted: {_console_reason(problem)}")
             if level == "run":
@@ -590,8 +616,17 @@ class Engine:
             # A checking step in a repo reads the change, as git shows it (P10).
             context.append({"title": "The change so far (git diff against the base)",
                             "body": f"```diff\n{repo.diff_text(cwd)}\n```"})
+        subtasks = self.tasks.subtasks(s.id, item.key) if has_subtasks(s) else []
+        if any(t["done"] for t in subtasks):
+            done = "\n".join(f"- {t['id']}: {t['text']}" for t in subtasks if t["done"])
+            todo = "\n".join(f"- {t['id']}: {t['text']}" for t in subtasks if not t["done"]) or "- none"
+            context.append({"title": "Sub-tasks (this run was resumed)", "body":
+                            f"Already done; the work is in the current directory. Keep it, do not redo it:\n"
+                            f"{done}\n\nStill to do:\n{todo}"})
         return {
             "run_id": self.run_id, "task": s.id, "item": item.key,
+            "subtasks": [t for t in subtasks if not t["done"]],
+            "subtasks_done": [t["id"] for t in subtasks if t["done"]],
             "instructions": fill(s.instructions, self._values(item)),
             "stack": stack,
             "context": context,
@@ -809,7 +844,32 @@ class Engine:
         if s.writes != "none" and not self._scaffolds_reset:
             for d, tpl in self.plan.templates.items():
                 reset(self.ws, d, tpl)
+            if self.plan.templates:  # the work of the sub-tasks is gone with the reset
+                for i in self._items(s):
+                    self.tasks.reset_subtasks(s.id, i.key)
             self._scaffolds_reset = True
+
+    def _reopen(self, node: LoopDef, feedback: dict[str | None, str], started: float) -> None:
+        """The round failed: the items the next round redoes are no longer accepted. A `reopened`
+        event says so in the run record, so a resume runs them again instead of keeping them."""
+        only = set(feedback) if feedback and None not in feedback else None
+        for s in node.steps:
+            for item in self._items(s):
+                if s.for_each == "surfaces" and only is not None and item.key not in only:
+                    continue  # kept: the next round does not redo it
+                if self.tasks.status(s.id, item.key) == "accepted":
+                    self.log.record(s.id, item.key, s.role, "reopened", started, "the round was not accepted")
+                    self.tasks.set(s.id, item.key, "todo")
+
+    def _mark_subtasks(self, s: StepDef, item: Item, out: Json) -> None:
+        """The agent's `criteria_done` marks sub-tasks done, once its files passed the write checks.
+        A gate can still reject the item; a resume then sends only the criteria that are open."""
+        if has_subtasks(s) and (ids := [str(i) for i in out.get("criteria_done") or []]):
+            if changed := self.tasks.mark_done(s.id, item.key, ids):
+                self.say(f"  {s.id}{f' [{item.key}]' if item.key else ''}: sub-tasks done: {', '.join(changed)}")
+
+    def _loop_of(self, s: StepDef) -> str | None:
+        return next((n.loop for n in self.plan.nodes if isinstance(n, LoopDef) and s in n.steps), None)
 
     def _cwd(self, s: StepDef, item: Item) -> Path:
         if s.cwd == "repo":
@@ -874,6 +934,13 @@ class Engine:
             if s.id == ref or s.output == ref:
                 return bool(s.for_each)
         return False
+
+
+def _rel(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
 
 
 def _dump(data: Json) -> str:
