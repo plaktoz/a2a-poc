@@ -336,6 +336,7 @@ class Plan:
     nodes: list[Node]
     staff: dict[str, Staff]
     notes: dict[str, str] = field(default_factory=dict)  # surface -> extra stack text
+    warnings: list[str] = field(default_factory=list)  # shown before the run, e.g. a one-model checker
 
     @property
     def surfaces(self) -> list[str]:
@@ -383,10 +384,15 @@ def resolve(rb: Runbook, traits: dict[str, Any], staff: dict[str, Staff], cfg: C
 
 
 def _check_independence(plan: Plan, cfg: Config) -> None:
-    """Independence: a checking role must not use the model of the role whose work it checks."""
+    """Independence: a checking role must not use the model of the role whose work it checks.
+
+    When the config offers only one model, no pair can differ. The plan then runs and carries a
+    warning (`plan.warnings`), because a single-model setup is allowed. The rule still refuses a
+    shared model whenever another model is enabled for the roles to use."""
     if not cfg.reviewer.must_differ_from_author:
         return
     used = plan.roles()
+    available = {m for w in cfg.enabled_workers() for m in w.models}
     for checker, author in (("reviewer", "writer"), ("reviewer", "architect"), ("reviewer", "developer"),
                             ("verifier", "developer")):
         if checker not in used or author not in used:
@@ -396,6 +402,12 @@ def _check_independence(plan: Plan, cfg: Config) -> None:
         author_models = {m for m in _models(plan.staff[author])}
         if checker_models & author_models:
             shared = sorted(checker_models & author_models)[0]
+            if len(available) < 2:
+                plan.warnings.append(
+                    f"the {checker} and the {author} both use {shared}. Only one model is enabled, so "
+                    "the checker rule cannot be met. The best practice is a different model for the "
+                    f"{checker}: enable a second worker in llm.yaml and set it in agents.yaml.")
+                continue
             raise ConfigError(
                 f"the {checker} and the {author} both use {shared}; the {checker} "
                 "must use a different model (reviewer.must_differ_from_author). Change agents.yaml."
@@ -415,6 +427,7 @@ def outline(plan: Plan) -> str:
         lines.append("Traits: " + ", ".join(f"{t}={'yes' if v else 'no'}" for t, v in plan.traits.items()))
     if plan.templates:
         lines.append("Scaffolds: " + ", ".join(f"{d}/ ({t.name})" for d, t in plan.templates.items()))
+    lines += [f"Warning: {w}" for w in plan.warnings]
     lines.append("")
     n = 0
 

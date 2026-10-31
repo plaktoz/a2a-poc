@@ -189,11 +189,11 @@ def test_disabling_all_workers_is_rejected(tmp_path):
         load(tmp_path, data)
 
 
-def test_reviewer_needs_two_models_when_must_differ(tmp_path):
+def test_a_config_with_one_model_loads_even_when_must_differ(tmp_path):
+    # The checker rule is checked per plan: with one model the plan warns (see test_runbooks.py).
     data = base()
     data["workers"]["codex-gpt"]["enabled"] = False
-    with pytest.raises(ConfigError, match="at least two reviewer candidates"):
-        load(tmp_path, data)
+    assert [w.name for w in load(tmp_path, data).enabled_workers()] == ["claude-agent-sdk"]
 
 
 def test_missing_file_is_a_config_error(tmp_path):

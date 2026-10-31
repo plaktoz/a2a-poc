@@ -105,6 +105,39 @@ def test_reviewer_must_not_share_the_developers_model(cfg, staff):
             resolve(catalog()[name], {}, same, cfg)
 
 
+def claude_only(tmp_path):
+    """Only claude-agent-sdk enabled, and every role played by it."""
+    data = base()
+    for name, w in data["workers"].items():
+        w["enabled"] = name == "claude-agent-sdk"
+    cfg = load_config(write(tmp_path, data), ENV)
+    agents = tmp_path / "agents.yaml"
+    from factory.roles import ROLES
+    agents.write_text("roles:\n" + "".join(f"  {r}: {{worker: claude-agent-sdk}}\n" for r in ROLES))
+    return cfg, load_staff(agents, cfg)
+
+
+def test_with_only_claude_every_runbook_plans_and_warns_about_the_checker(tmp_path):
+    cfg, staff = claude_only(tmp_path)
+    for name, rb in catalog().items():  # every shipped runbook has a checker and its author
+        plan = resolve(rb, {}, staff, cfg)
+        assert plan.warnings, name
+        assert "best practice is a different model" in outline(plan), name
+
+
+def test_with_two_models_a_shared_model_is_still_refused(cfg, staff):
+    from dataclasses import replace
+
+    same = {**staff, "reviewer": replace(staff["developer"])}
+    with pytest.raises(ConfigError, match="must use a different model"):
+        resolve(catalog()["change-request"], {}, same, cfg)
+
+
+def test_the_default_staffing_has_no_warning(cfg, staff):
+    for rb in catalog().values():
+        assert resolve(rb, {}, staff, cfg).warnings == [], rb.name
+
+
 def test_staff_overrides_and_unknown_models(cfg):
     from factory.runbook import StaffDef
     from factory import ModelNotAllowed

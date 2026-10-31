@@ -176,13 +176,8 @@ class Config(_Strict):
         enabled = self.enabled_workers()
         if not enabled:
             raise ValueError("workers: at least one worker must be enabled")
-        if self.reviewer.must_differ_from_author:
-            reviewable = {m for w in enabled for m in w.models if m in self.reviewer.candidates}
-            if len(reviewable) < 2:
-                raise ValueError(
-                    "reviewer: must_differ_from_author needs at least two reviewer candidates "
-                    "served by enabled workers"
-                )
+        # must_differ_from_author is checked per plan (runbook._check_independence): with one model
+        # the plan runs and warns, because a config that enables only one worker is valid.
         return self
 
     def worker(self, name: str) -> Worker:

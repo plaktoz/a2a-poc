@@ -17,7 +17,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "283 passed"; no LLM is called
+uv run pytest                  # prints "286 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, research and web-app
 ```
 
@@ -274,7 +274,7 @@ A **role** is a job in a runbook. `roles.yaml` defines each role. `agents.yaml` 
 
 Every role can read files. The tools map to worker permissions. Claude gets `--allowedTools`. Codex gets the sandbox `read-only`, or `workspace-write` for a role that can edit or run a command. The commands `search` and `curl` also open network access.
 
-**The checker rule.** A checker must use a different model than the author. The reviewer differs from the writer, the architect and the developer. The verifier differs from the developer. The rule applies to a pair only when both roles are in the plan. The factory refuses a plan that breaks it. The setting `reviewer.must_differ_from_author` turns it on, and it is on by default.
+**The checker rule.** A checker must use a different model than the author. The reviewer differs from the writer, the architect and the developer. The verifier differs from the developer. The rule applies to a pair only when both roles are in the plan. The factory refuses a plan that breaks it while a second model is enabled. When the enabled workers serve only one model, for example Claude alone, the rule cannot be met. The plan then runs, and `factory plan` and `factory run` print a warning. The best practice is a different model for every checker: enable a second worker in `llm.yaml` and give it to the reviewer and the verifier in `agents.yaml`. The setting `reviewer.must_differ_from_author` turns it on, and it is on by default.
 
 To change who plays a role, edit `agents.yaml`, give a runbook its own `staff:` block, or use `--staff` for one run. A staff entry can also set `model:` and `url:`. With `url:`, the factory uses an agent that you already run at that A2A address and starts none.
 
@@ -402,7 +402,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 |---|---|---|
 | `test_a2a_transport.py` | 5 | A task returns its result, asks for input on the same task, fails with a reason, and serves its card. |
 | `test_check.py` | 6 | `factory check` tries every enabled model, reports usage and failures, and sets the exit code. |
-| `test_config.py` | 33 | `llm.yaml` loads, rejects literal keys and unknown models, makes `per_task_usd` optional, and needs two reviewer candidates when the checker rule is on. |
+| `test_config.py` | 33 | `llm.yaml` loads, rejects literal keys and unknown models, makes `per_task_usd` optional, and loads a config with one model. |
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
 | `test_fallback.py` | 5 | A role's fallback takes the last attempt only, and a bad fallback fails to load. |
 | `test_bugfix.py` | 12 | `bug-fix` proves the bug with a failing test before the fix, makes one commit, and leaves the checkout unchanged. |
@@ -410,7 +410,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
-| `test_runbooks.py` | 30 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. |
+| `test_runbooks.py` | 33 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. With only Claude enabled, every runbook plans and warns. |
 | `test_runs.py` | 5 | `factory runs` sums the run records and changes nothing. |
 | `test_schemas.py` | 19 | Each deliverable schema accepts good data, rejects bad data and renders as text. Triage can answer `none`. |
 | `test_tracing.py` | 9 | The run ID, the factory commit and the gate names reach `run.json` and every request. |
