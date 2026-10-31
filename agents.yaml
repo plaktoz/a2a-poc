@@ -1,0 +1,20 @@
+# Who plays each agent role: a worker from llm.yaml and, optionally, one of its models.
+# A runbook can override any role in its own `staff:` block, and `factory run --staff ROLE=WORKER[:MODEL]`
+# overrides both for one run.
+#
+# Set `url:` on a role to use an agent someone else runs at that A2A address instead of
+# launching one. Its card must advertise role:<role>, worker:<worker> and model:<model>.
+#
+# Independence (reviewer.must_differ_from_author in llm.yaml): the verifier must not use the
+# developer's model, nor the reviewer the writer's.
+roles:
+  triage:     {worker: claude-agent-sdk}
+  analyst:    {worker: claude-agent-sdk}
+  architect:  {worker: claude-agent-sdk}
+  tester:     {worker: codex-gpt}
+  developer:  {worker: codex-gpt}
+  verifier:   {worker: codex-gemini}
+  researcher: {worker: claude-agent-sdk}
+  auditor:    {worker: claude-agent-sdk}
+  writer:     {worker: claude-agent-sdk}
+  reviewer:   {worker: codex-gpt}

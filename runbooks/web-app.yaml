@@ -1,0 +1,133 @@
+# Build a web app: a browser frontend, an HTTP API backend, or both.
+#
+# Traits pick the shape: frontend only (the default), backend only, or full stack, where an
+# API designer agrees the contract between them before either is built. Each surface is its own
+# scaffold directory with its own tests, so the tester, developer and verifier work per surface,
+# in parallel.
+name: web-app
+title: Build a web app
+description: >
+  Specifies, tests, builds and verifies a web app from a brief: a React frontend, a FastAPI
+  backend, or both connected by an agreed API contract.
+use_when: >
+  The request asks for software to be built: a web page or app, a UI, a service or an API.
+traits:
+  frontend: {description: "has a user interface in the browser", default: true}
+  backend: {description: "has a server with an HTTP API (data shared between users or devices, or a service for other programs)", default: false}
+
+scaffolds:
+  web:
+    template: react-vite
+    when: frontend
+    notes:
+      backend: |
+        - The backend in ../api serves the API in ../API.json. Call it with fetch and relative
+          URLs such as fetch('/api/items'); the Vite dev server proxies /api to it.
+        - Tests must not need a server: mock fetch with vi.spyOn(globalThis, 'fetch') returning
+          responses that follow the contract, and wait for the UI with findBy queries.
+      not backend: |
+        - There is no backend. Keep state in the browser (localStorage) when it must persist.
+  api:
+    template: fastapi
+    when: backend
+
+steps:
+  - id: spec
+    role: analyst
+    instructions: |
+      Turn the user's brief into a spec for the app.
+
+      The brief:
+      {{ brief }}
+
+      The app has these surfaces (scaffold directories): {{ surfaces }}. "web" is the React UI,
+      tested with React Testing Library in jsdom; "api" is the HTTP API, tested with pytest.
+      Give every acceptance criterion the surface whose tests will check it, and give every
+      surface at least one criterion. A criterion is one behaviour a user (web) or a caller
+      (api) can observe. Drag and drop must not be the only way to do something.
+      Ids are AC1, AC2, ... in order. Cover the whole brief, usually 6 to 14 criteria, with edge
+      cases such as empty input, duplicates, not-found and persistence.
+      If this directory already has a SPEC.json, the brief extends that app: keep each existing
+      behaviour as a criterion of its own, because the app is rebuilt from this spec alone.
+    output: spec
+    checkpoint: true
+    save: SPEC.json
+
+  - id: contract
+    role: architect
+    when: frontend and backend
+    reads: [spec]
+    instructions: |
+      Design the HTTP API between the web frontend and the api backend: every endpoint the UI
+      needs for the web criteria, and every endpoint the api criteria name. The frontend and
+      the backend are built separately from this contract, so be exact about paths, bodies,
+      field names and status codes.
+    output: api_contract
+    checkpoint: true
+    save: API.json
+
+  - id: tests
+    role: tester
+    for_each: surfaces
+    parallel: true
+    reads: [spec, contract]
+    writes: tests
+    instructions: |
+      Write the acceptance tests for the {{ item.surface }} surface, before it is built, in
+      files matching {{ test_files }}. Write at least one test for every acceptance criterion
+      whose surface is {{ item.surface }}, and no tests for other surfaces. The code does not
+      exist yet, so choose plain, conventional names (accessible names, routes, fields) and
+      follow the API contract exactly when there is one. The developer builds to your tests.
+      Run `{{ test_command }}` once to check the tests load, then stop.
+    gates: [tests_named, tests_red]
+
+  - loop: build
+    rounds: budget
+    steps:
+      - id: develop
+        role: developer
+        for_each: surfaces
+        parallel: true
+        reads: [spec, contract]
+        writes: source
+        instructions: |
+          Build the {{ item.surface }} surface so that every test passes. Read the tests first
+          ({{ test_files }}), and implement every acceptance criterion whose surface is
+          {{ item.surface }}, following the API contract exactly when there is one.
+          Create or edit only files matching {{ source_files }}.
+          You may change a test only if it is wrong (a query that matches two elements, an
+          expectation that contradicts the spec); never weaken, remove or skip a check. Say
+          which test you changed and why in test_change, or leave it empty. The tester reviews
+          every such change.
+          For a UI: App.jsx only composes; one component per file under src/components/, state
+          in a custom hook under src/hooks/; semantic, labelled, keyboard-friendly controls; a
+          polished look with all styles in src/App.css using CSS custom properties.
+          For an API: routers under app/routers/, pydantic models in app/models.py, state in a
+          store object created by create_app().
+          Check your work with {{ check_commands }}.
+        output: dev_result
+        gates: [tests_green, serves]
+
+      - id: verify
+        role: verifier
+        for_each: surfaces
+        parallel: true
+        reads: [spec]
+        instructions: |
+          Run `{{ test_command }}` in the current directory. Then read the tests and decide, for
+          each acceptance criterion whose surface is {{ item.surface }}, whether a passing test
+          really checks it. Give a verdict for those criteria only: "PASS", or "FAIL - <why>".
+          Skipped or errored tests count as failed.
+        output: verification
+        gates: [counts_match, criteria_covered]
+
+finish:
+  - when: frontend and not backend
+    text: "Run it: cd {{ workspace }}/web && npm run dev"
+  - when: backend and not frontend
+    text: "Run it: cd {{ workspace }}/api && .venv/bin/uvicorn app.main:create_app --factory --reload  (docs at /docs)"
+  - when: frontend and backend
+    text: |
+      Run it, in two terminals:
+        cd {{ workspace }}/api && .venv/bin/uvicorn app.main:create_app --factory --port 8000
+        cd {{ workspace }}/web && npm run dev

@@ -1,0 +1,59 @@
+# Audit code that already exists. Nothing is changed.
+#
+# One auditor per lens reads the target in parallel. Each finding is kept only if its evidence
+# really is in the cited file near the cited line, so the report has no invented problems.
+name: code-audit
+title: Code audit
+description: >
+  Reviews an existing codebase through several lenses in parallel (security, correctness,
+  maintainability, tests), checks every finding against the code, and writes a prioritized report.
+use_when: >
+  The request asks to review, audit or assess existing code, or to find its bugs, risks or
+  technical debt, without changing it.
+needs_target: true
+steps:
+  - id: audit
+    role: auditor
+    for_each: [security, correctness, maintainability, tests]
+    parallel: true
+    cwd: target
+    instructions: |
+      Audit this codebase through the {{ item.name }} lens. The user's request:
+      {{ brief }}
+
+      Lens guidance:
+      - security: injection, unsafe input handling, secrets in code, authn/authz gaps, unsafe
+        dependencies or defaults.
+      - correctness: logic errors, unhandled errors and edge cases, races, wrong assumptions.
+      - maintainability: duplication, unclear structure or names, dead code, oversized modules.
+      - tests: important behaviour without tests, weak or brittle assertions, skipped tests.
+      Report at most 10 findings, most severe first. Paths are relative to the current
+      directory. Skip node_modules, .venv, dist and other generated files.
+    output: audit_findings
+    gates: [evidence_verified]
+
+  - loop: write
+    rounds: budget
+    steps:
+      - id: report
+        role: writer
+        reads: [audit]
+        instructions: |
+          Write the audit report for {{ target }}, from the verified findings only. Open with a
+          summary and the three things to fix first, then a section per severity (critical,
+          high, medium, low), each finding with its file:line, why it matters and the fix.
+          Merge findings that different lenses report for the same code.
+        output: report
+        save: AUDIT.md
+
+      - id: review
+        role: reviewer
+        reads: [audit, report]
+        instructions: |
+          Review the audit report against the verified findings: is every finding in it, is
+          the prioritization sound, is each recommendation concrete and correct?
+        output: verdict
+        gates: [review_approves]
+
+finish:
+  - text: "The audit is {{ workspace }}/AUDIT.md"

@@ -1,0 +1,75 @@
+# Answer a question with a cited report. No code is written.
+#
+# The analyst plans the research with you; one researcher per sub-question works in parallel,
+# and every finding is kept only if its quote is really on the page it cites. The writer may
+# cite only those verified sources, and an independent reviewer approves the report.
+name: research
+title: Research report
+description: >
+  Plans a research question into sub-questions, investigates each from public sources in
+  parallel, verifies every quote against its source, and writes a reviewed, cited report.
+use_when: >
+  The request asks a question, or for a comparison, survey, recommendation or market or
+  technology scan, rather than for software to be built.
+traits:
+  review: {description: "an independent reviewer must approve the report", default: true}
+
+steps:
+  - id: plan
+    role: analyst
+    instructions: |
+      Plan the research that answers the user's request.
+
+      The request:
+      {{ brief }}
+
+      Break it into 2 to 6 sub-questions (ids Q1, Q2, ...) that together answer it, each one
+      answerable from public web sources by one researcher. Say who the report is for and what
+      it should deliver (for example a recommendation, a comparison table, or a summary).
+    output: research_plan
+    checkpoint: true
+    save: PLAN.json
+
+  - id: investigate
+    role: researcher
+    for_each: plan.sub_questions
+    parallel: true
+    reads: [plan]
+    retries: 1
+    instructions: |
+      Research sub-question {{ item.id }}: {{ item.question }}
+      ({{ item.why }})
+
+      Find 3 to 8 findings from at least 2 different sources. Search first, then open each page
+      you cite and copy its quote from the page itself.
+    output: findings
+    gates: [citations_verified]
+
+  - loop: write
+    rounds: budget
+    steps:
+      - id: report
+        role: writer
+        reads: [plan, investigate]
+        instructions: |
+          Write the report the plan describes, from the verified findings only. Open with a
+          short direct answer to the question, then a section per sub-question, then the gaps
+          and limits. Cite each claim inline as a Markdown link to its source_url, link every
+          source in the findings at least once, and link no other URLs. End with a Sources list.
+        output: report
+        gates: [sources_cited]
+        save: REPORT.md
+
+      - id: review
+        role: reviewer
+        when: review
+        reads: [plan, investigate, report]
+        instructions: |
+          Review the report against the plan and the verified findings. Check that it answers
+          the question for the audience, that every claim is backed by a finding, that nothing
+          is overstated, and that the gaps are honest.
+        output: verdict
+        gates: [review_approves]
+
+finish:
+  - text: "The report is {{ workspace }}/REPORT.md"

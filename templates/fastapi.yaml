@@ -1,0 +1,17 @@
+# How the factory works with templates/fastapi/ (see src/factory/scaffold.py).
+surface: backend
+suite: pytest
+serve: asgi
+commands:
+  test: .venv/bin/pytest -q
+test_files: ["tests/test_*.py"]
+source_files: ["app/*"]
+protected: [pyproject.toml, uv.lock, tests/conftest.py, app/__init__.py]
+stack: |
+  - Python 3.11+, FastAPI, pydantic v2. The package is app/; app/main.py defines
+    create_app() -> FastAPI, which uvicorn runs as `app.main:create_app` with --factory.
+  - Every route is under /api/. State is in memory, owned by the app that create_app() returns,
+    so each new app starts empty.
+  - Tests: pytest with the `client` fixture from tests/conftest.py (a fastapi TestClient around
+    a fresh create_app()). Name every test after its criterion id: def test_ac3_<what>(client).
+  - No new dependencies: pyproject.toml is fixed.

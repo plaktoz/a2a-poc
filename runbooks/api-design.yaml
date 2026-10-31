@@ -1,0 +1,49 @@
+# Design an API without building it: a spec and a reviewed contract other teams can build to.
+name: api-design
+title: API design
+description: >
+  Turns a brief into a spec and an HTTP API contract with example bodies, reviewed by an
+  independent agent. No code is written.
+use_when: >
+  The request asks to design, specify or document an API, or to plan a service before
+  building it.
+
+steps:
+  - id: spec
+    role: analyst
+    instructions: |
+      Turn the user's brief into a spec for an HTTP API.
+
+      The brief:
+      {{ brief }}
+
+      Each acceptance criterion is one behaviour a caller can observe (a request and what it
+      returns). Ids are AC1, AC2, ... in order, with edge cases such as invalid input,
+      duplicates and not-found.
+    output: spec
+    checkpoint: true
+    save: SPEC.json
+
+  - loop: design
+    rounds: budget
+    steps:
+      - id: contract
+        role: architect
+        reads: [spec]
+        instructions: |
+          Design the HTTP API contract that satisfies every acceptance criterion.
+        output: api_contract
+        save: API.json
+
+      - id: review
+        role: reviewer
+        reads: [spec, contract]
+        instructions: |
+          Review the API contract against the spec. Every criterion must be served by an
+          endpoint; paths, methods, status codes and bodies must be consistent and conventional;
+          nothing the spec does not need should be there.
+        output: verdict
+        gates: [review_approves]
+
+finish:
+  - text: "The contract is {{ workspace }}/API.json"
