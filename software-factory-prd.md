@@ -1,6 +1,6 @@
 # PRD: Multi-Harness, LLM-Agnostic Software Factory
 
-**Status:** Draft v0.2
+**Status:** Draft v0.3
 **Date:** 2026-10-31
 **Owner:** TBD
 **Basis:** Design reasoning from a research discussion (Oct 2026). Items marked *Assumption* or *Open question* are not yet validated.
@@ -27,6 +27,7 @@ Build a software factory that turns reviewed specifications into merged pull req
 | G3 | Produce a fair, ongoing comparison of workers on real tasks | Scorecard updated per merged PR |
 | G4 | Route tasks to the best-performing worker per task type | Gate first-pass rate improves over baseline |
 | G5 | Full traceability of every run | One trace ID spans orchestrator, workers, tools and gateway |
+| G6 | An agent can drive the factory without a person reading its output for it | The command line meets the 10 AXI principles (section 8.7) |
 
 ## 4. Non-Goals
 
@@ -54,6 +55,7 @@ Build a software factory that turns reviewed specifications into merged pull req
 - Workflows defined as runbooks (YAML data in `runbooks/`): software builds (`web-app`), research (`research`), code audit (`code-audit`) and API design (`api-design`).
 - A triage step that picks the runbook and its traits from a brief, with the user approving the plan before a run starts.
 - Worker adapters for the `claude` and `codex` command-line tools, with per-role tool permissions.
+- A command line that follows the AXI principles (section 8.7), so that an agent can run the factory.
 
 ### Out of scope (v1)
 - Cross-organization agent federation.
@@ -132,6 +134,21 @@ OpenTelemetry trace ID passed through every hop
 - **FR-18:** Use an off-the-shelf gateway unless a documented requirement forces a custom build. Build only if monthly volume, custom routing or compliance justifies it (*Assumption:* review at roughly 1B tokens per month).
 - **FR-19:** Gateway provides provider fallback, rate limiting, per-task cost attribution and prompt/response policy checks.
 
+### 8.7 Agent interface (AXI)
+
+The factory command line has two kinds of user: a person and an agent that runs the factory for a person. These requirements follow the 10 AXI (Agent eXperience Interface) principles at https://axi.md/. Token budget is a design constraint. Each requirement names its principle.
+
+- **FR-20 (AXI 1, token-efficient output):** Every command prints structured data in TOON (Token-Optimized Object Notation) by default. A `--json` flag prints JSON. Prose is for `plan` and for the files that a run saves.
+- **FR-21 (AXI 2, minimal default schemas):** List output carries 3 or 4 fields per item. A `--fields` flag adds more. For example, `runbooks` lists name, title and traits only.
+- **FR-22 (AXI 3, content truncation):** Long text in output is cut at a set limit and ends with a note of the total size and the flag that shows all of it. A `--full` flag removes the limit. This covers rejection reasons, agent replies and report text.
+- **FR-23 (AXI 4, pre-computed aggregates):** Every list and every run status shows totals first. Examples: the number of runbooks, steps accepted and rejected out of the total, and tokens and cost so far.
+- **FR-24 (AXI 5, definitive empty states):** A command with no results says so in words, for example `runs: 0 found`. It never prints nothing.
+- **FR-25 (AXI 6, structured errors and exit codes):** Errors are structured data on stdout. Stderr carries logs only. Exit code 0 means success. Exit code 1 means the command failed, including a stopped run. Exit code 2 means a bad command or an unknown flag. Commands never prompt. A command that needs a decision from a person returns a state `awaiting: approval` with the command that answers it. Re-running a command on finished work changes nothing.
+- **FR-26 (AXI 7, ambient context):** A setup command installs a session hook and an installable Agent Skill. Each session then starts with a short summary of runs in the current directory: name, status and cost.
+- **FR-27 (AXI 8, content first):** Running `factory` with no arguments prints live data and not help text. The data is the executable path (with `~` for the home directory), a 1-sentence description, the runs in the current directory and the runbooks.
+- **FR-28 (AXI 9, contextual disclosure):** Every command ends with `help[]` lines. Each line is a command template for a likely next step. Fixed flags stay. Runtime values stay as placeholders such as `<run>`.
+- **FR-29 (AXI 10, consistent help):** Every subcommand has a short `--help` with 1 example.
+
 ## 9. Non-Functional Requirements
 
 - **Security:** Workers are non-human identities with least-privilege, short-lived credentials. No worker can push to protected branches. Agents running locally must not bypass the factory's tool controls.
@@ -206,6 +223,7 @@ No public benchmark compares these setups on your code. Run your own:
 5. What are the budget caps per task and per day?
 6. Which repositories and risk tiers are in the pilot?
 7. Who owns the scorecard and routing decisions?
+8. A checkpoint needs a person, and AXI says commands never prompt (FR-25). Should a stopped run wait on disk for `factory approve <run>`, or should an agent act as the approver when a person is not at the terminal?
 
 ## 16. Assumptions
 
@@ -220,6 +238,7 @@ No public benchmark compares these setups on your code. Run your own:
 |---------|------|--------|
 | v0.1 | 2026-10-28 | First draft. |
 | v0.2 | 2026-10-31 | Non-code workflows, the runbook format, triage and the command-line worker adapters moved into v1 scope (section 6). Non-goals in section 4 updated to match. Phase 6 narrowed to what is still undecided. Status and implementation gaps are tracked in `docs/code-review.md`, not here. |
+| v0.3 | 2026-10-31 | Added goal G6, the scope item and section 8.7 (FR-20 to FR-29): the command line follows the 10 AXI principles. Added open question 8. |
 
 ## 18. Evidence Notes
 

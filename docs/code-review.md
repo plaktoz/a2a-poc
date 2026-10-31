@@ -141,7 +141,9 @@ One record per schema holds model, shape, check, render and summary.
 | Removes Repeated Switches and Shotgun Surgery together. | There are only 8 schemas today, so the gain is modest. |
 | | Risk of subtle changes to output text that tests check. |
 
-Recommendation: defer until a ninth schema is needed.
+Recommendation: defer the full record until a new schema is needed.
+
+Status: the first step is done. `MODELS`, `SHAPES` and `_CHECKS` are now one `SCHEMAS` dict in `schemas.py`. Each entry is a `Schema(model, shape, check)`. `render()` and the summary code are unchanged, so the rest of F stays deferred.
 
 ### G. Use `Literal` or an enum for failure levels (S4)
 
@@ -177,12 +179,33 @@ Recommendation: I2 with a visible banner in the file and a non-zero exit code.
 
 ### J. Implement missing PRD features (P5–P13)
 
-Not recommended in this branch. Each item is a feature of its own. Open one issue per item, and start with FR-7 failover (P5) and resume (P12), which have the clearest user value.
+Not recommended as one change. The method for each item: state the outcome the requirement protects, then pick the cheapest change that protects it. Some requirements protect an outcome the factory already gets in another way. Those items are cheaper than they look, or not needed.
 
-| Pros | Cons |
-|---|---|
-| Moves the factory toward the PRD. | Large. Several items need design (outcome store, tracing, git worktrees). |
-| | The PRD itself may change after action H. |
+AXI means the 10 principles at https://axi.md/, added to the PRD as FR-20 to FR-29. "Needs D" means the item depends on run-level cost tracking (action D).
+
+| # | Outcome the PRD protects | What the code gives today | Recommendation | Size |
+|---|---|---|---|---|
+| P5 | A bad answer from one model does not block the run. A second model fails independently of the first. | A retry goes to the same worker, with feedback. The same model tends to repeat the same error. | **Do, after D.** On the last retry of a step, switch to another allowed worker. Keep the independence check true for the new pair. Count the cost of both workers. | Medium |
+| P6 | Output is safe to ship, not only green. | Gate 1 exists (tests, serves, counts). Gate 5 exists (independent reviewer). | **Do 3 of the 6.** Secret scan (a regex pass over the written files). Lint, through the commands that each scaffold already declares. Check that each npm or PyPI package named in a manifest exists, because the real risk is an invented package. **Defer** the security scanner and licences (heavy, no consumer yet). **Defer** diff-size, which only means something when a run edits an existing repo (P10). Gate 6 stays the `checkpoint`. | Medium |
+| P7 | The same gates apply to every worker, and a result can be traced to the gate version. | Gates are Python code and runbook YAML in git. A gate belongs to a step, not to a worker, so they are already identical across workers. | **Do the small part.** Write the git commit and the gate names of each step into `run.json`. Nothing else is needed. | Small |
+| P8 | A person approved the spec before any code. Risk drives stricter review. | The spec step has a checkpoint. `--yes` accepts it with no person. Risk has no consumer: no routing table, no PR rules. | **Do not add risk fields yet.** They would have no reader. Do record in `run.json` whether a person or `--yes` approved each checkpoint. | Small |
+| P9 | Routing improves from evidence. | `run.json` holds events per step. After D it also holds the model, tokens and cost per call. | **Do the read-only part.** A `factory runs` command that sums `apps/*/.factory/run.json`: runs, first-pass rate, rounds, cost per model. It needs no new store. It also meets AXI 4 and 8. **Defer** weight shifting: FR-6 asks for 30 or more tasks per type first. | Medium |
+| P10 | The factory turns a spec into a change on a real repo. | It builds new apps in `apps/<name>`. `code-audit` reads an existing path but does not change it. | **Decide first.** This changes what the product is. If the owner wants edits to existing code, build in 2 slices: a git worktree per run with a patch as output, then PR creation. If not, change the PRD. | Large |
+| P11 | A person can follow one run across every agent and call. | `run.json` is a trace of steps. Each agent keeps its own log. There is no shared ID. | **Do the cheap part.** Create a run ID, send it in each request and write it in each log line. **Defer** OpenTelemetry until a backend exists. **Defer** redaction. A regex redactor gives false comfort. The secret scan from P6 and the clean environment in `invoke.py` cover more. | Small |
+| P12 | A crash at step 8 of 9 does not lose the money spent on steps 1 to 7. | `artifacts.json` and `run.json` are saved. A second run needs `--rebuild` and starts again. | **Do, after D.** `factory run --resume` skips each step and item that `run.json` records as accepted, and reads its output from `artifacts.json`. AXI 6 asks for idempotent commands, so the same command run twice on finished work must change nothing. | Medium |
+| P13 | A worker owned in-house costs no extra network hop. | Each role runs as an A2A agent in its own process. Start-up takes seconds. An LLM call takes minutes. | **Do not build.** The saving is too small to measure. Change the PRD to say direct calls are optional. | None |
+
+New AXI work that the items above touch:
+
+| AXI requirement | Gap in the code today | Related item |
+|---|---|---|
+| FR-25 (never prompt, exit code 1 on a stopped run, errors as data) | `cli.py` asks "Run this plan?" and each checkpoint asks on the terminal. Errors go to stderr. `FactoryError` exits with 2. AXI uses 2 only for a bad command or flag. | P8, P12 |
+| FR-20, 21, 22, 23, 24 (TOON output, small default fields, truncation, totals, empty states) | All output is prose. | P9 |
+| FR-26, 27, 28, 29 (ambient context, content first, `help[]` lines, help) | `factory` with no arguments prints an argparse error. | P9 |
+
+Suggested order for J: P7, P11 (small, no dependencies). Then D. Then P5, P12, P9 and P6. Then decide P10. Do not build P13.
+
+Open question for FR-25: a checkpoint needs a person, and AXI says a command never prompts. See PRD section 15, question 8.
 
 ### K. Smaller naming and structure items (S5, S7, S8)
 
@@ -204,7 +227,7 @@ Recommendation: do the renames and the docstring. Defer the file split.
 | 3 | C1 for `reviewer_for`, H | Small. Done: C1 deletes `reviewer_for()` and its 2 tests, and `reviewer.candidates` stays because the config still validates it. H updates the PRD to v0.2. |
 | 4 | I2 | Small to medium. Done: a stopped run marks its saved Markdown draft "NOT APPROVED" and exits with code 1. |
 | 5 | D | Medium. Own branch. |
-| 6 | F, J | Large. Defer and track as issues. |
+| 6 | F (rest), J | F: first step done (`SCHEMAS`). J: see the per-item table in action J. |
 
 ### Step 2 status
 
