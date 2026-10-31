@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "313 passed"; no LLM is called
+uv run pytest                  # prints "330 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
 ```
 
@@ -127,6 +127,7 @@ The status in `run.json` is `running`, `accepted`, `stopped` or `error`. After a
 | `gates` | The names of the gates in the plan |
 | `resumes` | One entry for each `--resume`, with its start time |
 | `repo`, `base`, `branch`, `tree`, `commit` | Only for `change-request` and `bug-fix`. See "Change a git repo". |
+| `pull_request` | Only after `--pr` opened one: `remote`, `branch`, `base`, `url`, `approved_by` and `approved_at`. |
 | `repos` | Only for `impact-analysis`: the folders it read. It has no branch and no commit. |
 
 ### Change a git repo
@@ -150,7 +151,7 @@ The folders live outside the repo, in `$FACTORY_SCRATCH` (default `~/factory-scr
 | `<scratch>/<repo>/<name>/tree/` | The worktree. The code is here. |
 | `<scratch>/<repo>/<name>/.factory/` | `run.json`, `artifacts.json`, the agent logs and the lock |
 
-The run ends with the branch, the worktree path, a `git diff <base>...factory/<name>` command to read the change, and a `git worktree remove <tree>` command to clean up. The factory does not push, merge or remove the worktree. Two features of one repo can run at the same time. The same feature name twice cannot.
+The run ends with the branch, the worktree path, a `git diff <base>...factory/<name>` command to read the change, and a `git worktree remove <tree>` command to clean up. The factory does not merge or remove the worktree, and it pushes only with `--pr` (see "Open a pull request"). Two features of one repo can run at the same time. The same feature name twice cannot.
 
 Rules:
 
@@ -161,9 +162,25 @@ Rules:
 - The engine reverts any change to `.git` and any write outside the worktree. A write outside the worktree fails the attempt.
 - A run that ends with no file change stops. The factory does not commit an empty change.
 
+### Open a pull request
+
+`--pr` is for `change-request` and `bug-fix`. A push leaves your machine, so it needs an explicit request and an approval.
+
+```bash
+uv run factory run --runbook change-request --repo ~/code/shop --test-command "npm test" \
+  --brief "add a cart" --pr
+```
+
+1. The run commits as before. Before the commit, the factory scans the changed files for secrets. A secret stops the run and nothing is committed.
+2. Without `--yes`, the run stops with the status `awaiting` and the detail `approval`. Nothing is pushed. The console prints the command that approves it. The command is the same run with `--resume ... --pr --yes`.
+3. With `--yes`, the factory runs `git push -u origin factory/<name>`, then `gh pr create`. The base is the branch that your checkout is on. A checkout on no branch is an error.
+4. The pull request body holds the acceptance criteria, the gates that checked each step, the usage totals, the run ID and who approved. The record keeps the same in `pull_request`. `approved_by` is `--yes`.
+
+If the push or `gh` fails, the commit stays on the branch. The run stops and prints the `--resume` command. The resume does not run an agent or commit again. A repo with no `origin` stops the run in the same way.
+
 ### Fix a bug
 
-The `bug-fix` runbook fixes a bug in a repo that you already have. It works like `change-request`: a worktree on `factory/<name>`, your checkout untouched, one commit at the end, nothing pushed. It differs in that the fix starts from a failing test.
+The `bug-fix` runbook fixes a bug in a repo that you already have. It works like `change-request`: a worktree on `factory/<name>`, your checkout untouched, one commit at the end, nothing pushed unless you pass `--pr`. It differs in that the fix starts from a failing test.
 
 ```bash
 uv run factory run --runbook bug-fix --repo ~/code/shop --test-command "npm test" \
@@ -225,9 +242,10 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `--repo PATH` | Repeatable. For `change-request` or `bug-fix`, the one git repo that changes; the work happens in a worktree. For `impact-analysis`, each repo that is read in place. |
 | `--base REF` | The commit that the new branch starts from. Default `HEAD`. |
 | `--test-command CMD` | The command that runs the repo's tests, such as `"npm test"`. Required for `change-request` and `bug-fix`. |
+| `--pr` | `change-request` and `bug-fix` only. After the commit, pushes the branch to `origin` and opens a pull request. Needs `--yes`. See "Open a pull request". |
 | `--rebuild` | Redoes accepted work |
 | `--resume` | Continues the stopped run in `--name`. It keeps the items that were accepted and does the rest again. It refuses a run that is accepted. |
-| `--yes` | Asks nothing. The agents decide and every checkpoint is accepted. |
+| `--yes` | Asks nothing. The agents decide and every checkpoint is accepted. With `--pr`, it is also the approval to push. |
 | `--config`, `--agents`, `--runbooks` | Use other settings files |
 
 ## How the factory checks its agents
@@ -435,6 +453,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
 | `test_fallback.py` | 5 | A role's fallback takes the last attempt only, and a bad fallback fails to load. |
 | `test_bugfix.py` | 12 | `bug-fix` proves the bug with a failing test before the fix, makes one commit, and leaves the checkout unchanged. |
+| `test_pr.py` | 17 | `--pr` pushes only with `--yes`, waits at `awaiting: approval` without it, scans for secrets before the commit, puts the criteria, gates and usage in the pull request, and a resume after a failed push does not commit again. |
 | `test_impact.py` | 23 | `impact-analysis` keeps only the links whose evidence is in the cited file, reads each repo in place, reverts any change to a repo, and refuses bad `--repo` values. |
 | `test_gates_p6.py` | 35 | `secrets_clean`, `lint_clean` and `packages_exist` catch what they must, mask secrets and survive a registry outage. |
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
@@ -493,7 +512,8 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 - **The write guard covers the original checkout and `.git`.** For `change-request` and `bug-fix`, the engine reverts a write in the original checkout and in the worktree's git data. A `claude` agent has no operating-system sandbox, so it can write elsewhere. The factory cannot see that.
 - **A wrong test command gives a false green.** `repo_tests_pass` trusts `--test-command`. `repro_fails` needs the command to print the name of a failing test. A command that runs no tests passes. Check the command yourself.
 - **Worktrees stay.** The factory never removes a worktree or a branch. Use the command that the run prints.
-- **No pull request.** `change-request` and `bug-fix` make a commit only. It does not push or open a pull request.
+- **No merge.** `--pr` pushes the branch and opens a pull request. It never merges. The pull request needs `origin` and a logged-in `gh` (GitHub CLI), so it works with GitHub only.
+- **Approval is `--yes` only.** A run without `--yes` stops at `awaiting: approval`. A `factory approve` command is not built yet.
 - **Codex prices come from a table.** `docs/model-prices.md` is refreshed weekly. A price can lag the provider by days. A prompt over 272k tokens costs more than the lower tier the table lists. A model with no price shows an unknown cost, and the run total counts it as unknown.
 
 ## Glossary

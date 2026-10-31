@@ -177,8 +177,8 @@ The status of the whole slice is in `docs/tasks.md`.
 
 ### Slice 2
 
-- [ ] `--pr`: `git push -u origin factory/<feature>`, then `gh pr create`.
-- [ ] Without `--yes`, wait at a checkpoint with `awaiting: approval`. Record who approved.
-- [ ] The PR body holds the acceptance criteria, the gate results and the usage totals.
-- [ ] Tests with fakes only. No real push.
-- [ ] README and test count. Commit.
+- [x] `--pr`: `git push -u origin factory/<feature>`, then `gh pr create`.
+- [x] Without `--yes`, stop with `awaiting: approval` and print the resume command (commands never prompt, FR-25). Record who approved.
+- [x] The PR body holds the acceptance criteria, the gate results and the usage totals.
+- [x] Tests with fakes only. No real push.
+- [x] README and test count. Commit.

@@ -142,6 +142,9 @@ def _check_repo_args(args, rb: Runbook) -> None:
     elif given:
         raise ConfigError(f"{', '.join(given)} only applies to a runbook that changes a git repo "
                           "(change-request, bug-fix) or reads git repos (impact-analysis)")
+    if args.pr and not _changes_repo(rb):
+        raise ConfigError(f"--pr only applies to a runbook that changes a git repo (change-request, bug-fix), "
+                          f"not {rb.name}")
 
 
 def _read_repos(args) -> list[Path]:
@@ -263,7 +266,8 @@ def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, br
                             target=Path(target) if target else None, interactive=interactive,
                             earlier_usage=earlier_usage, run_id=run_id, resume=resume,
                             send_fallback=fleet.send_fallback, worktree=worktree,
-                            test_command=args.test_command, repos=repos)
+                            test_command=args.test_command, repos=repos, pr=args.pr,
+                            approved=bool(args.yes))
             return 0 if engine.run() else 1
     finally:
         lock.close()
@@ -335,6 +339,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--base", help="commit the new branch starts from (change-request, bug-fix; default: HEAD)")
     p.add_argument("--test-command", metavar="CMD",
                    help='the command that runs the repo\'s tests, e.g. "npm test" (change-request, bug-fix)')
+    p.add_argument("--pr", action="store_true",
+                   help="after the commit, push the branch to origin and open a pull request (change-request, "
+                        "bug-fix). Needs approval: a person answers the prompt, or --yes approves it")
     p.add_argument("--rebuild", action="store_true", help="redo work that was already accepted")
     p.add_argument("--resume", action="store_true",
                    help="continue the run in --name: keep what it accepted, redo the rest")

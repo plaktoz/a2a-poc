@@ -14,6 +14,7 @@ is pushed or merged: the run ends with one commit on the branch, for a person to
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -260,3 +261,44 @@ def diff_command(wt: Worktree) -> str:
 
 def cleanup_command(wt: Worktree) -> str:
     return f"git -C {wt.repo} worktree remove {wt.tree}"
+
+
+# --- pull request (P10 slice 2) ---------------------------------------------------------------
+
+
+def has_remote(tree: Path, name: str = "origin") -> bool:
+    return _git(tree, "remote", "get-url", name, check=False).returncode == 0
+
+
+def remote_url(tree: Path, name: str = "origin") -> str:
+    """The fetch URL of the remote, with any user and password removed, for display."""
+    url = _git(tree, "remote", "get-url", name).stdout.strip()
+    return re.sub(r"^(\w+://)[^/@]+@", r"\1", url)
+
+
+def push_branch(tree: Path, branch: str) -> str:
+    """`git push -u origin <branch>`. Returns the remote's answer. Raises GitError when the push fails."""
+    r = _git(tree, "push", "-u", "origin", branch, check=False)
+    if r.returncode != 0:
+        raise GitError(f"`git push -u origin {branch}` failed: {tail(r, 1500).strip()}")
+    return tail(r, 2000).strip()
+
+
+def create_pr(tree: Path, branch: str, base: str, title: str, body: str) -> str:
+    """`gh pr create` from the worktree. Returns the PR URL that gh prints. Raises GitError when it fails."""
+    argv = ["gh", "pr", "create", "--head", branch, "--base", base, "--title", title, "--body", body]
+    try:
+        r = run(argv, cwd=tree, timeout=GIT_TIMEOUT)
+    except FileNotFoundError:
+        raise GitError("gh is not installed. Install the GitHub CLI and run `gh auth login`.") from None
+    if r.returncode != 0:
+        raise GitError(f"`gh pr create` failed: {tail(r, 1500).strip()}")
+    urls = [line.strip() for line in r.stdout.splitlines() if line.strip().startswith("https://")]
+    return urls[-1] if urls else r.stdout.strip()
+
+
+def current_branch(top: Path) -> str | None:
+    """The branch the original checkout is on, or None when HEAD is detached."""
+    r = _git(top, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    name = r.stdout.strip()
+    return name if r.returncode == 0 and name else None

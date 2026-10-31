@@ -390,14 +390,27 @@ def find_secrets(root: Path) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in IGNORED)
         for name in sorted(filenames):
-            path = Path(dirpath, name)
-            if name in SCAN_SKIP_FILES or path.is_symlink() or path.stat().st_size > SCAN_MAX_BYTES:
-                continue
-            raw = path.read_bytes()
-            if b"\0" in raw[:8000]:
-                continue
-            found += _scan_text(path.relative_to(root).as_posix(), raw.decode("utf-8", "replace"))
+            found += _scan_path(root, Path(dirpath, name))
     return found
+
+
+def scan_files(root: Path, rels: list[str]) -> list[str]:
+    """The same scan, for the files `rels` (paths relative to `root`). A file that is gone is passed over."""
+    found: list[str] = []
+    for rel in sorted(rels):
+        path = root / rel
+        if path.is_file():
+            found += _scan_path(root, path)
+    return found
+
+
+def _scan_path(root: Path, path: Path) -> list[str]:
+    if path.name in SCAN_SKIP_FILES or path.is_symlink() or path.stat().st_size > SCAN_MAX_BYTES:
+        return []
+    raw = path.read_bytes()
+    if b"\0" in raw[:8000]:
+        return []
+    return _scan_text(path.relative_to(root).as_posix(), raw.decode("utf-8", "replace"))
 
 
 def _scan_text(rel: str, text: str) -> list[str]:

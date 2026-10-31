@@ -19,6 +19,7 @@ import fcntl
 import json
 import re
 import secrets
+import shlex
 import subprocess
 import threading
 import time
@@ -31,7 +32,7 @@ from typing import Any
 from . import schemas
 from .a2a_transport import Json, StageFailed
 from .config import Config, ConfigError
-from .gates import GATES, Failure, GateCtx, fetch_text
+from .gates import GATES, Failure, GateCtx, fetch_text, scan_files
 from . import repo
 from .paths import ROOT
 from .roles import ROLES
@@ -45,6 +46,10 @@ API_PREFIX = "/api/"
 
 class Stop(Exception):
     """The run cannot go on."""
+
+
+class Awaiting(Stop):
+    """The run waits for a person's approval. Its state is saved, and nothing is pushed."""
 
 
 class RoundFailed(Exception):
@@ -246,12 +251,15 @@ class Engine:
                  earlier_usage: list[Json] | None = None, run_id: str | None = None,
                  resume: bool = False, send_fallback: Send | None = None,
                  worktree: repo.Worktree | None = None, test_command: str | None = None,
-                 repos: list[Path] | None = None) -> None:
+                 repos: list[Path] | None = None, pr: bool = False, approved: bool = False) -> None:
         self.plan, self.cfg, self.ws, self.send = plan, cfg, workspace, send
         self.send_fallback = send_fallback
         self.run_id = run_id or new_run_id()
         self.brief, self.name, self.target = brief, name, target
         self.worktree, self.test_command = worktree, test_command  # P10: a change in a git worktree
+        self.pr, self.approved = pr, approved  # slice 2: push and open a PR, only once approved with --yes
+        if pr and worktree is None:
+            raise ConfigError(f"runbook {plan.runbook.name} needs --repo before --pr can open a pull request")
         self.repos = list(repos or [])  # impact-analysis: the repos to read, in place and never changed
         self.interactive, self.say, self.ask, self.fetch, self.install = interactive, say, ask, fetch, install
         self.artifacts: dict[str, Any] = {}
@@ -315,6 +323,14 @@ class Engine:
                         raise Stop(f"step {node.id} failed:\n" + "\n".join(e.feedback.values())) from None
             if self.worktree is not None:
                 self._commit()
+                if self.pr:
+                    self._pull_request()
+        except Awaiting as e:
+            self._save_artifacts()
+            self.log.save("awaiting", "approval")
+            self.say(f"\n{e}")
+            self.say(self.log.usage_line())
+            return False
         except Stop as e:
             self._save_artifacts()
             self.log.save("stopped", str(e))
@@ -339,18 +355,88 @@ class Engine:
     def _commit(self) -> None:
         """Commit the accepted change on the run's branch (P10). Nothing is pushed or merged."""
         assert self.worktree is not None
-        spec = self.artifacts.get("spec") or {}
-        title = (spec.get("title") or self.brief).strip().splitlines()[0][:72]
-        criteria = [c["text"] for c in spec.get("acceptance_criteria", [])]
+        if self.log.data.get("commit"):  # an earlier attempt committed it: a resume must not commit again
+            self.say(f"Already committed {self.log.data['commit'][:12]} on {self.worktree.branch}")
+            return
+        if self.pr:  # a secret must not reach the branch that a pull request pushes
+            try:
+                found = scan_files(self.worktree.tree, repo.status_paths(self.worktree.tree))
+            except repo.GitError as e:
+                raise Stop(str(e)) from None
+            if found:
+                raise Stop("these lines look like secrets, so nothing was committed. Remove them, read "
+                           "each value from an environment variable, then run again with --resume:\n"
+                           + "\n".join(f"- {f}" for f in found[:20]))
         try:
-            sha = repo.commit(self.worktree.tree, title, criteria, self.run_id)
+            sha = repo.commit(self.worktree.tree, self._title(), self._criteria(), self.run_id)
         except repo.GitError as e:
             raise Stop(str(e)) from None
         if sha is None:
             raise Stop("the accepted change is empty: no file in the worktree differs from the base, "
                        "so there is nothing to commit")
         self.log.update(commit=sha)
-        self.say(f"Committed {sha[:12]} on {self.worktree.branch}: {title}")
+        self.say(f"Committed {sha[:12]} on {self.worktree.branch}: {self._title()}")
+
+    def _title(self) -> str:
+        spec = self.artifacts.get("spec") or {}
+        return (spec.get("title") or self.brief).strip().splitlines()[0][:72]
+
+    def _criteria(self) -> list[str]:
+        return [c["text"] for c in (self.artifacts.get("spec") or {}).get("acceptance_criteria", [])]
+
+    def _resume_command(self) -> str:
+        """The command that continues this change, with the pull request flag: the same repo and test command."""
+        assert self.worktree is not None
+        return (f"factory run --resume --name {self.name} --repo {shlex.quote(str(self.worktree.repo))} "
+                f"--test-command {shlex.quote(self.test_command or '')} --pr")
+
+    def _pull_request(self) -> None:
+        """Push the committed branch to origin and open a pull request (P10 slice 2).
+
+        Nothing is pushed before approval. Without --yes, the run stops with `awaiting: approval`, and a
+        person approves it by running the resume command again. The record keeps who approved.
+        """
+        assert self.worktree is not None
+        if done := self.log.data.get("pull_request"):
+            self.say(f"Pull request already open: {done['url']}")
+            return
+        wt = self.worktree
+        base = repo.current_branch(wt.repo)
+        if base is None:
+            raise Stop("the checkout is on no branch, so the pull request has no base. Check out the branch "
+                       f"that the change should merge into, then run: {self._resume_command()}")
+        if not repo.has_remote(wt.tree):
+            raise Stop(f"the repo {wt.repo} has no remote named origin, so there is nowhere to push. Add one "
+                       f"(git remote add origin URL), then run: {self._resume_command()}")
+        approver = self._approver(wt.branch, repo.remote_url(wt.tree))
+        started = time.monotonic()
+        try:
+            repo.push_branch(wt.tree, wt.branch)
+            url = repo.create_pr(wt.tree, wt.branch, base, self._title(), self._pr_body(approver))
+        except repo.GitError as e:
+            self.log.record(self.plan.steps()[-1].id, None, "pull request", "push failed", started, str(e))
+            raise Stop(f"{e}\nThe commit is kept on {wt.branch}. Fix the cause, then run: "
+                       f"{self._resume_command()}") from None
+        self.log.update(pull_request={"remote": "origin", "branch": wt.branch, "base": base, "url": url,
+                                      "approved_by": approver, "approved_at": time.strftime("%Y-%m-%dT%H:%M:%S")})
+        self.say(f"Pushed {wt.branch} to origin. Pull request: {url}")
+
+    def _approver(self, branch: str, remote: str) -> str:
+        """Who approves the push. Only `--yes` approves it: a run with no `--yes` stops with
+        `awaiting: approval` and pushes nothing. Commands never prompt (PRD FR-25)."""
+        if self.approved:
+            return "--yes"
+        raise Awaiting(f"Waiting for approval: {branch} is committed but not pushed to {remote}. To approve, run: "
+                       f"{self._resume_command()} --yes")
+
+    def _pr_body(self, approver: str) -> str:
+        """The acceptance criteria, the gates that checked each step, the usage and who approved the push."""
+        criteria = [f"- {c['id']}: {c['text']}" for c in (self.artifacts.get("spec") or {}).get("acceptance_criteria", [])]
+        gates = [f"- {step}: {', '.join(names)}" for step, names in gate_names(self.plan).items() if names]
+        return "\n".join(["## Acceptance criteria", *(criteria or ["- none"]), "",
+                          "## Gates that checked the change", *(gates or ["- none"]), "",
+                          "## Usage", self.log.usage_line() or "No LLM calls were counted.", "",
+                          f"Factory run: {self.run_id}", f"Approved by: {approver}"])
 
     def _say_repo_result(self) -> None:
         wt = self.worktree

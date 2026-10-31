@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 313 passed.
+Suite at the last check: 330 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -53,8 +53,8 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | P10 slice 1 | Worktree, `change-request` runbook, commit | P19 | committed | the P-series commit, see note |
 | Bug fix | `bug-fix` runbook: a failing test first, then the fix, in a worktree. `change-request` no longer takes bugs. | P10 slice 1 | committed | `a80a6ba` |
 | P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | todo | |
-| Impact | `impact-analysis` runbook: which services a change affects, across one or more repos. Report only. | P10 slice 1 | committed | the Impact commit, see `git log` |
-| P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | todo | |
+| Impact | `impact-analysis` runbook: which services a change affects, across one or more repos. Report only. | P10 slice 1 | committed | `4773e48` |
+| P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | see `git log` |
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | todo | |
 | Leftovers | C3, S4, S5, S6, S8, rest of F, unused `Path` import | none | todo | |
 | P13 | A2A direct-call adapter | | not built | |
@@ -177,7 +177,16 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 ### P10 slice 2: pull request
 
 - Depends on P10 slice 1 and P6 (secret scan).
-- Tests use fakes only. Do not run a real `git push` or `gh pr create` without the owner's go-ahead.
+- Status: committed. The suite passes (330).
+- Files: `src/factory/repo.py` (`push_branch`, `create_pr`, `has_remote`, `remote_url`, `current_branch`), `src/factory/engine.py` (`_pull_request`, `_approver`, `Awaiting`, `_pr_body`), `src/factory/gates.py` (`scan_files`), `src/factory/cli.py` (`--pr`), `tests/test_pr.py`, `README.md`.
+- Tests use a bare repo in a temporary folder as `origin` and a fake `gh`. No real push and no `gh pr create` ran. A real push to GitHub is not verified. No person has done this check yet.
+- Decided: only `--yes` approves the push, because commands never prompt (PRD FR-25). A run without it stops at `awaiting: approval`. The `factory approve` command is in the AXI task.
+- [x] `--pr`: `git push -u origin factory/<feature>`, then `gh pr create`.
+- [x] Without `--yes`, stop with `awaiting: approval` and print the resume command. Record who approved.
+- [x] The PR body holds the acceptance criteria, the gates and the usage totals.
+- [x] A secret scan of the changed files before the commit.
+- [x] Tests with fakes only. No real push.
+- [x] README and test count. Commit.
 
 ### AXI: FR-20 to FR-29
 
