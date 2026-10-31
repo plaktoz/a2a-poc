@@ -15,7 +15,7 @@ Date: 2026-10-31
 
 ## 2. What the project is
 
-A runbook-style A2A software factory in `src/factory`. Runbooks (YAML in `runbooks/`) define the steps. Roles are in `roles.yaml`, staffing in `agents.yaml`, and workers, models and budgets in `llm.yaml`. `README.md` explains the design. `docs/software-factory-prd.md` is the requirements document (now v0.4). `docs/code-review.md` lists the findings and the actions.
+A runbook-style A2A software factory in `src/factory`. Runbooks (YAML in `runbooks/`) define the steps. Roles are in `roles.yaml`, staffing in `agents.yaml`, and workers, models and budgets in `llm.yaml`. `README.md` explains the design. `docs/software-factory-prd.md` is the requirements document (now v0.4). `docs/code-review.md` lists the findings and the actions. `docs/tasks.md` is the task list with the status of each task. Read it first to continue the work.
 
 ## 3. Done in this session
 

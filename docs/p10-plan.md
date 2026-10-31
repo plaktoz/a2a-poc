@@ -151,3 +151,34 @@ Decided by the owner on 2026-10-31.
 | 4 | Where does the scratch root live? | `~/factory-scratch`. `FACTORY_SCRATCH` overrides it. |
 | 5 | Does the commit need a signature? | No. The factory makes a plain commit with the repo's git identity. It does not sign the commit. The commit body names the factory run. |
 | 6 | Is a `claude`-worker step allowed to write outside the worktree? | No. A step must not write outside the worktree. If it does, the factory reverts the change and fails the step. See section 6. The `claude` worker has no OS sandbox, so the check after each step is the only control. |
+
+## 9. Task checklist
+
+Tick each item when its code and tests pass. An agent that restarts the work continues from the first open item.
+The status of the whole slice is in `docs/tasks.md`.
+
+### Slice 1
+
+- [ ] `repo.py`: check the git repo, pick the base, warn on a dirty repo.
+- [ ] `repo.py`: create the worktree on `factory/<feature>`. Fail on a branch that exists.
+- [ ] Scratch layout `~/factory-scratch/<repo>/<feature>/{.factory,tree}`. `FACTORY_SCRATCH` override.
+- [ ] `writes: target` in `StepDef`. `_check_files` skips the template lookup.
+- [ ] Change detection with `git status --porcelain`.
+- [ ] Revert a write outside the worktree, or in `.git`, and fail the step.
+- [ ] Gate `repo_tests_pass`. `--test-command` is required.
+- [ ] Runbook `change-request`: `spec`, then the `build` loop with `verify`.
+- [ ] Commit: `git add -A`, a plain commit, the body names the run ID.
+- [ ] `run.json` records `repo`, `base`, `branch`, `tree`, `commit`.
+- [ ] CLI flags `--repo`, `--base`, `--test-command`. Print the branch, the tree, the diff command and the cleanup command.
+- [ ] Tests in section 5, with a real git repo in `tmp_path`.
+- [ ] Verify with fake agents: one commit on the branch, the original checkout unchanged, two features at once.
+- [ ] README, `docs/code-review.md` P10 row, PRD status, test count.
+- [ ] Commit.
+
+### Slice 2
+
+- [ ] `--pr`: `git push -u origin factory/<feature>`, then `gh pr create`.
+- [ ] Without `--yes`, wait at a checkpoint with `awaiting: approval`. Record who approved.
+- [ ] The PR body holds the acceptance criteria, the gate results and the usage totals.
+- [ ] Tests with fakes only. No real push.
+- [ ] README and test count. Commit.

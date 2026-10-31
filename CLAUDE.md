@@ -7,3 +7,5 @@
 - The most important rule is the second one: keep the README current before every commit.
 - Do not write outside the worktree.
 - Always commit once per task, as soon as the task is done, so that no change is lost. Do not batch several tasks into one commit. Do not push unless asked.
+- Keep `docs/tasks.md` current. It is the task list that lets an agent continue after a stop. Read it before you start work. Update a task's status and checklist whenever the task changes state, in the same commit.
+- Always verify the task yourself before committing; use human gates only when there is no other option.
