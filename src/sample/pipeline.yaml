@@ -10,8 +10,8 @@
 #   must already be running (`uv run python src/sample/stage_agents.py <stage>`).
 stages:
   requirements:                  # asks questions, drafts the spec, waits for your acceptance
-    worker: codex-gemini
-    # model: gemini-3.6-flash
+    worker: claude-agent-sdk
+    # model: defaults to ANTHROPIC_MODEL
     url: http://127.0.0.1:9101
 
   tests:                         # writes the acceptance tests
@@ -20,8 +20,8 @@ stages:
     url: http://127.0.0.1:9102
 
   implement:                     # builds the app
-    worker: claude-agent-sdk
-    # model: defaults to ANTHROPIC_MODEL
+    worker: codex-gpt
+    # model: gpt-6.1-sol
     url: http://127.0.0.1:9103
 
   verify:                        # runs the tests and checks each criterion

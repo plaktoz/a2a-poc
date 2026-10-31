@@ -1,0 +1,86 @@
+{
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "text": "On first load with no saved data, or with missing or corrupt data under the localStorage key, the board shows three column regions in this order: 'To Do', 'In Progress' and 'Done'. Each region is labelled by a heading with the column's title."
+    },
+    {
+      "id": "AC2",
+      "text": "The user types a name into the 'Column name' text box and clicks 'Add column'. A new column region with that name, trimmed, appears at the end of the board and is added as an option in the 'Initial status' select. Then the text box is cleared. Submitting an empty or whitespace-only name does nothing. If the name matches an existing column title, ignoring case and surrounding spaces, no column is added and an alert (role='alert') says that a column with that name already exists."
+    },
+    {
+      "id": "AC3",
+      "text": "The user types a title into the 'Ticket title' text box, picks a column in the 'Initial status' select (it defaults to the first column) and clicks 'Add ticket'. A ticket card (role='article', labelled by a heading with its trimmed title) appears in that column only, and the title box is cleared. An empty or whitespace-only title adds nothing. The 'Add ticket' button is disabled when there are no columns."
+    },
+    {
+      "id": "AC4",
+      "text": "Each ticket card has a 'Status' select that lists every column by its current title, with the ticket's column selected. Choosing another column moves the card into that column region and removes it from the old one. This is the keyboard-accessible way to move a ticket."
+    },
+    {
+      "id": "AC5",
+      "text": "Each ticket card is draggable (draggable='true'), and each column region is a drop target that calls preventDefault on dragover. When a card gets dragstart and a different column region then gets dragover and drop, the card moves into that column, and the card's 'Status' select shows the new column. Dropping a card on its own column changes nothing. A drop with no ticket being dragged changes nothing."
+    },
+    {
+      "id": "AC6",
+      "text": "Clicking a ticket's 'Delete ticket' button removes only that ticket. Other tickets, in the same column or in other columns, stay."
+    },
+    {
+      "id": "AC7",
+      "text": "Each column header has a 'Delete column' button. It is enabled only when the column has no tickets. Clicking it removes the column region and removes the column from the 'Initial status' select and from every ticket's 'Status' select. While the column has tickets, the button is disabled and the column cannot be deleted."
+    },
+    {
+      "id": "AC8",
+      "text": "Each column header shows how many tickets the column has. A column with no tickets shows the hint text 'No tickets yet' inside its region. The hint goes away as soon as a ticket is added, moved or dropped into the column. It comes back when the column's last ticket is moved out or deleted."
+    },
+    {
+      "id": "AC9",
+      "text": "Each ticket card has an 'Edit ticket' button. It opens an edit form inside the card with a 'Title' text box filled with the current title, a 'Description' text box (textarea) filled with the current description (empty if there is none), and the buttons 'Save ticket' and 'Cancel'. Clicking 'Save ticket' closes the form and the card shows the new trimmed title as its heading. If the trimmed description is not empty, the card shows it as text. If the description is cleared, the card shows no description. The ticket stays in its column."
+    },
+    {
+      "id": "AC10",
+      "text": "In the ticket edit form, saving an empty or whitespace-only title does not change the ticket. The form stays open and an alert (role='alert') says that the title is required. Clicking 'Cancel' closes the form without changing the title or the description. While the form is open, the card stays labelled by its saved title."
+    },
+    {
+      "id": "AC11",
+      "text": "Each column header has a 'Rename column' button. It opens a rename form inside the column region with a 'Column title' text box filled with the current title, and the buttons 'Save column' and 'Cancel'. Clicking 'Save column' with a new name closes the form, and the region's heading shows the trimmed new name. The new name also shows in the 'Initial status' select and in every ticket's 'Status' select. The column keeps its tickets and its position. While the form is open, the region stays labelled by its saved title."
+    },
+    {
+      "id": "AC12",
+      "text": "Renaming a column to an empty or whitespace-only name, or to the title of another column (ignoring case and surrounding spaces), keeps the old name. The rename form stays open and an alert (role='alert') explains the problem. A column can change the case of its own name, for example 'Done' to 'DONE'. Clicking 'Cancel' closes the form and keeps the old name."
+    },
+    {
+      "id": "AC13",
+      "text": "After unmounting and rendering the app again, the board restores from localStorage everything done before. This includes added, renamed and deleted columns in their order, added and deleted tickets, ticket moves by the status select and by drag and drop, and edited ticket titles and descriptions. Empty-state hints and counts are correct for the restored data."
+    }
+  ],
+  "out_of_scope": [
+    "User authentication or multi-user backend sync.",
+    "Reordering tickets within a column, or reordering columns (by dragging or any other way).",
+    "Ticket attachments, assignees, due dates, tags, or rich text or markdown in descriptions.",
+    "Board search, filtering, export, and undo/redo history.",
+    "Touch-specific drag and drop on mobile, and custom drag preview images.",
+    "Deleting a column that has tickets, or moving its tickets somewhere else automatically."
+  ],
+  "goal": "Extend the existing kanban board, which persists to localStorage. Users can drag tickets between columns with native HTML5 drag and drop, and the per-ticket status select stays as the keyboard alternative. Users can edit a ticket's title and optional description and rename columns, with column names kept unique. A column with no tickets shows a hint. All existing behaviour stays: default columns, adding columns and tickets, moving tickets, deleting tickets and empty columns, and persistence across reloads.",
+  "assumptions": [
+    "localStorage is available in the target browser.",
+    "A description is optional and is added or changed only through the ticket edit form. The 'Add ticket' form still asks only for a title and an initial status.",
+    "Tickets saved earlier without a description field load correctly and show no description.",
+    "Visual drop-target highlighting during a drag is allowed but not required, and is not tested.",
+    "Only one edit form per ticket and one rename form per column is open at a time. Forms for different tickets or columns can be open together, so tests find buttons inside the relevant card or region.",
+    "When a column is renamed, the 'Initial status' select keeps the same column selected."
+  ],
+  "title": "Kanban Board: Drag and Drop, Ticket Editing, Column Renaming and Empty States",
+  "constraints": [
+    "Built with React 19 + Vite in plain JavaScript with JSX (no TypeScript).",
+    "src/main.jsx renders the default export of src/App.jsx and imports src/App.css. The component and its styles live in those files.",
+    "No new dependencies. package.json must not change. Drag and drop uses only native HTML5 drag events (dragstart, dragover, drop, dragend); no drag-and-drop library.",
+    "Tests use Vitest + jsdom + @testing-library/react + @testing-library/user-event with jest-dom matchers. Drag and drop is tested with fireEvent.dragStart / dragOver / drop. jsdom has no real DataTransfer, so drag handling must not depend on it: keep the id of the dragged ticket in component state or a ref, and use event.dataTransfer only when it exists (for example, setData with optional chaining).",
+    "Drop handlers are attached to the column region element (role='region', labelled by the column heading), so a drop on the region or on any element inside it moves the ticket into that column.",
+    "Accessible names must match the criteria exactly: 'Column name', 'Add column', 'Ticket title', 'Initial status', 'Add ticket', 'Status', 'Delete ticket', 'Delete column', 'Edit ticket', 'Title', 'Description', 'Save ticket', 'Cancel', 'Rename column', 'Column title', 'Save column'. The empty-state hint text is 'No tickets yet'.",
+    "Columns are identified internally by a stable id, not by title, so renaming a column does not detach its tickets.",
+    "All board state (columns and tickets, including descriptions) is stored as JSON under the localStorage key 'kanban-board' and written every time it changes."
+  ],
+  "questions": [],
+  "accepted_by": "unattended (--yes)"
+}

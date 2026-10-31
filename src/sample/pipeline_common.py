@@ -88,6 +88,17 @@ def check_spec(spec: dict) -> dict:
     return spec
 
 
+def check_test_file(source: str, ids: list[str]) -> str | None:
+    """Why a test file is unusable, or None: every criterion needs a named test, no skips."""
+    # Plain `it('AC1: ...')` and parameterised `it.each([...])('AC1: ...')` both name a criterion.
+    named = set(re.findall(r"\b(?:it|test)(?:\.each\([^)]*\))?\(\s*['\"`](AC\d+):", source))
+    if missing := [i for i in ids if i not in named]:
+        return f"no test named for {', '.join(missing)}"
+    if re.search(r"\.(?:skip|only|todo)\(", source):
+        return "the tests use .skip, .only or .todo"
+    return None
+
+
 def spec_text(spec: dict) -> str:
     lines = [f"# {spec['title']}", "", spec["goal"], "", "Acceptance criteria:"]
     lines += [f"  {c['id']}: {c['text']}" for c in spec["acceptance_criteria"]]

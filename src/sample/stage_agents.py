@@ -16,7 +16,10 @@ Requests and results are JSON (A2A data parts):
                                                                      or {accept: false, changes}
                 -> {spec}
   tests         {spec, workdir, feedback}  -> writes src/App.test.jsx, {path, tests}
-  implement     {workdir, feedback}        -> edits src/, {summary}
+  tests         {mode: "review", spec, workdir, before, after, reason}
+                                           -> {approved, reason}  (the tester checks a test edit)
+  implement     {workdir, feedback}        -> edits src/ (and may amend the test file),
+                                              {summary, test_change}
   verify        {workdir}                  -> {passed, failed, verdicts: {AC1: "PASS" | "FAIL - ..."}}
 
 POC limitation: the agents work in the orchestrator's workdir on the same machine. A
@@ -26,6 +29,7 @@ remote agent would need the workspace shared through git instead.
 from __future__ import annotations
 
 import argparse
+import difflib
 import functools
 import json
 import os
@@ -40,7 +44,7 @@ from factory import ConfigError, claude_env, codex_argv, load_config
 from factory.a2a_transport import Reply, Turn, agent_card, build_app
 from pipeline_common import (
     DEFAULT_STAGES, ROOT, STAGE_NAMES, TEST_FILE, Stage,
-    check_spec, code_block, load_stages, run, spec_text, tail,
+    check_spec, code_block, load_stages, run, spec_text, tail, check_test_file,
 )  # fmt: skip
 
 CODEX_TIMEOUT, CLAUDE_TIMEOUT = 600, 1200
@@ -74,7 +78,10 @@ Reply with exactly one ```json code block and nothing after it, with this shape:
 Rules:
 - Each acceptance criterion is one behaviour a user can observe in the browser, testable with
   React Testing Library in jsdom. Drag and drop must not be the only way to do something.
-- Ids are AC1, AC2, ... in order. Keep v1 small: 4 to 8 criteria.
+- Ids are AC1, AC2, ... in order. Cover the whole brief: usually 6 to 12 criteria, including
+  edge cases such as empty input, duplicates and persistence across a reload.
+- When the brief extends an existing app, keep each existing behaviour as a criterion of its
+  own: the app is rebuilt from this spec alone.
 - "questions" lists decisions only the user can make; leave it empty when nothing blocks the spec.
 """
 
@@ -123,7 +130,9 @@ def draft_spec(cfg, stage: Stage, workdir: Path, history: str) -> dict:
         out = llm(
             cfg, stage,
             "You are the requirements analyst for a small web app. Do not edit, create or run "
-            f"anything. Turn the user's brief into a spec.\n\n{STACK}\n{SPEC_FORMAT}\n{history}",
+            "anything. You may read files in the current directory, such as an existing SPEC.json "
+            f"and src/, to build on an existing app. Turn the user's brief into a spec.\n\n"
+            f"{STACK}\n{SPEC_FORMAT}\n{history}",
             workdir, edits=False,
         )  # fmt: skip
         block = code_block(out, "json")
@@ -162,8 +171,40 @@ def requirements(cfg, stage: Stage, turns: list[Turn]) -> Reply:
 # --- tests ------------------------------------------------------------------
 
 
+def review_tests(cfg, stage: Stage, req: dict) -> Reply:
+    """Approve or reject an edit the developer made to the tests, with a reason."""
+    spec, workdir = check_spec(req["spec"]), Path(req["workdir"])
+    diff = "".join(difflib.unified_diff(
+        req["before"].splitlines(keepends=True), req["after"].splitlines(keepends=True),
+        f"before/{TEST_FILE}", f"after/{TEST_FILE}",
+    ))  # fmt: skip
+    for _ in range(LLM_ATTEMPTS):
+        out = llm(
+            cfg, stage,
+            "You are the tester. The developer changed the acceptance tests you wrote, and gives a "
+            "reason. Do not edit or run anything. Decide whether to accept the change.\n"
+            "Approve only if the old test was wrong and the new one still checks the same acceptance "
+            "criterion as strictly. Valid reasons include a query that matched the wrong element, a "
+            "wrong expected text, or a selector that does not fit the spec. Reject if the change "
+            "weakens or removes a check, drops the only test for a criterion, makes an assertion "
+            "vaguer, or changes what the spec requires.\n"
+            "Reply with one or two sentences of reason, then a last line exactly `VERDICT: APPROVE` "
+            "or `VERDICT: REJECT`.\n\n"
+            f"{STACK}\nAccepted spec:\n{spec_text(spec)}\n\n"
+            f"The developer's reason:\n{req['reason']}\n\n"
+            f"Diff of {TEST_FILE}:\n```diff\n{diff}```\n",
+            workdir, edits=False,
+        )  # fmt: skip
+        if verdicts := re.findall(r"VERDICT:\s*(APPROVE|REJECT)\b", out):
+            reason = out[:out.rfind("VERDICT")].strip()[-600:]
+            return Reply({"approved": verdicts[-1] == "APPROVE", "reason": reason})
+    raise RuntimeError(f"no VERDICT line after {LLM_ATTEMPTS} attempts:\n{out[-600:]}")
+
+
 def tests(cfg, stage: Stage, turns: list[Turn]) -> Reply:
     req = turns[-1]["data"]
+    if req.get("mode") == "review":
+        return review_tests(cfg, stage, req)
     spec, workdir, feedback = check_spec(req["spec"]), Path(req["workdir"]), req.get("feedback", "")
     ids = [c["id"] for c in spec["acceptance_criteria"]]
     problem = ""
@@ -192,12 +233,7 @@ def tests(cfg, stage: Stage, turns: list[Turn]) -> Reply:
         if block is None:
             problem = "the reply had no ```jsx code block"
             continue
-        named = set(re.findall(r"\b(?:it|test)\(\s*['\"`](AC\d+):", block))
-        if missing := [i for i in ids if i not in named]:
-            problem = f"no test named for {', '.join(missing)}"
-            continue
-        if re.search(r"\.(?:skip|only|todo)\(", block):
-            problem = "the tests use .skip, .only or .todo"
+        if problem := check_test_file(block, ids) or "":
             continue
         # The tester's LLM runs read-only; the agent writes its deliverable.
         (workdir / TEST_FILE).write_text(block.strip() + "\n")
@@ -215,15 +251,32 @@ def implement(cfg, stage: Stage, turns: list[Turn]) -> Reply:
         cfg, stage,
         f"You are the developer. Build the app so that every test in {TEST_FILE} passes.\n"
         f"Read SPEC.json and {TEST_FILE} first. Create or edit files only under src/. Do not "
-        f"edit {TEST_FILE}, src/main.jsx or src/setupTests.js, and do not add dependencies.\n"
-        "Put the app in src/App.jsx (default export App) and its styles in src/App.css; you may "
-        "add components under src/. Make it clean and usable, but build only what the spec and "
-        "tests ask for.\n"
-        "You may run `npm run build` and `npx vitest run` to check your work.\n\n"
+        "edit src/main.jsx or src/setupTests.js, and do not add dependencies.\n"
+        f"You may edit {TEST_FILE} only to fix a test that is wrong, for example a query that "
+        "matches more than one element, or a check that contradicts the spec. Never weaken, remove "
+        "or skip a check. The tester reviews every such edit.\n"
+        "Implement every acceptance criterion and add no features the spec does not list, but "
+        "write the code as a senior engineer would:\n"
+        "- Structure: src/App.jsx only composes. Put each component in its own file under "
+        "src/components/, and the state and localStorage persistence in a custom hook under "
+        "src/hooks/. Keep components small and single-purpose.\n"
+        "- React: update state with functional updates (setX(prev => ...)), derive values "
+        "instead of storing them twice, use stable keys, and keep effects to real side effects.\n"
+        "- Accessibility: semantic elements, labelled controls, visible focus, keyboard use.\n"
+        "- Look: a polished, consistent UI. Put all styles in src/App.css, with CSS custom "
+        "properties for colors, spacing and radius, hover and focus states, clear visual "
+        "hierarchy, and a layout that works on a narrow screen.\n"
+        "- Names and code: clear names, no dead code, no commented-out code, no duplication.\n"
+        "Run `npm run build` and `npx vitest run` to check your work. When the tests pass, "
+        "reread your code once and simplify anything clumsy, then run them again.\n"
+        "End your reply with one line: `TEST CHANGE: none` if you did not edit the test file, or "
+        "`TEST CHANGE: <which test you changed and why>` if you did.\n\n"
         f"{STACK}" + (f"\n{feedback}\n" if feedback else ""),
         Path(req["workdir"]), edits=True, commands=("npm run build:*", "npx vitest run:*"),
     )  # fmt: skip
-    return Reply({"summary": out.strip()[-1500:]})
+    notes = re.findall(r"TEST CHANGE:\s*(.+)", out)
+    test_change = notes[-1].strip() if notes and notes[-1].strip().lower() != "none" else ""
+    return Reply({"summary": out.strip()[-1500:], "test_change": test_change})
 
 
 # --- verify -----------------------------------------------------------------

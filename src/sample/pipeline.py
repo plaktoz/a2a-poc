@@ -52,7 +52,7 @@ from factory import ConfigError, load_config
 from factory.a2a_transport import StageFailed, call, fetch_card
 from pipeline_common import (
     APPS, DEFAULT_STAGES, HERE, ROOT, STAGE_NAMES, TEMPLATE, TEST_FILE, Stage,
-    check_spec, load_stages, run, spec_text, tail,
+    check_spec, load_stages, run, spec_text, tail, check_test_file,
 )  # fmt: skip
 
 DEFAULT_APP = "kanban-react"
@@ -326,15 +326,43 @@ def write_tests(agents: Agents, spec: dict, workdir: Path, log: RunLog) -> TestR
     raise RuntimeError("the tests agent did not produce a usable test file")
 
 
-def implement(agents: Agents, workdir: Path, feedback: str, log: RunLog) -> str | None:
+def review_test_change(agents: Agents, spec: dict, workdir: Path, before: str, reason: str,
+                       log: RunLog, started: float) -> str | None:
+    """The tester approves or rejects a developer edit to the tests. None if approved.
+
+    A rejected edit is reverted, so the next round starts from the tests the tester wrote.
+    """
+    after = (workdir / TEST_FILE).read_text()
+    ids = [c["id"] for c in spec["acceptance_criteria"]]
+    if not reason:
+        verdict = {"approved": False, "reason": "the test file was edited without a TEST CHANGE reason"}
+    elif problem := check_test_file(after, ids):
+        verdict = {"approved": False, "reason": f"the edited test file fails the checks: {problem}"}
+    else:
+        verdict = agents.send("tests", {"mode": "review", "spec": spec, "workdir": str(workdir),
+                                        "before": before, "after": after, "reason": reason})
+    if verdict["approved"]:
+        log.record("tests", "amended", started, reason[:500])
+        step(f"  tester approved the test change: {reason[:200]}")
+        return None
+    (workdir / TEST_FILE).write_text(before)
+    log.record("tests", "amendment rejected", started, verdict["reason"][:500])
+    step(f"  tester rejected the test change: {verdict['reason'][:200]}")
+    return f"the tester rejected your change to {TEST_FILE}: {verdict['reason']}\nThe test file was restored."
+
+
+def implement(agents: Agents, spec: dict, workdir: Path, feedback: str, log: RunLog) -> str | None:
     """Developer round. None if the app builds and serves, else the problem."""
     started = time.monotonic()
-    before = snapshot(workdir)
-    agents.send("implement", {"workdir": str(workdir), "feedback": feedback})
+    before, tests_before = snapshot(workdir), (workdir / TEST_FILE).read_text()
+    reply = agents.send("implement", {"workdir": str(workdir), "feedback": feedback})
     touched = changed(before, snapshot(workdir))
-    if bad := sorted(p for p in touched if not p.startswith("src/") or p in PROTECTED | {TEST_FILE}):
+    if bad := sorted(p for p in touched if not p.startswith("src/") or p in PROTECTED):
         log.record("implement", "out of role", started, ", ".join(bad))
         raise RuntimeError(f"the implement agent modified files outside its role: {', '.join(bad)}")
+    if TEST_FILE in touched and (problem := review_test_change(
+            agents, spec, workdir, tests_before, reply.get("test_change", ""), log, started)):
+        return problem
     problem = build_and_serve(workdir)
     log.record("implement", "running" if problem is None else "not running", started,
                f"changed {len(touched)} files" if problem is None else problem[:500])  # fmt: skip
@@ -424,10 +452,10 @@ def develop(agents: Agents, spec: dict, workdir: Path, rounds: int, log: RunLog)
     feedback = ""
     for r in range(1, rounds + 1):
         step(f"\n=== stage 3/4 implement, round {r}/{rounds}: {agents.describe('implement')}")
-        problem = implement(agents, workdir, feedback, log)
+        problem = implement(agents, spec, workdir, feedback, log)
         if problem:
-            step(f"  not running: {problem.splitlines()[0]}")
-            feedback = f"Your previous round left the app not running:\n{problem}"
+            step(f"  not accepted: {problem.splitlines()[0]}")
+            feedback = f"Your previous round was not accepted:\n{problem}"
             continue
         step("  builds and serves")
 

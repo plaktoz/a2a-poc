@@ -38,7 +38,7 @@ Codex warns that it has no metadata for `gemini-3.6-flash` and uses fallback met
 |---|---|---|
 | 1. requirements | asks you questions, drafts a spec with acceptance criteria | you accept the spec |
 | 2. tests | writes `src/App.test.jsx`, one or more tests per criterion | the suite loads and fails (red) |
-| 3. implement | builds the React app | only `src/` changed, `npm run build` passes, `vite preview` serves it |
+| 3. implement | builds the React app, and may fix a test that is wrong | only `src/` changed, any test edit approved by the tester (with a reason, reverted if rejected), `npm run build` passes, `vite preview` serves it |
 | 4. verify | runs the tests, judges each criterion | its counts match the orchestrator's own Vitest run, all green, every criterion PASS |
 
 A failure in stage 3 or 4 goes back to the developer, up to `1 + budgets.max_retries` rounds.
