@@ -21,6 +21,7 @@ import fnmatch
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, get_args
 
 import yaml
 
@@ -31,6 +32,9 @@ from .process import run, tail
 KEEP = {"node_modules", ".venv"}  # installed, not generated: survive a reset
 IGNORED = {*KEEP, ".git", "dist", ".factory", "__pycache__", ".pytest_cache"}
 
+Suite = Literal["vitest", "pytest"]
+Serve = Literal["vite", "asgi", None]
+
 
 @dataclass(frozen=True)
 class Template:
@@ -38,8 +42,8 @@ class Template:
     path: Path
     surface: str
     stack: str
-    suite: str
-    serve: str | None
+    suite: Suite
+    serve: Serve
     commands: dict[str, str]
     test_files: tuple[str, ...]
     source_files: tuple[str, ...]
@@ -60,7 +64,7 @@ def read_template(name: str, templates_dir: Path = TEMPLATES_DIR) -> Template:
         )
     except KeyError as e:
         raise ConfigError(f"template {name!r}: {meta_file.name} has no {e.args[0]!r}") from None
-    if tpl.suite not in ("vitest", "pytest") or tpl.serve not in (None, "vite", "asgi"):
+    if tpl.suite not in get_args(Suite) or tpl.serve not in get_args(Serve):
         raise ConfigError(f"template {name!r}: unknown suite {tpl.suite!r} or serve {tpl.serve!r}")
     return tpl
 

@@ -21,7 +21,9 @@ roles:
     prompt: >-
       Do not create, edit or run anything. Choose exactly one runbook from the catalog. Set a
       trait to true only when the request needs it. Prefer the runbook whose `use_when` matches
-      best; a question to answer needs no code.
+      best; a question to answer needs no code. If no runbook fits the request, answer with the
+      runbook `none` and put the reason in `rationale`. Do not stretch a runbook to fit a request
+      it was not made for.
 
   analyst:
     title: Requirements analyst

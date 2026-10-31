@@ -53,9 +53,10 @@ def default_cfg():
 def test_shipped_config_loads():
     # Loads the real file as-is; which workers are enabled is up to the user.
     cfg = load_config(REPO / "llm.yaml", ENV)
-    assert cfg.llm.allowed_models == ["claude-test", "gpt-6.1-sol", "gemini-3.6-flash"]
+    assert cfg.llm.allowed_models == ["claude-test", "gpt-6.1-sol", "gpt-6-luna",
+                                      "gpt-advantage-assist", "gemini-3.7-flash"]
     assert set(cfg.workers) == {"claude-agent-sdk", "codex-gpt", "codex-gemini"}
-    assert cfg.budgets.per_task_usd == 30
+    assert cfg.budgets.per_task_usd is None  # not required: no cap is the default
     assert cfg.budgets.per_day_usd is None
 
 
@@ -164,6 +165,12 @@ def test_bad_url_is_rejected(tmp_path):
     data["workers"]["codex-gpt"]["base_url"] = "not a url"
     with pytest.raises(ConfigError, match="URL"):
         load(tmp_path, data)
+
+
+def test_per_task_budget_is_optional(tmp_path):
+    data = base()
+    data["budgets"].pop("per_task_usd", None)  # the shipped llm.yaml sets no cap
+    assert load(tmp_path, data).budgets.per_task_usd is None
 
 
 @pytest.mark.parametrize("value", [0, -5])

@@ -21,6 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+NO_RUNBOOK = "none"  # the triage answer when no runbook fits the request
 APP_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")  # a run's folder name under apps/
 
 
@@ -141,9 +142,9 @@ class Verdict(_Open):
 
 
 class Triage(_Open):
-    runbook: str
+    runbook: str  # a runbook name, or NO_RUNBOOK when none fits
     traits: dict[str, Any] = {}
-    name: str
+    name: str = ""
     rationale: str = Field(min_length=1)
     target: str | None = None
 
@@ -213,9 +214,12 @@ def _check_contract(data: dict, ctx: dict) -> None:
 
 
 def _check_triage(data: dict, ctx: dict) -> None:
-    """ctx["runbooks"] maps each runbook to its trait names."""
+    """ctx["runbooks"] maps each runbook to its trait names. The answer NO_RUNBOOK (with a reason in
+    `rationale`) says no runbook fits the request."""
     runbooks = ctx.get("runbooks")
     if not runbooks:
+        return
+    if data["runbook"] == NO_RUNBOOK and NO_RUNBOOK not in runbooks:
         return
     if data["runbook"] not in runbooks:
         raise ValueError(f"runbook {data['runbook']!r} is not one of {sorted(runbooks)}")
@@ -277,7 +281,7 @@ SCHEMAS: dict[str, Schema] = {
         """{"verdict": "approve|revise", "issues": [str], "strengths": [str]}"""),
     "triage": Schema(
         Triage,
-        """{"runbook": str, "traits": {<trait>: <value>}, "name": "<lowercase-hyphenated
+        """{"runbook": "<a runbook name, or none>", "traits": {<trait>: <value>}, "name": "<lowercase-hyphenated
    project name, at most 40 characters>", "rationale": str, "target": "<path or null>"}""", _check_triage),
     "dev_result": Schema(
         DevResult,
@@ -323,6 +327,8 @@ def render(name: str | None, data: Any) -> str:
                     lines.append(f"         {part}: {json.dumps(e[part])[:300]}")
         lines += _bullets("Notes", data.get("notes", []))
         return "\n".join(lines)
+    if name == "triage" and data["runbook"] == NO_RUNBOOK:
+        return f"Runbook: none\nWhy: {data['rationale']}"
     if name == "triage":
         traits = ", ".join(f"{k}={'yes' if v else 'no'}" for k, v in data["traits"].items()) or "none"
         return (f"Runbook: {data['runbook']}\nName: {data['name']}\nTraits: {traits}"

@@ -80,7 +80,7 @@ steps:
       exist yet, so choose plain, conventional names (accessible names, routes, fields) and
       follow the API contract exactly when there is one. The developer builds to your tests.
       Run `{{ test_command }}` once to check the tests load, then stop.
-    gates: [tests_named, tests_red]
+    gates: [secrets_clean, tests_named, tests_red]
 
   - loop: build
     rounds: budget
@@ -107,7 +107,7 @@ steps:
           store object created by create_app().
           Check your work with {{ check_commands }}.
         output: dev_result
-        gates: [tests_green, serves]
+        gates: [secrets_clean, packages_exist, lint_clean, tests_green, serves]
 
       - id: verify
         role: verifier

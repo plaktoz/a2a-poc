@@ -89,3 +89,18 @@ def test_verdict_is_normalized():
 def test_render_shows_the_content(name, data):
     text = render(name, validate(name, data))
     assert text and "{" not in text.splitlines()[0]
+
+
+def test_triage_can_answer_that_no_runbook_fits():
+    ctx = {"runbooks": {"web-app": ["frontend"], "research": []}}
+    out = validate("triage", {"runbook": "none", "rationale": "a health question needs a doctor"}, ctx)
+    assert out["runbook"] == "none" and out["name"] == ""
+    assert render("triage", out) == "Runbook: none\nWhy: a health question needs a doctor"
+
+
+def test_triage_still_needs_a_reason_and_a_real_runbook():
+    ctx = {"runbooks": {"research": []}}
+    with pytest.raises(ValueError):
+        validate("triage", {"runbook": "none", "rationale": ""}, ctx)
+    with pytest.raises(ValueError, match="not one of"):
+        validate("triage", {"runbook": "poem", "rationale": "r", "name": "x"}, ctx)

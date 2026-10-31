@@ -6,6 +6,9 @@
 #   is a load error (except inside a disabled worker).
 # - A worker inherits base_url / api_key_env / wire_api from `llm` unless it
 #   sets its own.
+# - `plugin` is the module path of the worker's plugin (see src/factory/workers/base.py).
+#   It is imported when this file loads. The built-in plugins are factory.workers.claude
+#   and factory.workers.codex. `options:` (optional) holds settings for the plugin.
 version: 1
 
 llm:
@@ -15,41 +18,43 @@ llm:
   allowed_models:                       # real IDs as exposed by the gateway
     - "${ANTHROPIC_MODEL}"
     - gpt-6.1-sol
-    - gemini-3.6-flash
+    - gpt-6-luna
+    - gpt-advantage-assist
+    - gemini-3.7-flash
   default_model: "${ANTHROPIC_MODEL}"
 
 workers:
   claude-agent-sdk:
     enabled: true
-    harness: claude-agent-sdk
+    plugin: factory.workers.claude
     models: ["${ANTHROPIC_MODEL}"]
     default_model: "${ANTHROPIC_MODEL}"
 
   codex-gpt:
     enabled: true
-    harness: codex
+    plugin: factory.workers.codex
     base_url: "${OPENAI_BASE_URL}"
     api_key_env: OPENAI_API_KEY
     wire_api: responses
-    models: [gpt-6.1-sol]
+    models: [gpt-6.1-sol,gpt-6-luna,gpt-advantage-assist]
     default_model: gpt-6.1-sol
 
   codex-gemini:
     enabled: true                      # set to false to switch this worker off
-    harness: codex
+    plugin: factory.workers.codex
     base_url: "${GOOGLE_GEMINI_BASE_URL}"
     api_key_env: GEMINI_API_KEY
     wire_api: responses
-    models: [gemini-3.6-flash]
-    default_model: gemini-3.6-flash
+    models: [gemini-3.7-flash]
+    default_model: gemini-3.7-flash
 
 # Independence: the reviewer must use a different model than the author. The roles
 # decide the reviewer model (agents.yaml). The candidates are only checked when the
 # file loads: each must be an allowed model, and two must be served by enabled workers.
 reviewer:
-  candidates: [gpt-6.1-sol, "${ANTHROPIC_MODEL}", gemini-3.6-flash]
+  candidates: [gpt-6.1-sol, "${ANTHROPIC_MODEL}", gemini-3.7-flash]
   must_differ_from_author: true
 
 budgets:
-  per_task_usd: 30                      # the cost limit of one Claude call
+  # per_task_usd: 30                    # optional: a cost cap for each Claude call. Not set: no cap.
   max_retries: 1

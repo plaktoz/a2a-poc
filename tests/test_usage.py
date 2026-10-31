@@ -8,6 +8,7 @@ import pytest
 
 from factory import load_config
 from factory import invoke as inv
+from factory import process
 from factory.a2a_transport import Reply, StageFailed, TaskError, call
 from factory.agent import handle, produce
 from factory.engine import triage
@@ -93,7 +94,7 @@ def fake_run(monkeypatch, stdout, returncode=0):
         seen.append(argv)
         return subprocess.CompletedProcess(argv, returncode, stdout, "")
 
-    monkeypatch.setattr(inv, "run", run)
+    monkeypatch.setattr(process, "run", run)
     return seen
 
 
@@ -103,7 +104,12 @@ def test_invoke_asks_each_cli_for_json(monkeypatch, tmp_path):
     text, u = inv.invoke(cfg, "claude-agent-sdk", "claude-test", "p", tmp_path, Tools())
     assert (text, u["cost_usd"]) == ("ok", 0.0895)
     assert ["--output-format", "json"] == seen[0][seen[0].index("--output-format"):][:2]
-    assert "--max-budget-usd" in seen[0]  # the per-call cap is unchanged
+    assert "--max-budget-usd" not in seen[0]  # no cap unless llm.yaml sets per_task_usd
+    capped = default_cfg()
+    capped.budgets.per_task_usd = 30
+    seen = fake_run(monkeypatch, json.dumps(CLAUDE_OK))
+    inv.invoke(capped, "claude-agent-sdk", "claude-test", "p", tmp_path, Tools())
+    assert seen[0][seen[0].index("--max-budget-usd") + 1] == "30"
     seen = fake_run(monkeypatch, CODEX_OK)
     text, u = inv.invoke(cfg, "codex-gpt", "gpt-6.1-sol", "p", tmp_path, Tools())
     assert text == "ok" and "--json" in seen[0] and seen[0].index("--json") < seen[0].index("--")

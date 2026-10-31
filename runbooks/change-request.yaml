@@ -1,0 +1,69 @@
+# Change an existing git repo. The change is committed on its own branch; nothing is pushed.
+#
+# The factory makes a git worktree of the repo on a new branch (factory/<feature>), so the
+# original checkout is never touched. An analyst agrees the acceptance criteria with you, a
+# developer changes the code in the worktree, and an independent reviewer reads the diff. The
+# factory runs the repo's own test command (--test-command) itself; the developer's word that
+# the tests pass counts for nothing. When the loop passes, the factory makes one commit.
+name: change-request
+title: Change an existing repo
+description: >
+  Makes a change to an existing git repository from a requirement: agrees acceptance criteria,
+  changes the code in a separate worktree on a new branch, runs the repo's tests, has the diff
+  reviewed, and commits the result. The branch is left for a person to review.
+use_when: >
+  The request asks to add a feature to, fix a bug in, or otherwise change code that already
+  lives in a git repository. It needs the repo path and the command that runs its tests.
+needs_target: true
+steps:
+  - id: spec
+    role: analyst
+    cwd: target
+    instructions: |
+      Turn the requirement into acceptance criteria for a change to the code in this repo.
+
+      The requirement:
+      {{ brief }}
+
+      Read the code in the current directory to see how it is built and tested. A criterion is
+      one behaviour that can be checked, ideally by the repo's test suite
+      (`{{ test_command }}`). Ids are AC1, AC2, ... in order. Keep to what the requirement asks:
+      list what you leave out in out_of_scope and the choices you made in assumptions.
+    output: spec
+    checkpoint: true
+    save: SPEC.json
+
+  - loop: build
+    rounds: budget
+    steps:
+      - id: change
+        role: developer
+        cwd: target
+        writes: target
+        reads: [spec]
+        instructions: |
+          Make this change in the repo in the current directory:
+          {{ brief }}
+
+          Satisfy every acceptance criterion of the spec. Follow the conventions of the code
+          that is already there, and add or update tests for the new behaviour. Change only
+          what the requirement needs. Run `{{ test_command }}` to check your work.
+
+          Do not run git commands that change anything (no add, commit, checkout, reset or
+          stash): the factory makes the commit. Change files only in the current directory.
+          In `test_change`, say which existing tests you changed and why, or leave it empty.
+        output: dev_result
+
+      - id: verify
+        role: reviewer
+        cwd: target
+        reads: [spec, change]
+        instructions: |
+          Review the change against the acceptance criteria. The diff is in the context below;
+          read the changed files for more. Approve only if every criterion is met, the change
+          does nothing the requirement did not ask for, new behaviour has tests, and existing
+          tests were not weakened. Otherwise list each change that is needed in issues. The
+          factory runs the test command itself, so do not run it.
+        output: verdict
+        gates: [review_approves]
+    gates: [repo_tests_pass]

@@ -9,7 +9,7 @@ validated against that schema (with one retry when the reply is unusable). The o
 validates it again, and runs the gates; the agent never grades its own work.
 
 Request (JSON data part):
-  {task, item, instructions, stack, context: [{title, body}], output, schema_ctx,
+  {run_id, task, item, instructions, stack, context: [{title, body}], output, schema_ctx,
    commands, cwd, feedback, interactive, checkpoint}
 
 Replies:
@@ -117,6 +117,8 @@ def produce(cfg: Config, role: Role, worker: str, model: str, req: dict,
 
 def handle(cfg: Config, role: Role, worker: str, model: str, turns: list[Turn]) -> Reply:
     req, last = turns[0]["data"], turns[-1]["data"]
+    item = f" [{req['item']}]" if req.get("item") else ""
+    print(f"run {req.get('run_id') or '-'}: {req.get('task')}{item}, turn {len(turns)}", flush=True)
     # The calls made for the drafts that were already sent back to the caller.
     earlier = [u for t in turns if t["role"] == "agent" for u in t["data"].get("usage", [])]
     if len(turns) > 1 and turns[-2]["data"]["kind"] == "review" and last.get("accept"):

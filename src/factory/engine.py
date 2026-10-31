@@ -18,6 +18,8 @@ import difflib
 import fcntl
 import json
 import re
+import secrets
+import subprocess
 import threading
 import time
 from collections.abc import Callable
@@ -30,6 +32,8 @@ from . import schemas
 from .a2a_transport import Json, StageFailed
 from .config import Config, ConfigError
 from .gates import GATES, Failure, GateCtx, fetch_text
+from . import repo
+from .paths import ROOT
 from .roles import ROLES
 from .runbook import LoopDef, Plan, Runbook, StepDef, describe_catalog, fill, holds
 from .scaffold import IGNORED, Template, matches, place, reset
@@ -69,7 +73,7 @@ def open_workspace(apps_dir: Path, name: str, rebuild: bool) -> tuple[Path, Any]
     run_file = ws / ".factory" / "run.json"
     if not rebuild and run_file.exists() and json.loads(run_file.read_text()).get("status") == "accepted":
         lock.close()
-        raise ConfigError(f"apps/{name} already holds accepted work; pass --rebuild to redo it, "
+        raise ConfigError(f"{apps_dir.name}/{name} already holds accepted work; pass --rebuild to redo it, "
                           "or choose another name")
     return ws, lock
 
@@ -121,17 +125,64 @@ def _add_usage(total: Json, call: Json) -> None:
         total["cost_usd"] = round(total["cost_usd"] + call["cost_usd"], 6)
 
 
+def new_run_id() -> str:
+    """A run ID that sorts by start time: 20261031-142501-a3f9c2."""
+    return f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
+
+
+def factory_version() -> Json:
+    """The git commit of the factory code that runs, and whether it has uncommitted changes.
+    Both are None when the code is not in a git checkout."""
+    def git(*args: str) -> str | None:
+        try:
+            r = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    commit = git("rev-parse", "HEAD")
+    status = git("status", "--porcelain") if commit else None
+    return {"commit": commit, "dirty": None if status is None else bool(status)}
+
+
+def gate_names(plan: Plan) -> dict[str, list[str]]:
+    """The gates of each step and loop of the plan, by id, so a run records which checks accepted it."""
+    out: dict[str, list[str]] = {}
+    for node in plan.nodes:
+        if isinstance(node, LoopDef):
+            out[node.loop] = list(node.gates)
+            out.update({s.id: list(s.gates) for s in node.steps})
+        else:
+            out[node.id] = list(node.gates)
+    return out
+
+
 class RunLog:
-    def __init__(self, path: Path, plan: Plan, brief: str) -> None:
+    def __init__(self, path: Path, plan: Plan, brief: str, run_id: str, target: str | None) -> None:
         self.path, self.lock = path, threading.Lock()
         self.data: Json = {
-            "runbook": plan.runbook.name, "brief": brief, "traits": plan.traits,
+            "run_id": run_id, "factory": factory_version(), "gates": gate_names(plan),
+            "runbook": plan.runbook.name, "brief": brief, "traits": plan.traits, "target": target,
             "surfaces": {d: t.name for d, t in plan.templates.items()},
             "staff": {r: {"worker": s.worker, "model": s.model} for r, s in plan.staff.items()
                       if r in plan.roles()},
             "status": "running", "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "usage": {**_empty_usage(), "by_model": {}}, "events": [], "calls": [],
+            "usage": {**_empty_usage(), "by_model": {}}, "events": [], "calls": [], "loops": {},
         }
+
+    def resume(self, previous: Json, factory: Json) -> None:
+        """Continue the record of an earlier attempt: keep its events, calls and usage."""
+        with self.lock:
+            self.data = {**previous, "status": "running", "resumes": [
+                *previous.get("resumes", []), {"started": time.strftime("%Y-%m-%dT%H:%M:%S"), "factory": factory}]}
+            self.data.pop("detail", None)
+            self.data.pop("ended", None)
+            self._write()
+
+    def loop_round(self, loop: str, rounds_used: int, accepted: bool) -> None:
+        with self.lock:
+            self.data["loops"][loop] = {"rounds_used": rounds_used, "accepted": accepted}
+            self._write()
 
     def record(self, step: str, item: str | None, role: str, status: str, started: float,
                detail: str = "") -> None:
@@ -163,6 +214,11 @@ class RunLog:
         return (f"Usage: {u['calls']} LLM calls, {u['input_tokens']:,} input tokens "
                 f"({u['cached_input_tokens']:,} cached), {u['output_tokens']:,} output tokens, {cost}")
 
+    def update(self, **fields: Any) -> None:
+        with self.lock:
+            self.data.update(fields)
+            self._write()
+
     def save(self, status: str, detail: str = "") -> None:
         with self.lock:
             self.data.update(status=status, detail=detail, ended=time.strftime("%Y-%m-%dT%H:%M:%S"))
@@ -187,18 +243,52 @@ class Engine:
                  name: str, target: Path | None = None, interactive: bool = True,
                  say: Callable[[str], None] = print, ask: Callable[[str], str] = input,
                  fetch: Callable[[str], str | None] = fetch_text, install: bool = True,
-                 earlier_usage: list[Json] | None = None) -> None:
+                 earlier_usage: list[Json] | None = None, run_id: str | None = None,
+                 resume: bool = False, send_fallback: Send | None = None,
+                 worktree: repo.Worktree | None = None, test_command: str | None = None) -> None:
         self.plan, self.cfg, self.ws, self.send = plan, cfg, workspace, send
+        self.send_fallback = send_fallback
+        self.run_id = run_id or new_run_id()
         self.brief, self.name, self.target = brief, name, target
+        self.worktree, self.test_command = worktree, test_command  # P10: a change in a git worktree
         self.interactive, self.say, self.ask, self.fetch, self.install = interactive, say, ask, fetch, install
         self.artifacts: dict[str, Any] = {}
-        self.log = RunLog(workspace / ".factory" / "run.json", plan, brief)
+        self._artifacts_lock = threading.Lock()
+        self._done: set[tuple[str, str | None]] = set()  # (step, item) accepted in an earlier attempt
+        self.log = RunLog(workspace / ".factory" / "run.json", plan, brief, self.run_id,
+                          str(target) if target else None)
         self.log.add_usage("triage", None, "triage", earlier_usage)  # made before the engine existed
         self._scaffolds_reset = False
         self._cache: dict[str, str | None] = {}
         self._cache_lock = threading.Lock()
         if plan.runbook.needs_target and (target is None or not target.is_dir()):
             raise ConfigError(f"runbook {plan.runbook.name} needs --target, an existing directory")
+        if any(s.writes == "target" for s in plan.steps()) and worktree is None:
+            raise ConfigError(f"runbook {plan.runbook.name} writes to a repo, so it needs --repo")
+        if worktree is not None:
+            self.log.data.update(worktree.fields)  # repo, base, branch, tree, commit (set after commit)
+        if resume:
+            self._resume()
+
+    def _resume(self) -> None:
+        """Load the record of the earlier attempt. Every step item it accepted is kept, not run again."""
+        path = self.ws / ".factory" / "run.json"
+        if not path.exists():
+            raise ConfigError(f"nothing to resume: {path.parent.parent.name} has no run record")
+        previous = json.loads(path.read_text())
+        if previous.get("runbook") != self.plan.runbook.name:
+            raise ConfigError(f"the run record is for runbook {previous.get('runbook')}, not {self.plan.runbook.name}")
+        self.run_id = previous["run_id"]
+        self.log.resume(previous, factory_version())
+        arts = self.ws / ".factory" / "artifacts.json"
+        self.artifacts = json.loads(arts.read_text()) if arts.exists() else {}
+        latest: dict[tuple[str, str | None], str] = {}
+        for e in previous.get("events", []):
+            latest[(e["step"], e["item"])] = e["status"]  # the last event of an item decides
+        self._done = {key for key, status in latest.items() if status == "accepted"}
+        writes = {s.id: s.writes for s in self.plan.steps()}
+        # Code that an accepted step wrote must stay: the scaffolds are reset only if none was accepted.
+        self._scaffolds_reset = any(writes.get(step, "none") != "none" for step, _ in self._done)
 
     # --- driver
 
@@ -217,6 +307,8 @@ class Engine:
                         self.step(node, {})  # outside a loop, a round failure ends the run
                     except RoundFailed as e:
                         raise Stop(f"step {node.id} failed:\n" + "\n".join(e.feedback.values())) from None
+            if self.worktree is not None:
+                self._commit()
         except Stop as e:
             self._save_artifacts()
             self.log.save("stopped", str(e))
@@ -234,11 +326,41 @@ class Engine:
         for f in self.plan.runbook.finish:
             if holds(f.when, self.plan.traits):
                 self.say(fill(f.text, self._values(None)).strip())
+        if self.worktree is not None:
+            self._say_repo_result()
         return True
 
+    def _commit(self) -> None:
+        """Commit the accepted change on the run's branch (P10). Nothing is pushed or merged."""
+        assert self.worktree is not None
+        spec = self.artifacts.get("spec") or {}
+        title = (spec.get("title") or self.brief).strip().splitlines()[0][:72]
+        criteria = [c["text"] for c in spec.get("acceptance_criteria", [])]
+        try:
+            sha = repo.commit(self.worktree.tree, title, criteria, self.run_id)
+        except repo.GitError as e:
+            raise Stop(str(e)) from None
+        if sha is None:
+            raise Stop("the accepted change is empty: no file in the worktree differs from the base, "
+                       "so there is nothing to commit")
+        self.log.update(commit=sha)
+        self.say(f"Committed {sha[:12]} on {self.worktree.branch}: {title}")
+
+    def _say_repo_result(self) -> None:
+        wt = self.worktree
+        assert wt is not None
+        self.say(f"Branch:   {wt.branch} (in {wt.repo})")
+        self.say(f"Worktree: {wt.tree}")
+        self.say(f"Review:   {repo.diff_command(wt)}")
+        self.say(f"Clean up when done: {repo.cleanup_command(wt)}")
+
     def loop(self, node: LoopDef) -> None:
+        if (node.loop, None) in self._done:
+            self.say(f"\n=== {node.loop}: accepted in an earlier attempt, kept")
+            return
         rounds = 1 + self.cfg.budgets.max_retries if node.rounds == "budget" else node.rounds
         feedback: dict[str | None, str] = {}
+        started = time.monotonic()
         for r in range(1, rounds + 1):
             self.say(f"\n=== {node.loop}, round {r}/{rounds}")
             try:
@@ -249,6 +371,8 @@ class Engine:
                 ctx = self._ctx(None, self.ws)
                 for g in node.gates:
                     GATES[g](ctx, {})
+                self.log.loop_round(node.loop, r, True)
+                self.log.record(node.loop, None, "loop", "accepted", started, f"round {r}/{rounds}")
                 return
             except RoundFailed as e:
                 feedback = e.feedback
@@ -260,6 +384,7 @@ class Engine:
                 feedback = {None: f.message}
                 self.say(f"  not accepted: {_console_reason(f.message)}")
         problem = "\n".join(feedback.values())[:3000]
+        self.log.loop_round(node.loop, rounds, False)
         for s in node.steps:
             self._mark_not_approved(s, rounds, problem)
         raise Stop(f"{node.loop} was not accepted after {rounds} round(s). Last problem:\n{problem}")
@@ -273,6 +398,9 @@ class Engine:
         self._reset_scaffolds(s)
 
         def one(item: Item) -> None:
+            if (s.id, item.key) in self._done and self._stored(s, item):
+                self.say(f"  {s.id}{f' [{item.key}]' if item.key else ''}: accepted in an earlier attempt, kept")
+                return
             fb = feedback.get(item.key) or feedback.get(None, "")
             try:
                 out = self.attempt(s, item, fb)
@@ -295,17 +423,30 @@ class Engine:
     def attempt(self, s: StepDef, item: Item, feedback: str) -> Json:
         """Run one item of a step, retrying it with feedback. Raises RoundFailed or Stop."""
         cwd = self._cwd(s, item)
+        in_tree = self._in_tree(cwd)  # a repo worktree: git tells what changed, not a folder snapshot
         tag = f"{s.id}{f' [{item.key}]' if item.key else ''}"
+        staff = self.plan.staff[s.role]
         for attempt in range(1 + s.retries):
             started = time.monotonic()
-            before = snapshot(cwd)
+            before = repo.snapshot_tree(cwd) if in_tree else snapshot(cwd)
+            top_before = repo.dirty_files(self.worktree.repo) if in_tree else {}
+            # On the last attempt, a role with a fallback uses its fallback worker (FR-7).
+            # The last retry, so a step with no retries never switches.
+            switch = (staff.fallback is not None and self.send_fallback is not None
+                      and s.retries > 0 and attempt == s.retries)
+            if switch:
+                self.say(f"  {tag}: last attempt on the fallback worker "
+                         f"({staff.fallback.worker} / {staff.fallback.model})")
             try:
                 reply = self._send(s.id, item.key, s.role, self._request(s, item, cwd, feedback),
-                                   self._on_input(s))
+                                   self._on_input(s), via=self.send_fallback if switch else None)
                 out = reply.get("output", {})
+                if in_tree:  # checked before the reply is read, so a bad reply cannot hide a change
+                    self._check_tree(s, item, cwd, before, top_before)
                 if s.output:
                     out = schemas.validate(s.output, out, self._schema_ctx(s))
-                self._check_files(s, item, cwd, before, out)
+                if not in_tree:
+                    self._check_files(s, item, cwd, before, out)
                 ctx = self._ctx(item, cwd)
                 for g in s.gates:
                     GATES[g](ctx, out)
@@ -329,10 +470,11 @@ class Engine:
         raise AssertionError("unreachable")
 
     def _send(self, step: str, item: str | None, role: str, request: Json,
-              on_input: Callable[[Json], Json] | None) -> Json:
-        """Send a request to an agent and log the LLM calls it made, also when it fails."""
+              on_input: Callable[[Json], Json] | None, via: Send | None = None) -> Json:
+        """Send a request to an agent and log the LLM calls it made, also when it fails.
+        `via` sends it to another agent of the role (the fallback)."""
         try:
-            reply = self.send(role, request, on_input)
+            reply = (via or self.send)(role, request, on_input)
         except StageFailed as e:
             self.log.add_usage(step, item, role, e.data.get("usage"))
             raise
@@ -346,19 +488,32 @@ class Engine:
         stack = ""
         if tpl:
             stack = "\n".join(x for x in (tpl.stack, self.plan.notes.get(item.surface, "")) if x)
+        context = [c for r in s.reads if (c := self._context(r)) is not None]
+        if s.writes == "none" and self._in_tree(cwd) and repo.status_paths(cwd):
+            # A checking step in a repo reads the change, as git shows it (P10).
+            context.append({"title": "The change so far (git diff against the base)",
+                            "body": f"```diff\n{repo.diff_text(cwd)}\n```"})
         return {
-            "task": s.id, "item": item.key,
+            "run_id": self.run_id, "task": s.id, "item": item.key,
             "instructions": fill(s.instructions, self._values(item)),
             "stack": stack,
-            "context": [c for r in s.reads if (c := self._context(r)) is not None],
+            "context": context,
             "output": s.output, "schema_ctx": self._schema_ctx(s),
-            "commands": dict(tpl.commands) if tpl else {},
+            "commands": self._commands(item),
             "cwd": str(cwd), "feedback": feedback,
             "interactive": self.interactive, "checkpoint": self.interactive and s.checkpoint,
         }
 
+    def _commands(self, item: Item | None) -> dict[str, str]:
+        """The commands an agent may run: its surface's template, or the repo's test command (P10)."""
+        tpl = self.plan.templates.get(item.surface) if item and item.surface else None
+        if tpl:
+            return dict(tpl.commands)
+        return {"test": self.test_command} if self.test_command else {}
+
     def _values(self, item: Item | None) -> Json:
         tpl = self.plan.templates.get(item.surface) if item and item.surface else None
+        commands = self._commands(item)
         return {
             "brief": self.brief, "name": self.name, "workspace": str(self.ws),
             "target": str(self.target) if self.target else "",
@@ -366,8 +521,8 @@ class Engine:
             "item": item.data if item else {},
             "test_files": list(tpl.test_files) if tpl else [],
             "source_files": list(tpl.source_files) if tpl else [],
-            "test_command": tpl.commands.get("test", "") if tpl else "",
-            "check_commands": " and ".join(f"`{c}`" for c in tpl.commands.values()) if tpl else "",
+            "test_command": commands.get("test", ""),
+            "check_commands": " and ".join(f"`{c}`" for c in commands.values()),
         }
 
     def _context(self, ref: str) -> Json | None:
@@ -432,6 +587,32 @@ class Engine:
             if tests := {p for p in touched if matches(p, tpl.test_files)}:
                 self._review_test_change(s, item, cwd, before, tests, out.get("test_change", ""))
 
+    def _check_tree(self, s: StepDef, item: Item, cwd: Path, before: repo.TreeState, top_before: dict) -> None:
+        """A step in the repo worktree (P10). Nothing outside the worktree may change, and git's own
+        data (.git, HEAD) must not change. Files in the worktree may change only when the step
+        writes target; a step that writes nothing has its scratch files reverted."""
+        assert self.worktree is not None
+        problems = []
+        top = self.worktree.repo
+        if outside := repo.touched(top_before, repo.dirty_files(top)):
+            repo.revert_files(top, top_before, outside)
+            problems.append("you changed files outside your worktree, in the original checkout: "
+                            f"{', '.join(sorted(outside))}. They were restored. Change files only in "
+                            "your working directory.")
+        if found := repo.revert_git(cwd, before):
+            problems.append(f"you changed git's own data ({', '.join(found)}). It was restored. Do not "
+                            "commit or move HEAD: the factory makes the commit.")
+        if s.writes == "none":
+            if touched := repo.touched(before.files, repo.dirty_files(cwd)):
+                repo.revert_files(cwd, before.files, touched)
+                self.say(f"  reverted files the {s.role} may not change: {', '.join(sorted(touched))[:300]}")
+                self.log.record(s.id, item.key, s.role, "files reverted", time.monotonic(), ", ".join(sorted(touched)))
+        if problems:
+            raise Failure("\n".join(problems), "step")
+
+    def _in_tree(self, cwd: Path) -> bool:
+        return self.worktree is not None and cwd.resolve() == self.worktree.tree
+
     def _review_test_change(self, s: StepDef, item: Item, cwd: Path, before: Snapshot,
                             tests: set[str], reason: str) -> None:
         """The tester approves a developer's change to the tests, or it is reverted."""
@@ -447,7 +628,8 @@ class Engine:
         else:
             spec = self.artifacts.get("spec")
             req = {
-                "task": f"{s.id}:test-review", "item": item.key, "output": "verdict", "cwd": str(cwd),
+                "run_id": self.run_id, "task": f"{s.id}:test-review", "item": item.key,
+                "output": "verdict", "cwd": str(cwd),
                 "stack": self.plan.templates[item.surface].stack, "commands": {},
                 "instructions": (
                     "The developer changed the tests you wrote, and gives a reason. Approve only if the "
@@ -478,7 +660,8 @@ class Engine:
     def _ctx(self, item: Item | None, cwd: Path) -> GateCtx:
         dirs = [item.surface] if item and item.surface else self.plan.surfaces
         return GateCtx(app_dir=self.ws, cwd=cwd, dirs=dirs, templates=self.plan.templates,
-                       artifacts=self.artifacts, fetch=self._fetch)
+                       artifacts=self.artifacts, fetch=self._fetch,
+                       tree=self.worktree.tree if self.worktree else None, test_command=self.test_command)
 
     def _fetch(self, url: str) -> str | None:
         with self._cache_lock:
@@ -523,13 +706,20 @@ class Engine:
             return self.target
         return self.ws
 
-    def _store(self, s: StepDef, item: Item, out: Json) -> None:
+    def _stored(self, s: StepDef, item: Item) -> bool:
         if s.for_each:
-            self.artifacts.setdefault(s.id, {})[item.key] = out
-        else:
-            self.artifacts[s.id] = out
-        if s.output and s.output not in self._step_ids():
-            self.artifacts[s.output] = self.artifacts[s.id]
+            return item.key in (self.artifacts.get(s.id) or {})
+        return s.id in self.artifacts
+
+    def _store(self, s: StepDef, item: Item, out: Json) -> None:
+        with self._artifacts_lock:
+            if s.for_each:
+                self.artifacts.setdefault(s.id, {})[item.key] = out
+            else:
+                self.artifacts[s.id] = out
+            if s.output and s.output not in self._step_ids():
+                self.artifacts[s.output] = self.artifacts[s.id]
+            self._save_artifacts()  # so a run that stops or crashes can be resumed
 
     def _save(self, s: StepDef) -> None:
         path = self.ws / fill(s.save, self._values(None))
@@ -553,6 +743,7 @@ class Engine:
         self.say(f"  marked {path.relative_to(self.ws)} as not approved")
 
     def _save_artifacts(self) -> None:
+        """Write the artifacts. The caller holds _artifacts_lock, or runs alone."""
         (self.ws / ".factory" / "artifacts.json").write_text(_dump(self.artifacts))
 
     def _step_ids(self) -> set[str]:
@@ -606,12 +797,12 @@ def _summary_suffix(s: StepDef, out: Json) -> str:
 
 def triage(send: Send, brief: str, books: dict[str, Runbook], *, target: str | None,
            on_input: Callable[[Json], Json] | None, cwd: Path,
-           usage: list[Json] | None = None) -> Json:
+           usage: list[Json] | None = None, run_id: str | None = None) -> Json:
     """Ask the triage agent which runbook and traits fit the brief.
 
     The LLM calls it makes are added to `usage`, for the run log."""
     req = {
-        "task": "triage", "item": None, "output": "triage", "cwd": str(cwd), "commands": {},
+        "run_id": run_id, "task": "triage", "item": None, "output": "triage", "cwd": str(cwd), "commands": {},
         "instructions": (
             "Read the request and choose the runbook that fits it, and its traits. Also choose a short "
             "name for the work: lowercase words joined by hyphens. If the request names existing code "

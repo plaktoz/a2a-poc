@@ -81,12 +81,23 @@ class LLMDefaults(_Strict):
 
 class WorkerSpec(_Strict):
     enabled: bool = True
-    harness: str
+    plugin: str = Field(min_length=1)
+    options: dict[str, Any] = Field(default_factory=dict)
     base_url: str | None = None
     api_key_env: str | None = None
     wire_api: WireApi | None = None
     models: list[str] = Field(min_length=1)
     default_model: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _renamed(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "harness" in data:
+            raise ValueError(
+                "'harness' was renamed to 'plugin', which names the worker's module path, "
+                "e.g. plugin: factory.workers.codex (or factory.workers.claude)"
+            )
+        return data
 
     @field_validator("base_url")
     @classmethod
@@ -105,7 +116,7 @@ class ReviewerSpec(_Strict):
 
 
 class Budgets(_Strict):
-    per_task_usd: float = Field(gt=0)
+    per_task_usd: float | None = Field(default=None, gt=0)  # optional: no cap when not set
     per_day_usd: float | None = Field(default=None, gt=0)
     max_retries: int = Field(default=1, ge=0)
 
@@ -117,7 +128,8 @@ class Worker(BaseModel):
 
     name: str
     enabled: bool
-    harness: str
+    plugin: str
+    options: dict[str, Any]
     base_url: str
     api_key_env: str
     wire_api: WireApi
@@ -180,7 +192,8 @@ class Config(_Strict):
         return Worker(
             name=name,
             enabled=spec.enabled,
-            harness=spec.harness,
+            plugin=spec.plugin,
+            options=dict(spec.options),
             base_url=spec.base_url or self.llm.base_url,
             api_key_env=spec.api_key_env or self.llm.api_key_env,
             wire_api=spec.wire_api or self.llm.wire_api,
@@ -322,4 +335,9 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None) -> Confi
     )
     if unset:
         raise ConfigError(f"API key environment variables not set: {', '.join(unset)}")
+
+    # Imported here: the plugins import this module.
+    from .workers.loader import validate_workers
+
+    validate_workers(cfg)
     return cfg

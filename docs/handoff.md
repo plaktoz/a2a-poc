@@ -34,7 +34,7 @@ A runbook-style A2A software factory in `src/factory`. Runbooks (YAML in `runboo
 - Claude reports a cost. Codex reports tokens only, so its cost is `null`. The totals count those calls in `calls_without_cost`.
 - The agent puts the usage of every call in its reply. A failed task carries the usage it spent in its error message (`TaskError`).
 - `run.json` holds a `usage` object (totals and one entry for each model) and a `calls` list (one row for each call). The console prints a `Usage:` line at the end.
-- Usage is logged only. No run or day limit exists. `per_task_usd` is still the cap of one Claude call (`--max-budget-usd`). `per_day_usd` is parsed and never read.
+- Usage is logged only. No run or day limit exists. `per_task_usd` is optional and not required: when set, it caps one Claude call (`--max-budget-usd`). When unset, there is no cap. `per_day_usd` is parsed and never read.
 - Tests are in `tests/test_usage.py` (17 tests).
 
 ## 5. Decisions the owner made

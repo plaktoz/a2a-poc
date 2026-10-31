@@ -1,6 +1,5 @@
 """Runbooks as data: loading, validation, trait composition and staffing (no LLM involved)."""
 
-from pathlib import Path
 
 import pytest
 import yaml
@@ -36,7 +35,7 @@ def ids(plan):
 
 def test_shipped_runbooks_load():
     books = catalog()
-    assert set(books) == {"web-app", "research", "code-audit", "api-design"}
+    assert set(books) == {"web-app", "research", "code-audit", "api-design", "change-request"}
     for p in RUNBOOKS_DIR.glob("*.yaml"):
         assert load_runbook(p).name == p.stem
 

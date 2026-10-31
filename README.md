@@ -7,7 +7,8 @@ The factory can:
 - build a web app (a React frontend, a FastAPI backend, or both),
 - answer a research question in a report where every quote is checked against its source,
 - audit existing code and write a prioritized report,
-- design an HTTP API.
+- design an HTTP API,
+- change an existing git repo and commit the change on its own branch.
 
 ## Quick start
 
@@ -15,8 +16,8 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "141 passed"; no LLM is called
-uv run factory runbooks        # lists api-design, code-audit, research and web-app
+uv run pytest                  # prints "255 passed"; no LLM is called
+uv run factory runbooks        # lists api-design, change-request, code-audit, research and web-app
 ```
 
 Set the environment variables that `llm.yaml` names before a real run:
@@ -31,6 +32,7 @@ Set the environment variables that `llm.yaml` names before a real run:
 Then start a run. It calls the LLMs and takes minutes.
 
 ```bash
+uv run factory check                                    # one short prompt to each model: are they reachable?
 uv run factory plan web-app --trait backend=yes     # show what a run would do; nothing runs
 uv run factory run --brief "a shared shopping list for my family"
 ```
@@ -45,6 +47,7 @@ The factory shows its plan and waits for your OK. Add `--yes` to skip every ques
 | `research` | Answer a question from public sources. Trait: `review` (default yes). | plan, investigate each sub-question in parallel, then a write loop | `PLAN.json`, `REPORT.md` |
 | `code-audit` | Review code without changing it. Needs `--target`. | audit through 4 lenses in parallel (security, correctness, maintainability, tests), then a write loop | `AUDIT.md` |
 | `api-design` | Turn a brief into a spec and an HTTP API contract. | spec, then a contract loop | `SPEC.json`, `API.json` |
+| `change-request` | Change code in an existing git repo. Needs `--repo` and `--test-command`. | spec (you approve it), then a build loop: a developer changes the code in a worktree, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
 
 Examples:
 
@@ -55,10 +58,12 @@ uv run factory run --brief "a URL shortener API" --runbook web-app \
     --trait frontend=no --trait backend=yes                                  # backend only
 uv run factory run --brief "which vector database fits a 10M-document RAG system?"
 uv run factory run --runbook code-audit --target apps/kanban-react --brief "is it ready to ship?"
+uv run factory run --runbook change-request --repo ~/code/shop --test-command "npm test" \
+    --brief "add a cart that shows the total" --name cart                    # a commit on factory/cart
 uv run factory run --brief "..." --staff writer=codex-gpt --staff verifier=codex-gemini
 ```
 
-Without `--runbook`, a triage agent reads the brief and chooses the runbook and its traits. The option `--trait` overrides its choice.
+Without `--runbook`, a triage agent reads the brief and chooses the runbook and its traits. The option `--trait` overrides its choice. If no runbook fits the request, triage answers `none`. The factory then prints the reason, makes no folder and exits with code 1.
 
 ## What happens in a run
 
@@ -96,18 +101,62 @@ Each run works in `apps/<name>/`. Use `--name` to choose the name, or let the fa
 | `SPEC.json`, `API.json`, `PLAN.json` | Results that a step saves |
 | `REPORT.md`, `AUDIT.md` | Reports |
 | `web/`, `api/` | The apps |
-| `.factory/run.json` | Status, staff, one event for each attempt, and the LLM usage |
+| `.factory/run.json` | Status, staff, one event for each attempt, the LLM usage, and the fields in "The run record" below |
 | `.factory/artifacts.json` | The result of every step |
 | `.factory/agents/<role>.log` | The log of one agent |
 | `.factory/lock` | Stops a second run with the same name |
 
 The status in `run.json` is `running`, `accepted`, `stopped` or `error`. After an accepted run, the same name needs `--rebuild`.
 
+#### The run record
+
+`run.json` identifies the run and the code that ran it:
+
+| Field | Content |
+|---|---|
+| `run_id` | The ID that the console prints as `Run <id>`. Every request and agent log line carries it. |
+| `factory` | `commit` and `dirty`: the git commit of the factory code and whether it had uncommitted changes. |
+| `gates` | The names of the gates in the plan |
+| `resumes` | One entry for each `--resume`, with its start time |
+| `repo`, `base`, `branch`, `tree`, `commit` | Only for `change-request`. See "Change a git repo". |
+
+### Change a git repo
+
+The `change-request` runbook changes code in a repo that you already have. It never touches your checkout.
+
+```bash
+uv run factory run --runbook change-request --repo ~/code/shop --test-command "npm test" --brief "add a cart"
+```
+
+1. The factory makes a git **worktree** of the repo on a new branch `factory/<name>`. The branch starts at `--base` (default `HEAD`).
+2. The analyst writes acceptance criteria. You approve them at the checkpoint.
+3. The developer changes the code in the worktree. After each round the factory runs `--test-command` itself. The developer's word that the tests pass counts for nothing.
+4. A reviewer reads the diff against the criteria. The reviewer must use a different model than the developer.
+5. When the loop passes, the factory makes one commit. The message has the title of the spec, the criteria, and the run ID.
+
+The folders live outside the repo, in `$FACTORY_SCRATCH` (default `~/factory-scratch`):
+
+| Path | Content |
+|---|---|
+| `<scratch>/<repo>/<name>/tree/` | The worktree. The code is here. |
+| `<scratch>/<repo>/<name>/.factory/` | `run.json`, `artifacts.json`, the agent logs and the lock |
+
+The run ends with the branch, the worktree path, a `git diff <base>...factory/<name>` command to read the change, and a `git worktree remove <tree>` command to clean up. The factory does not push, merge or remove the worktree. Two features of one repo can run at the same time. The same feature name twice cannot.
+
+Rules:
+
+- `--repo` and `--test-command` are required. `--test-command` is split into words and runs without a shell. `--repo`, `--base` and `--test-command` are refused for other runbooks. `--target` is refused with `--repo`.
+- A branch `factory/<name>` that already exists is an error. Choose another `--name`.
+- The factory warns when the repo has uncommitted changes. They are not in the worktree.
+- A scratch folder inside the repo is refused.
+- The engine reverts any change to `.git` and any write outside the worktree. A write outside the worktree fails the attempt.
+- A run that ends with no file change stops. The factory does not commit an empty change.
+
 ### What a run costs
 
 Every LLM call logs its worker, model, tokens and cost. `run.json` holds one row for each call, plus totals for the run and for each model. The console prints a `Usage:` line at the end. Claude reports a cost. Codex reports tokens only, so its cost shows as unknown.
 
-The factory logs the cost. It does not limit it. `budgets.per_task_usd` caps one Claude call. No limit covers a whole run or a day.
+The factory logs the cost. It does not limit it by default. A cap is optional: set `budgets.per_task_usd` to cap each Claude call, or leave it unset for no cap. Nothing limits a whole run or a day.
 
 ## Commands and options
 
@@ -115,13 +164,19 @@ The factory logs the cost. It does not limit it. `budgets.per_task_usd` caps one
 |---|---|
 | `factory runbooks` | Lists the runbooks and when to use each |
 | `factory plan RUNBOOK` | Shows the plan without a run. Add `--mermaid` for a flowchart. |
+| `factory check [--worker NAME]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost. Exit code 0 only when every model answers. Run it before a long job. |
+| `factory runs [--json]` | Sums the runs in `apps/`: runs by status, how often a step was accepted on its first attempt, rounds per loop, and the cost of each model. It only reads `run.json` files. |
 | `factory run --brief TEXT` | Runs the factory. `--brief` is required. |
 | `--runbook NAME` | Skips triage |
 | `--trait NAME=yes\|no` | Sets a trait. Repeat it for more traits. |
 | `--staff ROLE=WORKER[:MODEL]` | Sets who plays a role in this run |
 | `--name NAME` | Works in `apps/NAME` |
 | `--target PATH` | The code to audit |
+| `--repo PATH` | The git repo that `change-request` changes. The work happens in a worktree. |
+| `--base REF` | The commit that the new branch starts from. Default `HEAD`. |
+| `--test-command CMD` | The command that runs the repo's tests, such as `"npm test"`. Required for `change-request`. |
 | `--rebuild` | Redoes accepted work |
+| `--resume` | Continues the stopped run in `--name`. It keeps the items that were accepted and does the rest again. It refuses a run that is accepted. |
 | `--yes` | Asks nothing. The agents decide and every checkpoint is accepted. |
 | `--config`, `--agents`, `--runbooks` | Use other settings files |
 
@@ -141,6 +196,10 @@ The engine never trusts a claim from an agent. It runs the tests itself and comp
 | `sources_cited` | The report links every verified source and no other source. | retry the step |
 | `evidence_verified` | Each audit finding has its evidence within 5 lines of the cited line. The gate drops the others. | retry the step |
 | `review_approves` | The reviewer approved. Otherwise its issues go back to the author. | new round |
+| `secrets_clean` | No file the agent wrote holds what looks like a secret: a key, a token, a private key or a real value in an env file. The message masks each value. | retry the step |
+| `lint_clean` | The template's `lint` command exits 0 in each surface. A template with no `lint` command passes. | retry the step |
+| `packages_exist` | Each npm and PyPI package in the manifests exists on its registry. A registry that cannot be reached does not fail the gate. The gate logs the names it could not check. | retry the step |
+| `repo_tests_pass` | The `--test-command` exits 0 in the worktree. | new round |
 
 The gates `citations_verified` and `evidence_verified` fail only when no finding survives. A quote needs 20 characters or more. The gate ignores case, punctuation, spacing and citation markers such as `[1]`.
 
@@ -196,6 +255,15 @@ Every role can read files. The tools map to worker permissions. Claude gets `--a
 
 To change who plays a role, edit `agents.yaml`, give a runbook its own `staff:` block, or use `--staff` for one run. A staff entry can also set `model:` and `url:`. With `url:`, the factory uses an agent that you already run at that A2A address and starts none.
 
+**Fallback.** A role in `agents.yaml` can name a second worker for the last attempt of a step:
+
+```yaml
+roles:
+  researcher: {worker: claude-agent-sdk, fallback: {worker: codex-gpt, model: gpt-6.1-sol}}
+```
+
+The earlier attempts use the main worker. Only the last attempt goes to the fallback. A fallback with the same worker and model as the main one fails to load. The checker rule applies to the fallback too, so a switch cannot break it.
+
 ## Settings
 
 ### llm.yaml
@@ -204,16 +272,31 @@ To change who plays a role, edit `agents.yaml`, give a runbook its own `staff:` 
 
 | Setting | Shipped value | Effect |
 |---|---|---|
-| `llm.allowed_models` | `${ANTHROPIC_MODEL}`, `gpt-6.1-sol`, `gemini-3.6-flash` | Every model must be in this list |
+| `llm.allowed_models` | `${ANTHROPIC_MODEL}`, `gpt-6.1-sol`, `gpt-6-luna`, `gpt-advantage-assist`, `gemini-3.7-flash` | Every model must be in this list |
 | `workers.<name>.enabled` | `true` for all 3 workers | A disabled worker needs no variables |
-| `workers.<name>.harness` | `claude-agent-sdk` or `codex` | The command that runs the worker |
+| `workers.<name>.plugin` | `factory.workers.claude` or `factory.workers.codex` | The module path of the plugin that runs the worker. Each plugin checks its own `options`. |
 | `reviewer.must_differ_from_author` | `true` | Turns on the checker rule |
 | `reviewer.candidates` | 3 models | Checked when the file loads. No run picks a reviewer from them. |
-| `budgets.per_task_usd` | `30` | The cost cap of one Claude call |
+| `budgets.per_task_usd` | not set | Optional, not required. Caps the cost of one Claude call when set. Not set means no cap. |
 | `budgets.per_day_usd` | not set | No code reads it |
 | `budgets.max_retries` | `1` | A `budget` loop has 1 + this many rounds |
 
 To switch a worker off, set `enabled: false`. A role that needs it must then use another worker.
+
+#### Worker plugins
+
+A worker runs through a **plugin**: a Python module named by `plugin:`. The factory imports every plugin when `llm.yaml` loads. A bad plugin stops the start with a reason. The old key `harness:` is refused with a message that names `plugin:`.
+
+A plugin module defines a class `Plugin` with:
+
+| Member | Does |
+|---|---|
+| `name` | A short name that messages use |
+| `__init__(cfg, worker)` | Binds the plugin to one worker of the config |
+| `validate(cfg, worker)` (class method) | Raises `ConfigError` if the worker's config does not suit the plugin |
+| `run(prompt, cwd, tools, model)` | Runs the worker once. Returns the text and the usage. On a failure, raises `LLMFailed` with the usage already spent. |
+
+Every call must report its worker, model, tokens and cost. A worker can set `options:` for its plugin. A plugin that takes none rejects them. The file `src/factory/workers/base.py` holds the full interface.
 
 ### roles.yaml
 
@@ -251,7 +334,7 @@ A runbook is a YAML file in `runbooks/`. To add a kind of work, add a file. The 
 
 A `loop` has `rounds` (default `budget`) and its own `gates`. `scaffolds` places a template in a surface folder when its trait condition holds.
 
-Try a runbook before you run it: `uv run factory plan <runbook> --trait ...`.
+Try a runbook before you run it: `uv run factory plan <runbook> --trait ...`. Check the models first with `uv run factory check`.
 
 ### Templates
 
@@ -281,7 +364,11 @@ The code is in `src/factory/`:
 | `roles.py`, `config.py` | `roles.yaml` and `llm.yaml` loading |
 | `agent.py` | The generic role agent: prompt, worker call, reply check |
 | `fleet.py` | Starts and stops the agent processes |
-| `invoke.py` | Claude and Codex calls, per-role tools, and their usage |
+| `invoke.py` | The one entry for an LLM call. It runs the worker's plugin and logs its usage. |
+| `workers/` | The plugin interface (`base.py`), the loader, and the `claude` and `codex` plugins |
+| `repo.py` | Worktrees, the write guard and the commit for `change-request` |
+| `check.py` | `factory check` |
+| `runs.py` | `factory runs` |
 | `a2a_transport.py` | The A2A server, client and agent cards |
 | `scaffold.py`, `search.py`, `process.py`, `paths.py` | Templates, web search, command running, folder paths |
 
@@ -290,12 +377,20 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | Test file | Tests | What it proves |
 |---|---|---|
 | `test_a2a_transport.py` | 5 | A task returns its result, asks for input on the same task, fails with a reason, and serves its card. |
-| `test_config.py` | 32 | `llm.yaml` loads, rejects literal keys and unknown models, and needs two reviewer candidates when the checker rule is on. |
+| `test_check.py` | 6 | `factory check` tries every enabled model, reports usage and failures, and sets the exit code. |
+| `test_config.py` | 33 | `llm.yaml` loads, rejects literal keys and unknown models, makes `per_task_usd` optional, and needs two reviewer candidates when the checker rule is on. |
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
+| `test_fallback.py` | 5 | A role's fallback takes the last attempt only, and a bad fallback fails to load. |
+| `test_gates_p6.py` | 35 | `secrets_clean`, `lint_clean` and `packages_exist` catch what they must, mask secrets and survive a registry outage. |
+| `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
+| `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
 | `test_runbooks.py` | 29 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. |
-| `test_schemas.py` | 17 | Each deliverable schema accepts good data, rejects bad data and renders as text. |
+| `test_runs.py` | 5 | `factory runs` sums the run records and changes nothing. |
+| `test_schemas.py` | 19 | Each deliverable schema accepts good data, rejects bad data and renders as text. Triage can answer `none`. |
+| `test_tracing.py` | 9 | The run ID, the factory commit and the gate names reach `run.json` and every request. |
 | `test_usage.py` | 17 | Each LLM call reports its tokens and cost, and `run.json` sums them per step and per model. |
+| `test_workers.py` | 22 | The plugin loader accepts a good plugin, rejects bad ones, and the shipped plugins build their commands. |
 
 No person has run the factory live for this README. The live run calls the workers and the network. The tests do not.
 
@@ -307,22 +402,27 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 |---|---|---|
 | `error: environment variables not set: ...` | A `${VAR}` in `llm.yaml` has no value. | Set the variables in "Quick start". |
 | `error: no runbook 'x'; runbooks are ...` | The runbook name is wrong. | Run `factory runbooks`. |
+| `FAIL ... model 'x' is not in llm.allowed_models` or a load error at start | A model in `llm.yaml` is not in `llm.allowed_models`. | Add it to `allowed_models`, or remove it from the worker. Run `factory check` to confirm. |
 | `... both use <model>; the reviewer must use a different model` | A checker and its author share a model. | Change `agents.yaml` or use `--staff`. |
 | `apps/<name> already holds accepted work` | A run with this name finished. | Add `--rebuild`, or choose another `--name`. |
 | `<name> is already being worked on by another run` | Another process holds the lock. | Wait for that run, or choose another `--name`. |
 | `needs --target, an existing directory` | The `code-audit` runbook has no target. | Add `--target PATH`. |
+| `runbook change-request needs --test-command` or `--repo` | The runbook changes a git repo and runs your tests. | Add `--repo PATH` and `--test-command "..."`. |
+| `branch factory/<name> already exists` | An earlier run used the name. | Choose another `--name`, or delete the branch. |
+| `--resume needs --name` or `nothing to resume` | `--resume` has no run to continue. | Give the `--name` of a stopped run. |
+| `There is no runbook for this request` | Triage answered `none`. | Rephrase the brief, or add a runbook. |
 | `error: ... roles.yaml ...` | The roles file is not valid. | Read the reason in the message and fix the file. |
 | `factory.search: unrecognized arguments` | `--sources` got a space-separated list. | Write `--sources wikipedia,openalex`. |
 | A search source returns HTTP 429 | The public API limits the rate. | Wait and try again. The other sources still answer. |
 | Claude Code warns about an unknown model | The gateway model name is not in its list. | Ignore the warning. The call works. |
-| Codex warns about missing metadata for `gemini-3.6-flash` | Codex does not know the model. | Ignore the warning. Codex uses fallback metadata. |
+| Codex warns about missing metadata for `gemini-3.7-flash` | Codex does not know the model. | Ignore the warning. Codex uses fallback metadata. |
 
 ## Known limits
 
 - **A run can end with a draft.** In `research`, the `report` step saves `REPORT.md` before `review` runs. If the reviewer does not approve in 3 rounds, the run stops with exit code 1. The draft stays on disk with a `> **NOT APPROVED.**` banner at its top. Read the banner before you use the file.
 - **Port race.** `free_port()` closes its socket before the agent binds the port. Another process can take it. The fleet then gives up after 30 seconds.
 - **The card check is weak.** The fleet compares only the tags `role:`, `worker:` and `model:`. A different agent with the same tags passes.
-- **Agents keep state in memory.** A task is lost when its agent stops. A task cannot resume, and there is no `--resume`.
+- **Agents keep state in memory.** A task is lost when its agent stops. `--resume` keeps accepted items only. A half-done item starts again.
 - **Same folder.** The task carries the path of the workspace. An agent at a `url:` must see the same folder.
 - **Codex has no command list.** Any command makes the Codex sandbox writable. The engine reverts the writes of a role with `writes: none` after the attempt.
 - **The reviewer candidates are not used in a run.** The reviewer model comes from `agents.yaml`. `reviewer.candidates` is only validated at load time. The checker rule is `_check_independence()` in `runbook.py`, which covers only the pairs in "Roles and staffing".
@@ -330,6 +430,11 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 - **Quotes under 20 characters fail.** `quote_on_page()` rejects them, and the gate drops that finding.
 - **Search has no retry.** A rate limit removes that source from the result.
 - **No read timeout on a task.** A hung agent blocks the run until its LLM call reaches its limit.
+- **The write guard covers the original checkout and `.git`.** For `change-request`, the engine reverts a write in the original checkout and in the worktree's git data. A `claude` agent has no operating-system sandbox, so it can write elsewhere. The factory cannot see that.
+- **A wrong test command gives a false green.** `repo_tests_pass` trusts `--test-command`. A command that runs no tests passes. Check the command yourself.
+- **Worktrees stay.** The factory never removes a worktree or a branch. Use the command that the run prints.
+- **No pull request.** `change-request` makes a commit only. It does not push or open a pull request.
+- **Codex cost is not reported.** Codex gives tokens only, so a run total counts the Claude cost only.
 
 ## Glossary
 
@@ -346,7 +451,7 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | Engine | The code that runs a plan: steps, loops, retries, checks and checkpoints. |
 | Fleet | The set of agent processes of one run. |
 | Gate | A check that the engine runs itself on a result. |
-| Harness | The command that runs a worker: `claude` or `codex`. |
+| Plugin | The Python module that runs a worker, such as `factory.workers.claude`. |
 | Item | One unit of a step, such as one surface or one sub-question. |
 | Loop | A group of steps that repeat in rounds until they pass. |
 | Plan | A runbook with its traits, staff and scaffolds resolved. |
@@ -355,10 +460,11 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | Runbook | A YAML file that describes one kind of work. |
 | Scaffold | A template copied into a run, such as `web/` or `api/`. |
 | Staff | The map from each role to a worker and a model. |
+| Worktree | A second working folder of a git repo, on its own branch. `change-request` works in one. |
 | Step | One task for one role, with an output and gates. |
 | Surface | A part of a web app: `web` (frontend) or `api` (backend). |
 | Template | A scaffold folder with its metadata in `templates/<name>.yaml`. |
 | Trait | A yes-or-no choice that changes a runbook, such as `backend`. |
 | Triage | The choice of a runbook and its traits for a brief. |
-| Worker | An entry in `llm.yaml`: a harness, an endpoint and a list of models. |
+| Worker | An entry in `llm.yaml`: a plugin that runs it, an endpoint and a list of models. |
 | Workspace | The folder `apps/<name>/` of one run. |

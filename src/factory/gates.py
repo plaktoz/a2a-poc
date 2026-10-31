@@ -14,20 +14,30 @@ output's `rejected` list instead of failing, and fail only when nothing usable i
 from __future__ import annotations
 
 import html
+import http.client
 import json
+import logging
+import os
 import re
+import shlex
 import socket
 import subprocess
 import time
+import tomllib
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote as url_quote
 
 from .process import run, tail
-from .scaffold import Template
+from .scaffold import IGNORED, Template
+
+log = logging.getLogger(__name__)
 
 
 Level = Literal["step", "round", "run"]
@@ -51,6 +61,28 @@ class TestRun:
         return self.total - self.passed
 
 
+REGISTRY_TIMEOUT = 10
+NPM_REGISTRY = "https://registry.npmjs.org/"
+PYPI_REGISTRY = "https://pypi.org/pypi/"
+
+
+def probe_registry(url: str) -> int | None:
+    """The HTTP status a package registry answers for `url`, or None if it cannot be reached.
+
+    Only the status is read. The body (a package's full metadata) is not downloaded.
+    """
+    # The abbreviated npm document is small; the registry answers 404 the same way for both.
+    headers = {"User-Agent": "factory-gates/0.1", "Accept": "application/vnd.npm.install-v1+json, application/json"}
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=REGISTRY_TIMEOUT) as resp:
+            return resp.status
+    except urllib.error.HTTPError as e:  # an HTTP answer, such as 404 for an unknown package
+        return e.code
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+
+
 @dataclass
 class GateCtx:
     app_dir: Path  # the run's workspace
@@ -59,6 +91,9 @@ class GateCtx:
     templates: dict[str, Template]  # scaffold directory -> its template
     artifacts: dict[str, Any]
     fetch: Callable[[str], str | None]
+    registry: Callable[[str], int | None] = probe_registry  # HTTP status of a registry URL; tests inject
+    tree: Path | None = None  # the repo worktree of a change request (P10)
+    test_command: str | None = None  # the repo's own test command, from --test-command (P10)
 
 
 GATES: dict[str, Callable[[GateCtx, dict], None]] = {}
@@ -303,6 +338,225 @@ def criteria_covered(ctx: GateCtx, out: dict) -> None:
             + ", ".join(gaps) + ". The tests are green, so this is a test gap, not a code bug.",
             "run",
         )
+
+
+# --- hygiene gates ----------------------------------------------------------
+#
+# Cheap checks the orchestrator runs on the files an agent wrote: secrets, lint, and package
+# names. Like the test gates, they read the files themselves and trust nothing the agent reports.
+
+
+def mask(secret: str) -> str:
+    """A secret as it may be shown: its length only. No character of the value is revealed."""
+    return f"{'*' * 8} ({len(secret)} chars)"
+
+
+# (label, pattern, fuzzy). The secret is group 1 if the pattern has one, else the whole match.
+# Fuzzy patterns match any long value after a name such as `token =`, so they skip placeholders.
+SECRET_PATTERNS: list[tuple[str, re.Pattern[str], bool]] = [
+    ("private key block", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"), False),
+    ("AWS access key id", re.compile(r"\b((?:AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA)[0-9A-Z]{16})\b"), False),
+    ("GitHub token", re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"), False),
+    ("Slack token", re.compile(r"\b(xox[abprs]-[A-Za-z0-9-]{10,})"), False),
+    ("Anthropic API key", re.compile(r"\b(sk-ant-[A-Za-z0-9_-]{20,})"), False),
+    ("OpenAI API key", re.compile(r"\b(sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,})"), False),
+    ("JWT", re.compile(r"\b(eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})"), False),
+    ("bearer token", re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{20,})"), True),
+    ("hard-coded credential", re.compile(
+        r"""(?i)(?:api[_-]?key|access[_-]?key|secret|token|passwd|password)\w*["']?\s*[:=]\s*["']([^"'\s]{16,})["']"""), True),
+]
+# In a .env file values are not quoted.
+ENV_LINE = re.compile(r"(?i)^\s*(?:export\s+)?\w*(?:api_?key|secret|token|passw(?:or)?d)\w*\s*=\s*([^\s'\"#()]{16,})")
+PLACEHOLDER = re.compile(r"(?i)example|placeholder|changeme|dummy|fake|sample|redacted|your[-_ ]|xxxx|test|\*\*\*")
+SCAN_SKIP_FILES = {"package-lock.json", "uv.lock", "yarn.lock", "pnpm-lock.yaml", "poetry.lock"}
+SCAN_MAX_BYTES = 1_000_000
+
+
+def _real_looking(value: str) -> bool:
+    """A value that could be a secret: letters and digits, not a URL, a variable or a placeholder."""
+    return (any(c.isalpha() for c in value) and any(c.isdigit() for c in value) and "://" not in value
+            and not value.startswith(("$", "{", "<", "%")) and not PLACEHOLDER.search(value))
+
+
+def find_secrets(root: Path) -> list[str]:
+    """One line per suspected secret under `root`: `path:line: what (masked value)`.
+
+    Binary files, big files, lock files and the folders in scaffold.IGNORED (node_modules,
+    .venv, .git, .factory, ...) are skipped. The folders are pruned, so they are never walked.
+    """
+    found: list[str] = []
+    if not root.is_dir():
+        return found
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in IGNORED)
+        for name in sorted(filenames):
+            path = Path(dirpath, name)
+            if name in SCAN_SKIP_FILES or path.is_symlink() or path.stat().st_size > SCAN_MAX_BYTES:
+                continue
+            raw = path.read_bytes()
+            if b"\0" in raw[:8000]:
+                continue
+            found += _scan_text(path.relative_to(root).as_posix(), raw.decode("utf-8", "replace"))
+    return found
+
+
+def _scan_text(rel: str, text: str) -> list[str]:
+    found = []
+    in_env = rel.rsplit("/", 1)[-1].startswith(".env")
+    for n, line in enumerate(text.splitlines(), 1):
+        for label, pattern, fuzzy in SECRET_PATTERNS:
+            m = pattern.search(line)
+            if m:
+                value = m.group(m.lastindex or 0)
+                if fuzzy and not _real_looking(value):
+                    continue
+                shown = "" if label == "private key block" else f" ({mask(value)})"
+                found.append(f"{rel}:{n}: {label}{shown}")
+                break
+        else:
+            if in_env and (m := ENV_LINE.match(line)) and _real_looking(m.group(1)):
+                found.append(f"{rel}:{n}: credential in an env file ({mask(m.group(1))})")
+    return found
+
+
+@gate
+def secrets_clean(ctx: GateCtx, out: dict) -> None:
+    """No file the agent wrote holds what looks like a secret. The message masks every value."""
+    if found := find_secrets(ctx.cwd):
+        raise Failure("these lines look like secrets. Remove them: read each value from an "
+                      "environment variable, and never write a real key, token or password into a "
+                      "file:\n" + _capped([f"- {f}" for f in found]))
+
+
+@gate
+def lint_clean(ctx: GateCtx, out: dict) -> None:
+    """The template's `lint` command exits 0 in every surface this step covers.
+
+    The orchestrator runs it, so the agent cannot report a pass. A template without a `lint`
+    command has nothing to check, and passes.
+    """
+    for d in ctx.dirs:
+        command = ctx.templates[d].commands.get("lint")
+        if not command:
+            continue
+        try:
+            r = run(shlex.split(command), cwd=ctx.app_dir / d)
+        except FileNotFoundError as e:  # the tool is not installed: not the agent's doing
+            raise Failure(f"{d}: lint command `{command}` cannot run: {e}", "run") from None
+        except subprocess.TimeoutExpired:
+            raise Failure(f"{d}: `{command}` did not finish within the time limit", "step") from None
+        if r.returncode != 0:
+            raise Failure(f"{d}: `{command}` found problems (exit code {r.returncode}). Fix them:\n"
+                          + tail(r, 3000))
+
+
+@gate
+def repo_tests_pass(ctx: GateCtx, out: dict) -> None:
+    """The repo's own test command (--test-command) exits 0 in the worktree.
+
+    The orchestrator runs it, so an agent cannot report a pass. The command is split into
+    arguments and run without a shell, as the template commands are.
+    """
+    if ctx.tree is None or not ctx.test_command:
+        raise Failure("no test command: pass --test-command with the command that runs the repo's tests", "run")
+    try:
+        r = run(shlex.split(ctx.test_command), cwd=ctx.tree)
+    except FileNotFoundError as e:  # the tool is not installed: not the agent's doing
+        raise Failure(f"the test command `{ctx.test_command}` cannot run: {e}", "run") from None
+    except subprocess.TimeoutExpired:
+        raise Failure(f"`{ctx.test_command}` did not finish within the time limit", "round") from None
+    if r.returncode != 0:
+        raise Failure(f"`{ctx.test_command}` failed (exit code {r.returncode}). Fix the code so it passes:\n"
+                      + tail(r, 3000), "round")
+
+
+_NPM_NON_REGISTRY = re.compile(r"^(?:(?:file|link|workspace|portal|patch|git|git\+\w+|https?|github|gitlab|bitbucket):"
+                               r"|[\w.-]+/[\w.-]+(?:#.*)?$)")
+_REQ_NAME = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def _npm_names(manifest: Path) -> set[str]:
+    data = json.loads(manifest.read_text())
+    names = set()
+    for section in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+        for name, spec in (data.get(section) or {}).items():
+            spec = str(spec)
+            if spec.startswith("npm:"):  # an alias: the real package is after `npm:`
+                name = spec[4:].rpartition("@")[0] or spec[4:]
+            elif _NPM_NON_REGISTRY.match(spec):
+                continue
+            names.add(name)
+    return names
+
+
+def _requirement_name(spec: str) -> str | None:
+    """The package named by a PEP 508 requirement, or None for a path, URL or option."""
+    spec = spec.split("#", 1)[0].strip()
+    if not spec or spec.startswith(("-", ".", "/", "~")) or "://" in spec or re.search(r"\s@\s", spec):
+        return None
+    m = _REQ_NAME.match(spec)
+    return re.sub(r"[-_.]+", "-", m.group(1)).lower() if m else None
+
+
+def _pypi_names(root: Path) -> set[str]:
+    specs: list[str] = []
+    files = [*root.glob("requirements*.txt"), *root.glob("requirements/*.txt")]
+    for f in files:
+        specs += f.read_text(errors="replace").splitlines()
+    if (pyproject := root / "pyproject.toml").is_file():
+        data = tomllib.loads(pyproject.read_text())
+        project = data.get("project", {})
+        specs += project.get("dependencies", [])
+        for group in (project.get("optional-dependencies") or {}).values():
+            specs += group
+        for group in (data.get("dependency-groups") or {}).values():
+            specs += [x for x in group if isinstance(x, str)]  # the others are {include-group: ...}
+        specs += data.get("tool", {}).get("uv", {}).get("dev-dependencies", [])
+        poetry = data.get("tool", {}).get("poetry", {})
+        for table in (poetry.get("dependencies"), poetry.get("dev-dependencies"),
+                      *(g.get("dependencies") for g in (poetry.get("group") or {}).values())):
+            specs += [k for k, v in (table or {}).items()
+                      if k.lower() != "python" and not (isinstance(v, dict) and ("path" in v or "git" in v or "url" in v))]
+    return {n for s in specs if (n := _requirement_name(s))}
+
+
+def declared_packages(root: Path) -> tuple[set[str], set[str]]:
+    """The (npm, PyPI) package names that the manifests in `root` ask for."""
+    npm = _npm_names(root / "package.json") if (root / "package.json").is_file() else set()
+    return npm, _pypi_names(root)
+
+
+@gate
+def packages_exist(ctx: GateCtx, out: dict) -> None:
+    """Every npm and PyPI package the manifests in each surface name exists on its registry.
+
+    Guards against invented package names. A package is unknown only if its registry answers 404.
+    If the registry cannot be reached (no network, a timeout, or any other status such as 5xx or
+    429) the package is unverified: the gate still passes, logs a warning, and lists the names in
+    out["unverified_packages"]. An outage must not look like an invented package.
+    """
+    wanted: dict[str, str] = {}  # registry URL -> "npm:name" or "pypi:name"
+    for d in ctx.dirs:
+        try:
+            npm, pypi = declared_packages(ctx.app_dir / d)
+        except (ValueError, OSError) as e:  # bad JSON or TOML in a manifest
+            raise Failure(f"{d}: a package manifest cannot be read: {e}") from None
+        for name in sorted(npm):
+            wanted[NPM_REGISTRY + url_quote(name, safe="@")] = f"npm:{name}"
+        for name in sorted(pypi):
+            wanted[f"{PYPI_REGISTRY}{name}/json"] = f"pypi:{name}"
+    if not wanted:
+        return
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        statuses = dict(zip(wanted, pool.map(ctx.registry, wanted)))
+    unknown = [wanted[u] for u, st in statuses.items() if st == 404]
+    unverified = sorted(wanted[u] for u, st in statuses.items() if st != 200 and st != 404)
+    out["unverified_packages"] = unverified
+    if unverified:
+        log.warning("packages_exist: could not verify %s", ", ".join(unverified))
+    if unknown:
+        raise Failure("these packages do not exist on their registry, so the names are invented: "
+                      + ", ".join(sorted(unknown)) + ". Use a real package, or write the code without it.")
 
 
 # --- evidence gates ---------------------------------------------------------

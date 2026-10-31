@@ -13,7 +13,7 @@ This file lists only the open findings and actions. The standards baseline is th
 | S5 | `worker, model` travel together. `Engine.__init__` takes many injected callables. | Defer. Bundle them when the next change touches both. |
 | S6 | The `vitest` and `pytest` gates share one skeleton (`gates.py`). | Extract one helper. Small. |
 | S8 | `_review_test_change` (`engine.py:435`) embeds a long prompt and works mostly on `Template` fields. | Move the prompt to `roles.yaml` or the runbook. Defer the `engine.py` split (633 lines). |
-| P3, P4 | `per_task_usd` caps one Claude call only. `per_day_usd` is parsed and never read. | Action C3: keep `per_day_usd` and document it as unused. Add a budget later (see action D). |
+| P3, P4 | `per_task_usd` is optional and not required (owner, 2026-10-31). When set, it caps one Claude call only. `per_day_usd` is parsed and never read. | Action C3: keep `per_day_usd` and document it as unused. Add a budget later (see action D). |
 | Lint | `tests/test_runbooks.py` has an unused `Path` import. It is old. | Delete the import. |
 
 ## 2. Open actions

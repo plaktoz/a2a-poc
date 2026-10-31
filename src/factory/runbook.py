@@ -122,6 +122,10 @@ class StaffDef(_Strict):
     worker: str
     model: str | None = None
     url: str | None = None  # an agent that is already running; the factory does not launch it
+    fallback: StaffDef | None = None  # used only on a step's last attempt (FR-7)
+
+
+StaffDef.model_rebuild()
 
 
 class StepDef(_Strict):
@@ -138,7 +142,7 @@ class StepDef(_Strict):
     save: str | None = None
     retries: int = Field(default=1, ge=0)
     cwd: Literal["workspace", "surface", "target"] | None = None
-    writes: Literal["none", "tests", "source"] = "none"
+    writes: Literal["none", "tests", "source", "target"] = "none"  # target: any file of the repo worktree
 
     @model_validator(mode="after")
     def _defaults(self) -> StepDef:
@@ -233,7 +237,9 @@ class Runbook(_Strict):
             raise ValueError(f"{where}: cwd surface needs for_each: surfaces")
         if s.cwd == "target" and not self.needs_target:
             raise ValueError(f"{where}: cwd target needs needs_target: true")
-        if s.writes != "none" and s.cwd != "surface":
+        if s.writes == "target" and s.cwd != "target":
+            raise ValueError(f"{where}: writes target needs cwd: target")
+        if s.writes in ("tests", "source") and s.cwd != "surface":
             raise ValueError(f"{where}: only a step working in a surface may write files")
         if s.checkpoint and s.parallel:
             raise ValueError(f"{where}: a checkpoint step cannot run in parallel")
@@ -284,6 +290,15 @@ class Staff:
     worker: str
     model: str
     url: str | None = None
+    fallback: Fallback | None = None
+
+
+@dataclass(frozen=True)
+class Fallback:
+    """The worker and model that take a role's last attempt when the main one fails (FR-7)."""
+
+    worker: str
+    model: str
 
 
 def load_staff(path: Path, cfg: Config, overrides: dict[str, StaffDef] | None = None) -> dict[str, Staff]:
@@ -299,7 +314,12 @@ def load_staff(path: Path, cfg: Config, overrides: dict[str, StaffDef] | None = 
         if role not in roles:
             raise ConfigError(f"{path.name}: no worker for role {role!r}")
         d = roles[role]
-        staff[role] = Staff(role, d.worker, cfg.check_request(d.worker, d.model), d.url)
+        fb = None
+        if d.fallback is not None:
+            fb = Fallback(d.fallback.worker, cfg.check_request(d.fallback.worker, d.fallback.model))
+            if fb.worker == d.worker and fb.model == cfg.check_request(d.worker, d.model):
+                raise ConfigError(f"{path.name}: the fallback of {role} is the same worker and model")
+        staff[role] = Staff(role, d.worker, cfg.check_request(d.worker, d.model), d.url, fb)
     if unknown := set(roles) - set(ROLES):
         raise ConfigError(f"{path.name}: unknown roles {', '.join(sorted(unknown))}")
     return staff
@@ -368,11 +388,22 @@ def _check_independence(plan: Plan, cfg: Config) -> None:
         return
     used = plan.roles()
     for checker, author in (("reviewer", "writer"), ("reviewer", "architect"), ("verifier", "developer")):
-        if checker in used and author in used and plan.staff[checker].model == plan.staff[author].model:
+        if checker not in used or author not in used:
+            continue
+        # A fallback must keep independence too, so a switch cannot break it (FR-7).
+        checker_models = {m for m in _models(plan.staff[checker])}
+        author_models = {m for m in _models(plan.staff[author])}
+        if checker_models & author_models:
+            shared = sorted(checker_models & author_models)[0]
             raise ConfigError(
-                f"the {checker} and the {author} both use {plan.staff[author].model}; the {checker} "
+                f"the {checker} and the {author} both use {shared}; the {checker} "
                 "must use a different model (reviewer.must_differ_from_author). Change agents.yaml."
             )
+
+
+def _models(st: Staff) -> set[str]:
+    """The models a role may use: its main model and its fallback's, if any."""
+    return {st.model} | ({st.fallback.model} if st.fallback else set())
 
 
 def outline(plan: Plan) -> str:
