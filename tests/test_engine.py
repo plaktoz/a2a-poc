@@ -4,13 +4,12 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
 from factory import load_config
 from factory.engine import Engine, open_workspace, triage
 from factory.gates import GATES, Failure, quote_on_page, strip_html
 from factory.paths import ROOT
-from factory.runbook import Runbook, catalog, load_staff, resolve
+from factory.runbook import catalog, load_staff, resolve
 from test_config import ENV, base, write
 
 PAGE = "<html><body><p>Postgres supports <b>JSONB</b> columns.[1] It is widely used.</p></body></html>"

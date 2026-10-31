@@ -14,13 +14,12 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from .a2a_transport import call, fetch_card
+from .a2a_transport import Json, call, fetch_card
 from .gates import free_port
 from .paths import LLM_CONFIG
 from .runbook import Staff
 
 START_TIMEOUT = 30
-Json = dict
 
 
 class Fleet:

@@ -200,11 +200,30 @@ Recommendation: do the renames and the docstring. Defer the file split.
 | Step | Actions | Size |
 |---|---|---|
 | 1 | A, B | Small. One commit. Done: the reviewer now differs from the architect too, with a test. |
-| 2 | E, G, K (renames only) | Small. One commit. |
+| 2 | E, G, K (renames only) | Small. One commit. Done, except the items listed under "Step 2 status" below. |
 | 3 | C1 for `reviewer_for`, H | Small. |
 | 4 | I2 | Small to medium. |
 | 5 | D | Medium. Own branch. |
 | 6 | F, J | Large. Defer and track as issues. |
+
+### Step 2 status
+
+Done:
+
+- S1: one `APP_NAME` rule, in `schemas.py`. `engine.py` uses it.
+- S2: removed `GateCtx.item` and the unused `item` parameter of `_context`. The uniform `(ctx, out)` gate signature stays on purpose.
+- S4 (partly): failure levels use `Literal["step", "round", "run"]` (`Level` in `gates.py`).
+- S6 (partly): one `Json` alias (`a2a_transport.py`) and one `_dump` helper for JSON files.
+- S7: `_brief` is now `_summary_suffix`, `_problem` is `_console_reason`, `_lines` is `_capped`. The "Gate 5" wording is now "Independence".
+- S9: removed the 2 unused imports in `tests/test_engine.py`.
+
+Not done:
+
+- S4: `Template.suite` and `Template.serve` are still strings.
+- S5, S8: `worker, model` clump, long `Engine.__init__`, and the prompt in `_review_test_change`.
+- S6: the shared skeleton of the `vitest` and `pytest` gates.
+- S3: the per-schema record (action F), deferred.
+- Ruff reports one unused `Path` import in `tests/test_runbooks.py`. It was not in the review.
 
 ## 6. Open questions
 

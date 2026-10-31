@@ -363,7 +363,7 @@ def resolve(rb: Runbook, traits: dict[str, Any], staff: dict[str, Staff], cfg: C
 
 
 def _check_independence(plan: Plan, cfg: Config) -> None:
-    """Gate 5: a checking role must not use the model of the role whose work it checks."""
+    """Independence: a checking role must not use the model of the role whose work it checks."""
     if not cfg.reviewer.must_differ_from_author:
         return
     used = plan.roles()

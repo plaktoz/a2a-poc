@@ -27,16 +27,14 @@ from pathlib import Path
 from typing import Any
 
 from . import schemas
-from .a2a_transport import StageFailed
+from .a2a_transport import Json, StageFailed
 from .config import Config, ConfigError
 from .gates import GATES, Failure, GateCtx, fetch_text
 from .roles import ROLES
 from .runbook import LoopDef, Plan, Runbook, StepDef, describe_catalog, fill, holds
 from .scaffold import IGNORED, Template, matches, place, reset
 
-Json = dict[str, Any]
 Send = Callable[[str, Json, Callable[[Json], Json] | None], Json]
-APP_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 MAX_CONVERSATION = 6  # questions and reviews on one checkpoint before the run stops
 API_PREFIX = "/api/"
 
@@ -58,7 +56,7 @@ class RoundFailed(Exception):
 
 def open_workspace(apps_dir: Path, name: str, rebuild: bool) -> tuple[Path, Any]:
     """Create and lock apps/<name>. The lock lasts until the file is closed or the process exits."""
-    if not APP_NAME.fullmatch(name):
+    if not schemas.APP_NAME.fullmatch(name):
         raise ConfigError(f"name {name!r} must be lowercase letters, digits and hyphens (at most 40)")
     ws = apps_dir / name
     (ws / ".factory").mkdir(parents=True, exist_ok=True)
@@ -133,7 +131,7 @@ class RunLog:
             self._write()
 
     def _write(self) -> None:
-        self.path.write_text(json.dumps(self.data, indent=2) + "\n")
+        self.path.write_text(_dump(self.data))
 
 
 # --- engine -----------------------------------------------------------------
@@ -218,7 +216,7 @@ class Engine:
                 if f.level == "run":
                     raise Stop(f.message) from None
                 feedback = {None: f.message}
-                self.say(f"  not accepted: {_problem(f.message)}")
+                self.say(f"  not accepted: {_console_reason(f.message)}")
         raise Stop(f"{node.loop} was not accepted after {rounds} round(s). Last problem:\n"
                    + "\n".join(feedback.values())[:3000])
 
@@ -274,10 +272,10 @@ class Engine:
                 problem, level = f.message, f.level
             else:
                 self.log.record(s.id, item.key, s.role, "accepted", started, _summary(s, out))
-                self.say(f"  {tag}: accepted{_brief(s, out)}")
+                self.say(f"  {tag}: accepted{_summary_suffix(s, out)}")
                 return out
             self.log.record(s.id, item.key, s.role, "rejected", started, problem)
-            self.say(f"  {tag}: not accepted: {_problem(problem)}")
+            self.say(f"  {tag}: not accepted: {_console_reason(problem)}")
             if level == "run":
                 raise Stop(problem)
             if level == "round" or attempt == s.retries:
@@ -296,7 +294,7 @@ class Engine:
             "task": s.id, "item": item.key,
             "instructions": fill(s.instructions, self._values(item)),
             "stack": stack,
-            "context": [c for r in s.reads if (c := self._context(r, item)) is not None],
+            "context": [c for r in s.reads if (c := self._context(r)) is not None],
             "output": s.output, "schema_ctx": self._schema_ctx(s),
             "commands": dict(tpl.commands) if tpl else {},
             "cwd": str(cwd), "feedback": feedback,
@@ -316,7 +314,7 @@ class Engine:
             "check_commands": " and ".join(f"`{c}`" for c in tpl.commands.values()) if tpl else "",
         }
 
-    def _context(self, ref: str, item: Item) -> Json | None:
+    def _context(self, ref: str) -> Json | None:
         if ref not in self.artifacts:
             return None  # its step did not run for these traits
         data, out_name = self.artifacts[ref], self._output_of(ref)
@@ -423,7 +421,7 @@ class Engine:
     def _ctx(self, item: Item | None, cwd: Path) -> GateCtx:
         dirs = [item.surface] if item and item.surface else self.plan.surfaces
         return GateCtx(app_dir=self.ws, cwd=cwd, dirs=dirs, templates=self.plan.templates,
-                       artifacts=self.artifacts, item=item.data if item else None, fetch=self._fetch)
+                       artifacts=self.artifacts, fetch=self._fetch)
 
     def _fetch(self, url: str) -> str | None:
         with self._cache_lock:
@@ -482,11 +480,11 @@ class Engine:
         if s.output == "report":
             path.write_text(data["markdown"].rstrip() + "\n")
         else:
-            path.write_text(json.dumps(data, indent=2) + "\n")
+            path.write_text(_dump(data))
         self.say(f"  saved {path.relative_to(self.ws)}")
 
     def _save_artifacts(self) -> None:
-        (self.ws / ".factory" / "artifacts.json").write_text(json.dumps(self.artifacts, indent=2) + "\n")
+        (self.ws / ".factory" / "artifacts.json").write_text(_dump(self.artifacts))
 
     def _step_ids(self) -> set[str]:
         return {s.id for s in self.plan.steps()}
@@ -504,6 +502,10 @@ class Engine:
         return False
 
 
+def _dump(data: Json) -> str:
+    return json.dumps(data, indent=2) + "\n"
+
+
 def _summary(s: StepDef, out: Json) -> str:
     if s.output == "findings":
         return f"{len(out['findings'])} verified, {len(out.get('rejected', []))} rejected"
@@ -515,7 +517,7 @@ def _summary(s: StepDef, out: Json) -> str:
 
 
 
-def _problem(msg: str, lines: int = 12, width: int = 300) -> str:
+def _console_reason(msg: str, lines: int = 12, width: int = 300) -> str:
     """A rejection reason for the console: the first line, then the bullet lines indented, capped."""
     rows = [r[:width] for r in msg.splitlines() if r.strip()]
     shown = rows[:lines]
@@ -523,7 +525,8 @@ def _problem(msg: str, lines: int = 12, width: int = 300) -> str:
         shown.append(f"... ({len(rows) - lines} more lines in .factory/run.json)")
     return "\n    ".join(shown)
 
-def _brief(s: StepDef, out: Json) -> str:
+def _summary_suffix(s: StepDef, out: Json) -> str:
+    """The short result shown after "accepted" on the console, for the steps that report counts."""
     summary = _summary(s, out)
     return f" ({summary.splitlines()[0][:120]})" if summary and s.output in (
         "findings", "audit_findings", "verification") else ""

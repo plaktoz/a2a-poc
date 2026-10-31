@@ -24,14 +24,17 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .process import run, tail
 from .scaffold import Template
 
 
+Level = Literal["step", "round", "run"]
+
+
 class Failure(Exception):
-    def __init__(self, message: str, level: str = "step") -> None:
+    def __init__(self, message: str, level: Level = "step") -> None:
         super().__init__(message)
         self.message, self.level = message, level
 
@@ -55,7 +58,6 @@ class GateCtx:
     dirs: list[str]  # the surfaces (scaffold directories) this step covers
     templates: dict[str, Template]  # scaffold directory -> its template
     artifacts: dict[str, Any]
-    item: dict | None
     fetch: Callable[[str], str | None]
 
 
@@ -131,7 +133,7 @@ def run_tests(ctx: GateCtx) -> TestRun:
     return total
 
 
-def _lines(items: list[str], limit: int = 4000) -> str:
+def _capped(items: list[str], limit: int = 4000) -> str:
     return "\n".join(items)[:limit]
 
 
@@ -248,7 +250,7 @@ def tests_named(ctx: GateCtx, out: dict) -> None:
             example = "it('AC1: ...')" if tpl.suite == "vitest" else "def test_ac1_...()"
             problems.append(f"{d}: no test named for {', '.join(missing)} (name them like {example})")
     if problems:
-        raise Failure(_lines(problems))
+        raise Failure(_capped(problems))
 
 
 @gate
@@ -256,7 +258,7 @@ def tests_red(ctx: GateCtx, out: dict) -> None:
     """New tests load and fail: they drive code that does not exist yet."""
     r = run_tests(ctx)
     if r.load_errors:
-        raise Failure("the tests do not load:\n" + _lines(r.load_errors))
+        raise Failure("the tests do not load:\n" + _capped(r.load_errors))
     if r.total == 0:
         raise Failure("no tests were collected")
     if r.passed == r.total:
@@ -267,9 +269,9 @@ def tests_red(ctx: GateCtx, out: dict) -> None:
 def tests_green(ctx: GateCtx, out: dict) -> None:
     r = run_tests(ctx)
     if r.load_errors or r.total == 0:
-        raise Failure("the tests do not load:\n" + _lines(r.load_errors), "round")
+        raise Failure("the tests do not load:\n" + _capped(r.load_errors), "round")
     if r.failed:
-        raise Failure(f"{r.failed} test(s) still fail:\n" + _lines(r.failures), "round")
+        raise Failure(f"{r.failed} test(s) still fail:\n" + _capped(r.failures), "round")
 
 
 @gate
@@ -349,7 +351,7 @@ def citations_verified(ctx: GateCtx, out: dict) -> None:
             rejected.append({**f, "verified": False, "reason": why})
     out["findings"] = kept
     if not kept:
-        why = _lines([f"- {r['claim']} [{r['source_url']}]: {r['reason']}" for r in rejected]) or "none given"
+        why = _capped([f"- {r['claim']} [{r['source_url']}]: {r['reason']}" for r in rejected]) or "none given"
         raise Failure("no finding could be verified against its source. Each quote must be a sentence "
                       "copied exactly from the page at source_url. Rejected:\n" + why)
 
@@ -370,7 +372,7 @@ def sources_cited(ctx: GateCtx, out: dict) -> None:
     problems = [f"- not linked: {u}" for u in sorted(sources - linked)]
     problems += [f"- not a verified source: {u}" for u in sorted(linked - sources)]
     if problems:
-        raise Failure("cite each verified source where its claim is, and nothing else:\n" + _lines(problems))
+        raise Failure("cite each verified source where its claim is, and nothing else:\n" + _capped(problems))
 
 
 @gate
@@ -395,7 +397,7 @@ def evidence_verified(ctx: GateCtx, out: dict) -> None:
     out["findings"] = kept
     if rejected and not kept:
         raise Failure("no finding could be verified. Copy evidence exactly from the file, and give "
-                      "the line it is on:\n" + _lines([f"- {r['title']}: {r['reason']}" for r in rejected]))
+                      "the line it is on:\n" + _capped([f"- {r['title']}: {r['reason']}" for r in rejected]))
 
 
 @gate

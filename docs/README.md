@@ -54,50 +54,50 @@ The line numbers apply to this version of the files. If a line number is differe
 | `_check_independence()` – the checker rule | `src/factory/runbook.py` | 365 |
 | `outline()` – the text of a plan | `src/factory/runbook.py` | 378 |
 | `mermaid()` – the flowchart of a plan | `src/factory/runbook.py` | 413 |
-| `APP_NAME` – the rule for a run name | `src/factory/engine.py` | 39 |
-| `MAX_CONVERSATION` – the limit of turns at one checkpoint | `src/factory/engine.py` | 40 |
-| `API_PREFIX` – the path prefix of a full-stack contract | `src/factory/engine.py` | 41 |
-| `Stop` – ends the run | `src/factory/engine.py` | 44 |
-| `RoundFailed` – ends a round | `src/factory/engine.py` | 48 |
-| `open_workspace()` – creates and locks `apps/<name>` | `src/factory/engine.py` | 59 |
-| `snapshot()` – reads every project file | `src/factory/engine.py` | 86 |
-| `changed()` – lists the files that differ | `src/factory/engine.py` | 95 |
-| `restore()` – puts files back | `src/factory/engine.py` | 99 |
-| `RunLog` – writes `run.json` | `src/factory/engine.py` | 111 |
-| `Engine` – runs a plan | `src/factory/engine.py` | 149 |
-| `run()` – the driver of a run | `src/factory/engine.py` | 167 |
-| `loop()` – runs the rounds of a loop | `src/factory/engine.py` | 199 |
-| `step()` – runs the items of a step | `src/factory/engine.py` | 225 |
-| `attempt()` – runs one item with retries | `src/factory/engine.py` | 253 |
-| `_request()` – builds the task for an agent | `src/factory/engine.py` | 290 |
-| `_schema_ctx()` – the context for a schema | `src/factory/engine.py` | 329 |
-| `_on_input()` – asks the person | `src/factory/engine.py` | 336 |
-| `_check_files()` – reverts changes outside a role | `src/factory/engine.py` | 359 |
-| `_review_test_change()` – the tester judges a test change | `src/factory/engine.py` | 381 |
-| `_reset_scaffolds()` – resets the scaffolds before code is written | `src/factory/engine.py` | 455 |
-| `triage()` – asks the triage agent for a choice | `src/factory/engine.py` | 535 |
-| `Failure` – a failed gate, with a level | `src/factory/gates.py` | 33 |
-| `GATES` – the table of gates | `src/factory/gates.py` | 62 |
-| `run_tests()` – runs the suite of a surface | `src/factory/gates.py` | 122 |
-| `free_port()` – asks the system for a free port | `src/factory/gates.py` | 141 |
-| `serve_vite()` – builds and previews a frontend | `src/factory/gates.py` | 173 |
-| `serve_asgi()` – starts a backend with uvicorn | `src/factory/gates.py` | 195 |
-| `tests_named()` – gate: a test for each criterion | `src/factory/gates.py` | 236 |
-| `tests_red()` – gate: new tests fail | `src/factory/gates.py` | 255 |
-| `tests_green()` – gate: all tests pass | `src/factory/gates.py` | 267 |
-| `counts_match()` – gate: the counts agree | `src/factory/gates.py` | 276 |
-| `serves()` – gate: the build serves | `src/factory/gates.py` | 285 |
-| `criteria_covered()` – gate: every criterion passes | `src/factory/gates.py` | 294 |
-| `fetch_text()` – fetches a page as text | `src/factory/gates.py` | 314 |
-| `quote_on_page()` – finds a quote on a page | `src/factory/gates.py` | 334 |
-| `citations_verified()` – gate: quotes are on their pages | `src/factory/gates.py` | 340 |
-| `sources_cited()` – gate: the report cites verified sources | `src/factory/gates.py` | 366 |
-| `evidence_verified()` – gate: evidence is in the code | `src/factory/gates.py` | 377 |
-| `review_approves()` – gate: the reviewer approves | `src/factory/gates.py` | 402 |
+| `APP_NAME` – the rule for a run name | `src/factory/schemas.py` | 20 |
+| `MAX_CONVERSATION` – the limit of turns at one checkpoint | `src/factory/engine.py` | 38 |
+| `API_PREFIX` – the path prefix of a full-stack contract | `src/factory/engine.py` | 39 |
+| `Stop` – ends the run | `src/factory/engine.py` | 42 |
+| `RoundFailed` – ends a round | `src/factory/engine.py` | 46 |
+| `open_workspace()` – creates and locks `apps/<name>` | `src/factory/engine.py` | 57 |
+| `snapshot()` – reads every project file | `src/factory/engine.py` | 84 |
+| `changed()` – lists the files that differ | `src/factory/engine.py` | 93 |
+| `restore()` – puts files back | `src/factory/engine.py` | 97 |
+| `RunLog` – writes `run.json` | `src/factory/engine.py` | 109 |
+| `Engine` – runs a plan | `src/factory/engine.py` | 147 |
+| `run()` – the driver of a run | `src/factory/engine.py` | 165 |
+| `loop()` – runs the rounds of a loop | `src/factory/engine.py` | 197 |
+| `step()` – runs the items of a step | `src/factory/engine.py` | 223 |
+| `attempt()` – runs one item with retries | `src/factory/engine.py` | 251 |
+| `_request()` – builds the task for an agent | `src/factory/engine.py` | 288 |
+| `_schema_ctx()` – the context for a schema | `src/factory/engine.py` | 327 |
+| `_on_input()` – asks the person | `src/factory/engine.py` | 334 |
+| `_check_files()` – reverts changes outside a role | `src/factory/engine.py` | 357 |
+| `_review_test_change()` – the tester judges a test change | `src/factory/engine.py` | 379 |
+| `_reset_scaffolds()` – resets the scaffolds before code is written | `src/factory/engine.py` | 453 |
+| `triage()` – asks the triage agent for a choice | `src/factory/engine.py` | 538 |
+| `Failure` – a failed gate, with a level | `src/factory/gates.py` | 36 |
+| `GATES` – the table of gates | `src/factory/gates.py` | 64 |
+| `run_tests()` – runs the suite of a surface | `src/factory/gates.py` | 124 |
+| `free_port()` – asks the system for a free port | `src/factory/gates.py` | 143 |
+| `serve_vite()` – builds and previews a frontend | `src/factory/gates.py` | 175 |
+| `serve_asgi()` – starts a backend with uvicorn | `src/factory/gates.py` | 197 |
+| `tests_named()` – gate: a test for each criterion | `src/factory/gates.py` | 238 |
+| `tests_red()` – gate: new tests fail | `src/factory/gates.py` | 257 |
+| `tests_green()` – gate: all tests pass | `src/factory/gates.py` | 269 |
+| `counts_match()` – gate: the counts agree | `src/factory/gates.py` | 278 |
+| `serves()` – gate: the build serves | `src/factory/gates.py` | 287 |
+| `criteria_covered()` – gate: every criterion passes | `src/factory/gates.py` | 296 |
+| `fetch_text()` – fetches a page as text | `src/factory/gates.py` | 316 |
+| `quote_on_page()` – finds a quote on a page | `src/factory/gates.py` | 336 |
+| `citations_verified()` – gate: quotes are on their pages | `src/factory/gates.py` | 342 |
+| `sources_cited()` – gate: the report cites verified sources | `src/factory/gates.py` | 368 |
+| `evidence_verified()` – gate: evidence is in the code | `src/factory/gates.py` | 379 |
+| `review_approves()` – gate: the reviewer approves | `src/factory/gates.py` | 404 |
 | `START_TIMEOUT` – the wait for an agent card | `src/factory/fleet.py` | 22 |
-| `Fleet` – starts and stops the agents | `src/factory/fleet.py` | 26 |
-| `_wait()` – waits for a card and checks its tags | `src/factory/fleet.py` | 55 |
-| `send()` – sends a task to a role | `src/factory/fleet.py` | 81 |
+| `Fleet` – starts and stops the agents | `src/factory/fleet.py` | 25 |
+| `_wait()` – waits for a card and checks its tags | `src/factory/fleet.py` | 54 |
+| `send()` – sends a task to a role | `src/factory/fleet.py` | 80 |
 | `LLM_ATTEMPTS` – the tries for a usable reply | `src/factory/agent.py` | 43 |
 | `extract_json()` – reads the last JSON block | `src/factory/agent.py` | 46 |
 | `prompt_for()` – builds the prompt of a task | `src/factory/agent.py` | 60 |
@@ -120,11 +120,11 @@ The line numbers apply to this version of the files. If a line number is differe
 | `worker()` – finds a worker by name | `src/factory/config.py` | 176 |
 | `reviewer_for()` – picks a reviewer model (no run uses it) | `src/factory/config.py` | 212 |
 | `load_config()` – reads `llm.yaml` and fills the variables | `src/factory/config.py` | 286 |
-| `MODELS` – the schema of each deliverable | `src/factory/schemas.py` | 154 |
-| `SHAPES` – the reply format shown to an agent | `src/factory/schemas.py` | 167 |
-| `validate()` – checks a reply | `src/factory/schemas.py` | 196 |
-| `_check_contract()` – checks the API contract paths | `src/factory/schemas.py` | 238 |
-| `render()` – shows a deliverable as text | `src/factory/schemas.py` | 284 |
+| `MODELS` – the schema of each deliverable | `src/factory/schemas.py` | 156 |
+| `SHAPES` – the reply format shown to an agent | `src/factory/schemas.py` | 169 |
+| `validate()` – checks a reply | `src/factory/schemas.py` | 198 |
+| `_check_contract()` – checks the API contract paths | `src/factory/schemas.py` | 240 |
+| `render()` – shows a deliverable as text | `src/factory/schemas.py` | 286 |
 | `Template` – a scaffold and its metadata | `src/factory/scaffold.py` | 36 |
 | `read_template()` – reads `templates/<name>.yaml` | `src/factory/scaffold.py` | 49 |
 | `install()` – installs the dependencies of a scaffold | `src/factory/scaffold.py` | 77 |
@@ -523,17 +523,17 @@ A live run needs the workers and the network. This document quotes no output fro
 ## 7. Known limits
 
 - **A run can end with a draft.** In the `research` runbook, the `report` step saves `REPORT.md` before the `review` step runs. If the reviewer does not approve in 3 rounds, the run stops with status `stopped`. The last draft stays on disk. In 3 live runs, this happened.
-- **Port race.** `free_port()` closes its socket before the agent binds the port (`gates.py` line 141). Another process can take the port. The fleet then gives up after 30 seconds (`fleet.py` line 22).
-- **The card check is weak.** The fleet compares only the tags `role:`, `worker:` and `model:` (`fleet.py` line 55). A different agent with the same tags passes.
+- **Port race.** `free_port()` closes its socket before the agent binds the port (`gates.py` line 143). Another process can take the port. The fleet then gives up after 30 seconds (`fleet.py` line 22).
+- **The card check is weak.** The fleet compares only the tags `role:`, `worker:` and `model:` (`fleet.py` line 54). A different agent with the same tags passes.
 - **Agents keep state in memory.** `InMemoryTaskStore` (`a2a_transport.py` line 122) loses a task when the agent stops. A task cannot resume.
 - **Same folder.** The task carries the path of the workspace. An agent at a `url:` must see the same folder.
-- **Codex has no command list.** Any command makes the Codex sandbox writable (`invoke.py` line 46). The engine reverts the writes of a role with `writes: none` after the attempt (`engine.py` line 359).
+- **Codex has no command list.** Any command makes the Codex sandbox writable (`invoke.py` line 46). The engine reverts the writes of a role with `writes: none` after the attempt (`engine.py` line 357).
 - **The cost limit covers Claude only.** `per_task_usd` goes to the Claude command (`invoke.py` line 59). The Codex command has no cost limit. No code reads `per_day_usd` (`config.py` line 109).
 - **The reviewer settings are not used in a run.** No run code calls `reviewer_for()` (`config.py` line 212). Only tests call it. The checker rule uses `_check_independence()` (`runbook.py` line 365).
-- **A test gap is not retried.** If the tests are green and a criterion is not `PASS`, the run stops (`gates.py` line 294).
-- **Quotes under 20 characters fail.** `quote_on_page()` rejects them (`gates.py` line 336). The gate drops such a finding.
+- **A test gap is not retried.** If the tests are green and a criterion is not `PASS`, the run stops (`gates.py` line 296).
+- **Quotes under 20 characters fail.** `quote_on_page()` rejects them (`gates.py` line 338). The gate drops such a finding.
 - **Search has no retry.** `search()` reports the error of a source and goes on (`search.py` line 95). A rate limit removes that source from the result.
-- **Only 6 items run together.** A parallel step uses at most 6 threads (`engine.py` line 243).
+- **Only 6 items run together.** A parallel step uses at most 6 threads (`engine.py` line 241).
 - **No read timeout on a task.** A hung agent blocks the run until its LLM call reaches the limit (`a2a_transport.py` line 133).
 - **No person has checked the HTML.** The checks in section 6 do not include a review of the page by a person.
 

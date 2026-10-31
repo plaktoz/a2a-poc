@@ -17,6 +17,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+APP_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")  # a run's folder name under apps/
+
 
 class _Open(BaseModel):
     # LLMs add fields; keep them rather than fail, but require the ones we use.
@@ -262,7 +264,7 @@ def _check_triage(data: dict, ctx: dict) -> None:
     for k, v in data["traits"].items():
         if not isinstance(v, bool):
             raise ValueError(f"trait {k} must be true or false")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", data["name"]):
+    if not APP_NAME.fullmatch(data["name"]):
         raise ValueError("name must be lowercase letters, digits and hyphens, at most 40 characters")
 
 

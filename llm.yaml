@@ -43,7 +43,7 @@ workers:
     models: [gemini-3.6-flash]
     default_model: gemini-3.6-flash
 
-# Gate 5: the reviewer must use a different model than the author. Picks the
+# Independence: the reviewer must use a different model than the author. Picks the
 # first candidate that is served by an enabled worker and is not the author's.
 reviewer:
   candidates: [gpt-6.1-sol, "${ANTHROPIC_MODEL}", gemini-3.6-flash]
