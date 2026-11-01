@@ -118,8 +118,8 @@ def test_the_cli_reads_inputs_and_the_interface_file(tmp_path):
 
 
 def test_inputs_choose_the_template_the_lenses_and_the_rounds(cfg, staff):
-    web = resolve(catalog()["web-app"], {"backend": True}, staff, cfg,
-                  inputs=resolve_inputs(catalog()["web-app"], {"backend_template": "fastapi"}))
+    web = resolve(catalog()["app-build"], {"backend": True}, staff, cfg,
+                  inputs=resolve_inputs(catalog()["app-build"], {"backend_template": "fastapi"}))
     assert web.templates["api"].name == "fastapi"
     audit = catalog()["code-audit"]
     plan = resolve(audit, {}, staff, cfg, inputs=resolve_inputs(audit, {"lenses": "security,perf"}))
@@ -144,7 +144,7 @@ def _items(plan, step_id):
 
 
 def test_a_template_that_does_not_exist_is_an_error_naming_it(cfg, staff):
-    web = catalog()["web-app"]
+    web = catalog()["app-build"]
     with pytest.raises(ConfigError, match="template 'nope'"):
         resolve(web, {}, staff, cfg, inputs=resolve_inputs(web, {"frontend_template": "nope"}))
 
@@ -159,7 +159,7 @@ def web_agents(spec):
 
 
 def web_plan(cfg, staff):
-    return resolve(catalog()["web-app"], {}, staff, cfg)
+    return resolve(catalog()["app-build"], {}, staff, cfg)
 
 
 def test_open_questions_stop_the_run_even_with_yes(cfg, staff, tmp_path):
@@ -226,7 +226,7 @@ def test_without_an_interface_the_steps_get_no_interface_context(cfg, staff, tmp
 
 
 def test_the_run_record_keeps_the_inputs(cfg, staff, tmp_path):
-    web = catalog()["web-app"]
+    web = catalog()["app-build"]
     plan = resolve(web, {}, staff, cfg, inputs=resolve_inputs(web, {"criteria_count": "3 to 5"}))
     engine = make_engine(plan, cfg, tmp_path, web_agents({**SPEC, "questions": ["q"]}), wait_at_checkpoints=True)
     engine.run()

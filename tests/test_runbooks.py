@@ -35,27 +35,27 @@ def ids(plan):
 
 def test_shipped_runbooks_load():
     books = catalog()
-    assert set(books) == {"web-app", "research", "code-audit", "api-design", "change-request", "bug-fix",
+    assert set(books) == {"app-build", "research", "code-audit", "api-design", "change-request", "bug-fix",
                           "impact-analysis"}
     for p in RUNBOOKS_DIR.glob("*.yaml"):
         assert load_runbook(p).name == p.stem
 
 
-def test_frontend_only_is_the_default_web_app(cfg, staff):
-    plan = plan_for("web-app", cfg, staff)
+def test_frontend_only_is_the_default_app_build(cfg, staff):
+    plan = plan_for("app-build", cfg, staff)
     assert plan.surfaces == ["web"] and plan.traits == {"frontend": True, "backend": False}
     assert ids(plan) == ["spec", "tests", "develop", "verify"]
     assert "localStorage" in plan.notes["web"]
 
 
-def test_backend_only_web_app_has_no_ui_and_no_contract(cfg, staff):
-    plan = plan_for("web-app", cfg, staff, frontend=False, backend=True)
+def test_backend_only_app_build_has_no_ui_and_no_contract(cfg, staff):
+    plan = plan_for("app-build", cfg, staff, frontend=False, backend=True)
     assert plan.surfaces == ["api"] and "contract" not in ids(plan)
     assert plan.templates["api"].suite == "pytest"
 
 
 def test_full_stack_adds_the_contract_and_both_scaffolds(cfg, staff):
-    plan = plan_for("web-app", cfg, staff, backend=True)
+    plan = plan_for("app-build", cfg, staff, backend=True)
     assert plan.surfaces == ["web", "api"]
     assert ids(plan) == ["spec", "contract", "tests", "develop", "verify"]
     assert "mock fetch" in plan.templates["web"].stack  # the rule lives in the template, not in the runbook
@@ -63,9 +63,9 @@ def test_full_stack_adds_the_contract_and_both_scaffolds(cfg, staff):
     assert {"analyst", "architect", "tester", "developer", "verifier"} == set(plan.roles())
 
 
-def test_a_web_app_needs_at_least_one_surface(cfg, staff):
+def test_a_app_build_needs_at_least_one_surface(cfg, staff):
     with pytest.raises(ConfigError, match="no scaffold"):
-        plan_for("web-app", cfg, staff, frontend=False)
+        plan_for("app-build", cfg, staff, frontend=False)
 
 
 def test_research_writes_no_code_and_can_skip_review(cfg, staff):
@@ -77,7 +77,7 @@ def test_research_writes_no_code_and_can_skip_review(cfg, staff):
 
 def test_unknown_trait_is_rejected(cfg, staff):
     with pytest.raises(ConfigError, match="no trait mobile"):
-        plan_for("web-app", cfg, staff, mobile=True)
+        plan_for("app-build", cfg, staff, mobile=True)
 
 
 def test_checker_must_not_share_the_authors_model(cfg, staff):
@@ -85,7 +85,7 @@ def test_checker_must_not_share_the_authors_model(cfg, staff):
 
     same = {**staff, "verifier": replace(staff["verifier"], worker="codex-gpt", model="gpt-6.1-sol")}
     with pytest.raises(ConfigError, match="verifier and the developer"):
-        resolve(catalog()["web-app"], {}, same, cfg)
+        resolve(catalog()["app-build"], {}, same, cfg)
 
 
 def test_api_design_reviewer_must_not_share_the_architects_model(cfg, staff):
@@ -151,7 +151,7 @@ def test_staff_overrides_and_unknown_models(cfg):
 
 
 def test_outline_and_mermaid_show_every_step(cfg, staff):
-    plan = plan_for("web-app", cfg, staff, backend=True)
+    plan = plan_for("app-build", cfg, staff, backend=True)
     text, chart = outline(plan), mermaid(plan)
     for step in ids(plan):
         assert step in text and step in chart

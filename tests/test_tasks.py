@@ -211,10 +211,10 @@ def test_a_resume_on_an_accepted_item_sends_nothing_for_it(repo_dir, scratch, cf
 
 
 def test_a_reverted_attempt_marks_no_sub_task(tmp_path, cfg, staff):
-    """A web-app develop item whose files were reverted keeps its sub-tasks open."""
+    """A app-build develop item whose files were reverted keeps its sub-tasks open."""
     from test_engine import make_engine
 
-    plan = resolve(catalog()["web-app"], {}, staff, cfg)
+    plan = resolve(catalog()["app-build"], {}, staff, cfg)
     develop = next(s for s in plan.steps() if s.id == "develop")
     assert has_subtasks(develop)
     ws = tmp_path / "ws"
@@ -232,7 +232,7 @@ def test_a_reverted_attempt_marks_no_sub_task(tmp_path, cfg, staff):
 
 
 def test_a_surface_item_gets_only_the_criteria_of_its_surface(tmp_path, cfg, staff):
-    plan = resolve(catalog()["web-app"], {"backend": True}, staff, cfg)
+    plan = resolve(catalog()["app-build"], {"backend": True}, staff, cfg)
     develop = next(s for s in plan.steps() if s.id == "develop")
     tl = TaskList(tmp_path)
     criteria = [{"id": "AC1", "text": "a", "surface": "web"}, {"id": "AC2", "text": "b", "surface": "api"}]

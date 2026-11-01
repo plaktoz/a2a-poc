@@ -14,7 +14,7 @@ review in advance. Examples:
 
   factory run --brief "a kanban board where I can add tickets and columns"
   factory run --brief "a shared shopping list for my family" --trait backend=yes
-  factory run --runbook web-app --trait frontend=no --trait backend=yes --brief "a URL shortener API"
+  factory run --runbook app-build --trait frontend=no --trait backend=yes --brief "a URL shortener API"
   factory run --brief "which vector database fits a 10M-document RAG system?"
   factory run --runbook code-audit --target apps/kanban-react/web --brief "is this ready to ship?"
   factory run --runbook change-request --repo ~/code/shop --test-command "npm test" --brief "add a cart"
@@ -512,7 +512,7 @@ def main(argv: list[str] | None = None) -> int:
     out.add_flags(p, fields=True, full=True)
     p.set_defaults(fn=cmd_check)
 
-    p = command("plan", "show what a run would do, without running it", "factory plan web-app --trait backend=yes")
+    p = command("plan", "show what a run would do, without running it", "factory plan app-build --trait backend=yes")
     p.add_argument("runbook")
     p.add_argument("--trait", action="append", default=[], metavar="NAME=yes|no")
     p.add_argument("--input", action="append", default=[], metavar="NAME=VALUE")

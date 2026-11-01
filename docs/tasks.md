@@ -58,6 +58,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | committed | see `git log` |
 | Leftovers | C3, S4, S6, lint: done. S5, S8, S3: deferred, see Leftovers | none | committed | see `git log` |
 | Inputs | Runbook `inputs:`, `--input`, `--interface`, `confirm_input` human gate; no hardcoded values in the runbooks | none | committed | see `git log` |
+| Rename | `web-app` becomes `app-build`; step 1 of making it work for more than web apps | Inputs | committed | see `git log` |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
 | P18 | Windows | | not built (deferred) | |
@@ -75,8 +76,8 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 
 ### P6: three new gates
 
-- Files: `src/factory/gates.py`, `runbooks/web-app.yaml`, `tests/test_gates_p6.py`.
-- Verify: full suite. `factory plan web-app` lists the new gates.
+- Files: `src/factory/gates.py`, `runbooks/app-build.yaml`, `tests/test_gates_p6.py`.
+- Verify: full suite. `factory plan app-build` lists the new gates.
 - [x] `secrets_clean`, `lint_clean`, `packages_exist`.
 - [x] README: the gate list.
 - [ ] PRD section 8.4 notes.
@@ -263,8 +264,8 @@ Decided by the owner (2026-10-31):
 Goal: no runbook holds a value that belongs to one job, or interface details. Found by reviewing every runbook.
 
 - Status: committed. The suite passes (419). Lint (`ruff --select F --ignore F811`) is clean. Only fake agents ran; no real LLM run is verified.
-- Files: `src/factory/runbook.py` (`InputDef`, `resolve_inputs`), `engine.py` (inputs, interface context, `_confirm_input`), `scaffold.py` (template `summary`, `start`, `api_prefix`), `cli.py` (`--input`, `--interface`), `runbooks/web-app.yaml`, `code-audit.yaml`, `impact-analysis.yaml`, `research.yaml`, `templates/react-vite.yaml`, `templates/fastapi.yaml`, `tests/test_inputs.py`, `README.md`.
-- Review: `web-app` named the stacks, the `/api/` prefix, the Vite proxy, fetch and mock rules, the file layout, run commands and the criteria range. `code-audit` fixed the lenses, their guidance, the finding cap and the ignored paths. `impact-analysis` fixed the ignored paths. `research` fixed the sub-question range, findings range, minimum sources and rounds. `change-request`, `bug-fix` and `api-design`: nothing to change.
+- Files: `src/factory/runbook.py` (`InputDef`, `resolve_inputs`), `engine.py` (inputs, interface context, `_confirm_input`), `scaffold.py` (template `summary`, `start`, `api_prefix`), `cli.py` (`--input`, `--interface`), `runbooks/app-build.yaml`, `code-audit.yaml`, `impact-analysis.yaml`, `research.yaml`, `templates/react-vite.yaml`, `templates/fastapi.yaml`, `tests/test_inputs.py`, `README.md`.
+- Review: `app-build` named the stacks, the `/api/` prefix, the Vite proxy, fetch and mock rules, the file layout, run commands and the criteria range. `code-audit` fixed the lenses, their guidance, the finding cap and the ignored paths. `impact-analysis` fixed the ignored paths. `research` fixed the sub-question range, findings range, minimum sources and rounds. `change-request`, `bug-fix` and `api-design`: nothing to change.
 - [x] `inputs:` in the runbook model, with types and a default or required.
 - [x] `--input` on `plan` and `run`; `--interface FILE` on `run`; both kept in `run.json`.
 - [x] `confirm_input` gate: stops at `<step>:input` while the spec has open questions; `--yes` does not skip it.

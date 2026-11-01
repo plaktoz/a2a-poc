@@ -182,7 +182,7 @@ def no_suites(monkeypatch):
 
 
 def build_engine(cfg, staff, tmp_path, develop, tester_review=None, **traits):
-    plan = resolve(catalog()["web-app"], traits, staff, cfg)
+    plan = resolve(catalog()["app-build"], traits, staff, cfg)
 
     def tests(req):
         write_files(req["cwd"], {"src/App.test.jsx": "it('AC1: works', () => {})\n"})
@@ -266,7 +266,7 @@ def test_tests_must_be_named_after_criteria(cfg, staff, tmp_path, no_suites):
 
 
 def test_full_stack_runs_each_surface_in_its_own_directory(cfg, staff, tmp_path, no_suites):
-    plan = resolve(catalog()["web-app"], {"backend": True}, staff, cfg)
+    plan = resolve(catalog()["app-build"], {"backend": True}, staff, cfg)
     spec = {**SPEC, "acceptance_criteria": [{"id": "AC1", "text": "ui", "surface": "web"},
                                             {"id": "AC2", "text": "api", "surface": "api"}]}
     contract = {"endpoints": [{"method": "GET", "path": "/api/items", "response": []}]}
@@ -296,7 +296,7 @@ def test_full_stack_runs_each_surface_in_its_own_directory(cfg, staff, tmp_path,
 
 
 def test_only_failed_surfaces_are_rebuilt(cfg, staff, tmp_path, no_suites, monkeypatch):
-    plan = resolve(catalog()["web-app"], {"backend": True}, staff, cfg)
+    plan = resolve(catalog()["app-build"], {"backend": True}, staff, cfg)
     spec = {**SPEC, "acceptance_criteria": [{"id": "AC1", "text": "ui", "surface": "web"},
                                             {"id": "AC2", "text": "api", "surface": "api"}]}
     green = {"web": [False, True], "api": [True]}
@@ -372,9 +372,9 @@ def test_agents_that_may_not_write_have_stray_files_reverted(cfg, staff, tmp_pat
 def test_triage_returns_a_checked_choice(tmp_path):
     books = catalog()
     send = Agents({("triage", "triage"): [
-        {"runbook": "web-app", "traits": {"backend": True}, "name": "family-list", "rationale": "shared"}]})
+        {"runbook": "app-build", "traits": {"backend": True}, "name": "family-list", "rationale": "shared"}]})
     out = triage(send, "a shared shopping list", books, target=None, on_input=None, cwd=tmp_path)
-    assert out["runbook"] == "web-app" and out["traits"] == {"backend": True}
+    assert out["runbook"] == "app-build" and out["traits"] == {"backend": True}
     req = send.requests[0][1]
     assert "research" in req["context"][1]["body"] and req["output"] == "triage"
 

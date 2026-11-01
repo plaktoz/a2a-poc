@@ -52,7 +52,7 @@ Build a software factory that turns reviewed specifications into merged pull req
 - Shared quality gate pipeline.
 - Scorecard and observability.
 - Git-based integration: one branch and one worktree per feature. See section 8.3 and `docs/p10-plan.md`.
-- Workflows defined as runbooks (YAML data in `runbooks/`): software builds (`web-app`), research (`research`), code audit (`code-audit`) and API design (`api-design`).
+- Workflows defined as runbooks (YAML data in `runbooks/`): software builds (`app-build`), research (`research`), code audit (`code-audit`) and API design (`api-design`).
 - A triage step that picks the runbook and its traits from a brief, with the user approving the plan before a run starts.
 - Worker adapters for the `claude` and `codex` command-line tools, with per-role tool permissions.
 - A command line that follows the AXI principles (section 8.7), so that an agent can run the factory.

@@ -15,7 +15,7 @@
 #
 # A person confirms the spec before anything is built. If the spec still has open questions, the
 # run stops until a person answers them or confirms that the spec has the input the build needs.
-name: web-app
+name: app-build
 title: Build a web app
 description: >
   Specifies, tests, builds and verifies a web app from a brief: a browser frontend, an HTTP API

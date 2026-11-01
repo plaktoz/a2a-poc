@@ -19,7 +19,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 ```bash
 uv sync
 uv run pytest                  # prints "419 passed"; no LLM is called
-uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
+uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and app-build
 ```
 
 Set the environment variables that `llm.yaml` names before a real run:
@@ -35,7 +35,7 @@ Then start a run. It calls the LLMs and takes minutes.
 
 ```bash
 uv run factory check                                    # one short prompt to each model: are they reachable?
-uv run factory plan web-app --trait backend=yes     # show what a run would do; nothing runs
+uv run factory plan app-build --trait backend=yes     # show what a run would do; nothing runs
 uv run factory run --brief "a shared shopping list for my family"
 ```
 
@@ -45,7 +45,7 @@ The factory shows its plan and starts. It never asks a question. When a run need
 
 | Runbook | Use it to | Steps | You get |
 |---|---|---|---|
-| `web-app` | Build a frontend, a backend or both. Traits: `frontend` (default yes), `backend` (default no). Inputs: the two stack templates, the size of the spec, edge cases, extra rules. Interface details come with `--interface FILE`. | spec (a person confirms it while it has open questions), API contract (full stack only), tests for each surface, then a build loop | `SPEC.json`, `API.json`, `web/`, `api/` |
+| `app-build` | Build a frontend, a backend or both. Traits: `frontend` (default yes), `backend` (default no). Inputs: the two stack templates, the size of the spec, edge cases, extra rules. Interface details come with `--interface FILE`. | spec (a person confirms it while it has open questions), API contract (full stack only), tests for each surface, then a build loop | `SPEC.json`, `API.json`, `web/`, `api/` |
 | `research` | Answer a question from public sources. Trait: `review` (default yes). Inputs: `sub_questions`, `findings_per_question`, `min_sources`, `write_rounds`. | plan, investigate each sub-question in parallel, then a write loop | `PLAN.json`, `REPORT.md` |
 | `code-audit` | Review code without changing it. Needs `--target`. Inputs: `lenses`, `lens_guidance`, `max_findings`, `ignore_paths`. | audit through the lenses in parallel (default: security, correctness, maintainability, tests), then a write loop | `AUDIT.md` |
 | `api-design` | Turn a brief into a spec and an HTTP API contract. | spec, then a contract loop | `SPEC.json`, `API.json` |
@@ -58,7 +58,7 @@ Examples:
 ```bash
 uv run factory run --brief "a kanban board with tickets and columns"        # frontend only
 uv run factory run --brief "a family shopping list" --trait backend=yes     # full stack
-uv run factory run --brief "a URL shortener API" --runbook web-app \
+uv run factory run --brief "a URL shortener API" --runbook app-build \
     --trait frontend=no --trait backend=yes                                  # backend only
 uv run factory run --brief "which vector database fits a 10M-document RAG system?"
 uv run factory run --runbook code-audit --target apps/kanban-react --brief "is it ready to ship?"
@@ -298,7 +298,7 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 total: 7
 runbooks[7]{name,title,traits}:
   api-design,API design,none
-  web-app,Build a web app,frontend backend
+  app-build,Build a web app,frontend backend
 ```
 
 - `--json` prints JSON instead.
@@ -481,16 +481,16 @@ A runbook holds no value that belongs to one job. A value that varies is an **in
 ```bash
 uv run factory run --runbook code-audit --target ./svc --brief "audit" \
   --input lenses=security,performance --input max_findings=20 --input ignore_paths=vendor,dist
-uv run factory run --runbook web-app --trait backend=yes --brief "..." --interface api-notes.md
+uv run factory run --runbook app-build --trait backend=yes --brief "..." --interface api-notes.md
 ```
 
 Interface details (paths, prefix, ports, auth, schemas) are not inputs and not in a runbook. They come in a file with `--interface`, and the steps that list `interface` under `reads` get it as context. The conventions of a stack (layout, proxy, how to start it) live in its template: `summary`, `start` and `api_prefix`, besides `stack`.
 
-**The human gate.** A step with `confirm_input: true` (the spec step of `web-app`) returns `questions`: what the agent needs and neither the brief nor the interface file gives. If the list is empty the run goes on to the step's ordinary checkpoint. If not, the run saves the draft and stops at `<step>:input` with the status `awaiting`. A person answers with `factory approve --name NAME --changes "the answers"` (the agent redrafts the spec) or `factory approve --name NAME` (the spec already has what the build needs). `--yes` approves checkpoints in advance but never this gate.
+**The human gate.** A step with `confirm_input: true` (the spec step of `app-build`) returns `questions`: what the agent needs and neither the brief nor the interface file gives. If the list is empty the run goes on to the step's ordinary checkpoint. If not, the run saves the draft and stops at `<step>:input` with the status `awaiting`. A person answers with `factory approve --name NAME --changes "the answers"` (the agent redrafts the spec) or `factory approve --name NAME` (the spec already has what the build needs). `--yes` approves checkpoints in advance but never this gate.
 
 ### Templates
 
-A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library) and `fastapi` (FastAPI, pytest, uv). In a full-stack app, the web dev server proxies the backend's `api_prefix` (`/api/` for `react-vite`) to the backend. A web-app run picks its templates with the inputs `frontend_template` and `backend_template`.
+A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library) and `fastapi` (FastAPI, pytest, uv). In a full-stack app, the web dev server proxies the backend's `api_prefix` (`/api/` for `react-vite`) to the backend. A app-build run picks its templates with the inputs `frontend_template` and `backend_template`.
 
 ### Web search
 

@@ -53,9 +53,9 @@ def write(root: Path, files: dict[str, str | bytes]) -> None:
 # --- secrets_clean ----------------------------------------------------------
 
 
-def test_the_new_gates_are_registered_and_wired_into_web_app():
+def test_the_new_gates_are_registered_and_wired_into_app_build():
     assert {"secrets_clean", "lint_clean", "packages_exist"} <= set(GATES)
-    steps = {s.id: s for n in catalog()["web-app"].steps for s in getattr(n, "steps", [n])}
+    steps = {s.id: s for n in catalog()["app-build"].steps for s in getattr(n, "steps", [n])}
     assert "secrets_clean" in steps["tests"].gates
     assert {"secrets_clean", "packages_exist", "lint_clean"} <= set(steps["develop"].gates)
 
