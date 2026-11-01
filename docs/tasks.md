@@ -332,7 +332,7 @@ Goal: the HCC app runs as a Podman Compose stack (web, app, worker, db, queue), 
 - Decided by the owner (2026-11-01): "approval is given. you can plan and implement without asking me".
 - Found while running it: BullMQ 6 needs `ioredis` installed (the worker crashed without it), and `tsx`, the start command, was a dev dependency, so `npm ci --omit=dev` removed it. Both templates now keep `tsx` as a runtime dependency; the worker template adds `ioredis`.
 - [x] Templates: `tsx` is a runtime dependency in `fastify` and `bullmq-worker`; `bullmq-worker` has `ioredis`. Test added (`test_the_start_command_runs_on_the_production_install`). Suite passes (454).
-- [x] Committed as `20e26e9` on its own. Not pushed.
+- [x] Committed as `14640a1` on its own. Not pushed.
 - Open in the HCC repo, not in this task: a burst of raw files (946 for 11 sources) appeared in one early run and did not come back on a clean start. The cause is not confirmed; a seed id is now derived from the file name, so a repeat seed overwrites instead of adding.
 - Open: a Claude key was once in this shell's environment and was echoed by `podman compose config`. Rotate it.
 
