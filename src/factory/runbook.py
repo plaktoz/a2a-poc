@@ -182,6 +182,7 @@ class StepDef(_Strict):
     role: str
     instructions: str
     when: str | None = None
+    min_surfaces: int = Field(default=0, ge=0)  # the step runs only when the app has at least this many surfaces
     for_each: str | list[str] | None = None  # "surfaces", "repos", "<step>.<field>", or a list of names
     parallel: bool = False
     reads: list[str] = []
@@ -234,6 +235,7 @@ class Runbook(_Strict):
     traits: dict[str, TraitDef] = {}
     inputs: dict[str, InputDef] = {}
     scaffolds: dict[str, ScaffoldDef] = {}
+    scaffolds_from: str | None = None  # a list input of `directory=template` pairs: the user chooses the surfaces
     staff: dict[str, StaffDef] = {}
     steps: list[Node] = Field(min_length=1)
     finish: list[FinishDef] = []
@@ -255,6 +257,11 @@ class Runbook(_Strict):
             if bad := input_refs(text) - declared:
                 raise ValueError(f"{where}: {{{{ inputs.{sorted(bad)[0]} }}}} is not a declared input")
 
+        if self.scaffolds_from is not None:
+            if self.scaffolds:
+                raise ValueError("scaffolds_from and scaffolds are two ways to place surfaces; use one")
+            if self.scaffolds_from not in self.inputs or self.inputs[self.scaffolds_from].type != "list":
+                raise ValueError(f"scaffolds_from {self.scaffolds_from} needs a declared input of type list")
         for d, s in self.scaffolds.items():
             uses_inputs(s.template + "".join(s.notes.values()), f"scaffolds.{d}")
             if not re.match(ID, d):
@@ -310,8 +317,8 @@ class Runbook(_Strict):
             if "." not in s.for_each or src not in seen:
                 raise ValueError(f"{where}: for_each must be 'surfaces', 'repos', 'inputs.<list input>', a list, "
                                  "or '<earlier step>.<field>'")
-        if s.for_each == "surfaces" and not self.scaffolds:
-            raise ValueError(f"{where}: for_each surfaces, but the runbook has no scaffolds")
+        if (s.for_each == "surfaces" or s.min_surfaces) and not (self.scaffolds or self.scaffolds_from):
+            raise ValueError(f"{where}: for_each surfaces and min_surfaces need scaffolds or scaffolds_from")
         if s.for_each == "repos" and not self.needs_repos:
             raise ValueError(f"{where}: for_each repos needs needs_repos: true")
         if s.for_each == "repos" and s.cwd != "repo":
@@ -468,6 +475,21 @@ class Plan:
         return [r for r in ROLES if r in used]
 
 
+def parse_surfaces(items: list[str]) -> dict[str, str]:
+    """The `directory=template` pairs of a surfaces input, as {directory: template name}."""
+    out: dict[str, str] = {}
+    for item in items:
+        d, sep, t = (x.strip() for x in item.partition("="))
+        if not sep or not d or not t:
+            raise ConfigError(f"surface {item!r}: use directory=template, such as web=react-vite")
+        if not re.fullmatch(ID, d):
+            raise ConfigError(f"surface {d!r}: directory names are lowercase words")
+        if d in out:
+            raise ConfigError(f"surface {d!r} is listed twice")
+        out[d] = t
+    return out
+
+
 def resolve(rb: Runbook, traits: dict[str, Any], staff: dict[str, Staff], cfg: Config,
             templates_dir: Path = TEMPLATES_DIR, inputs: dict[str, Any] | None = None) -> Plan:
     values = resolve_inputs(rb, {}, require=False) if inputs is None else inputs
@@ -476,17 +498,29 @@ def resolve(rb: Runbook, traits: dict[str, Any], staff: dict[str, Staff], cfg: C
                           f"its traits are {', '.join(rb.traits) or 'none'}")
     final = {t: bool(traits.get(t, d.default)) for t, d in rb.traits.items()}
     templates, notes = {}, {}
+    if rb.scaffolds_from:
+        for d, name in parse_surfaces(values[rb.scaffolds_from]).items():
+            templates[d] = read_template(name, templates_dir)
     for d, s in rb.scaffolds.items():
         if holds(s.when, final):
             templates[d] = read_template(fill(s.template, {"inputs": values}), templates_dir)
             notes[d] = "\n".join(fill(text, {"inputs": values}).strip()
                                  for c, text in s.notes.items() if holds(c, final))
+    for d in templates:  # each surface is told what else is in the app, so a template can give rules for both cases
+        others = [f"{o} ({t.name}: {t.summary or t.surface})" for o, t in templates.items() if o != d]
+        about = ("- The app's other surfaces: " + "; ".join(others) + "." if others
+                 else "- This is the only surface of the app: it has no backend or other part to call.")
+        notes[d] = "\n".join(x for x in (notes.get(d, ""), about) if x)
+
+    def applies(step: Node) -> bool:
+        return holds(step.when, final) and (not isinstance(step, StepDef) or len(templates) >= step.min_surfaces)
+
     nodes: list[Node] = []
     for n in rb.steps:
-        if not holds(n.when, final):
+        if not applies(n):
             continue
         if isinstance(n, LoopDef):
-            inner = [s for s in n.steps if holds(s.when, final)]
+            inner = [s for s in n.steps if applies(s)]
             if inner:
                 rounds = values[m[1]] if (m := re.fullmatch(INPUT_REF, str(n.rounds))) else n.rounds
                 nodes.append(n.model_copy(update={"steps": inner, "rounds": rounds}))
@@ -495,8 +529,8 @@ def resolve(rb: Runbook, traits: dict[str, Any], staff: dict[str, Staff], cfg: C
     needs_surfaces = any(s.for_each == "surfaces" for n in nodes
                          for s in (n.steps if isinstance(n, LoopDef) else [n]))
     if needs_surfaces and not templates:
-        raise ConfigError(f"runbook {rb.name}: these traits switch on no scaffold, so there is "
-                          "nothing to build. Turn on at least one surface trait.")
+        raise ConfigError(f"runbook {rb.name}: no scaffold applies, so there is nothing to build. "
+                          "Turn on a surface trait or give the surfaces input.")
     plan = Plan(rb, final, templates, nodes, {**staff}, notes, values)
     _check_independence(plan, cfg)
     return plan

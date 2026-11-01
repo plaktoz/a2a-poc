@@ -144,6 +144,7 @@ class Verdict(_Open):
 class Triage(_Open):
     runbook: str  # a runbook name, or NO_RUNBOOK when none fits
     traits: dict[str, Any] = {}
+    inputs: dict[str, Any] = {}  # values for the runbook's inputs that the brief decides, such as the surfaces
     name: str = ""
     rationale: str = Field(min_length=1)
     target: str | None = None
@@ -237,8 +238,8 @@ def _check_contract(data: dict, ctx: dict) -> None:
 
 
 def _check_triage(data: dict, ctx: dict) -> None:
-    """ctx["runbooks"] maps each runbook to its trait names. The answer NO_RUNBOOK (with a reason in
-    `rationale`) says no runbook fits the request."""
+    """ctx["runbooks"] maps each runbook to its trait names, and ctx["inputs"] (optional) maps each runbook to
+    its input definitions. The answer NO_RUNBOOK (with a reason in `rationale`) says no runbook fits."""
     runbooks = ctx.get("runbooks")
     if not runbooks:
         return
@@ -253,6 +254,17 @@ def _check_triage(data: dict, ctx: dict) -> None:
     for k, v in data["traits"].items():
         if not isinstance(v, bool):
             raise ValueError(f"trait {k} must be true or false")
+    defs = (ctx.get("inputs") or {}).get(data["runbook"])
+    if defs is not None:
+        from .runbook import parse_input  # imported here: runbook.py imports this module
+        if unknown := set(data["inputs"]) - set(defs):
+            raise ValueError(f"runbook {data['runbook']} has no input {', '.join(sorted(unknown))}; "
+                             f"its inputs are {', '.join(sorted(defs)) or 'none'}")
+        for k, v in data["inputs"].items():
+            try:
+                data["inputs"][k] = parse_input(defs[k], v)
+            except ValueError as e:
+                raise ValueError(f"input {k}: {e}") from None
     if not APP_NAME.fullmatch(data["name"]):
         raise ValueError("name must be lowercase letters, digits and hyphens, at most 40 characters")
 
@@ -304,7 +316,7 @@ SCHEMAS: dict[str, Schema] = {
         """{"verdict": "approve|revise", "issues": [str], "strengths": [str]}"""),
     "triage": Schema(
         Triage,
-        """{"runbook": "<a runbook name, or none>", "traits": {<trait>: <value>}, "name": "<lowercase-hyphenated
+        """{"runbook": "<a runbook name, or none>", "traits": {<trait>: <value>}, "inputs": {<input>: <value>}, "name": "<lowercase-hyphenated
    project name, at most 40 characters>", "rationale": str, "target": "<path or null>"}""", _check_triage),
     "dev_result": Schema(
         DevResult,
@@ -365,7 +377,10 @@ def render(name: str | None, data: Any) -> str:
         return f"Runbook: none\nWhy: {data['rationale']}"
     if name == "triage":
         traits = ", ".join(f"{k}={'yes' if v else 'no'}" for k, v in data["traits"].items()) or "none"
+        chosen = "; ".join(f"{k}={', '.join(map(str, v)) if isinstance(v, list) else v}"
+                           for k, v in data.get("inputs", {}).items())
         return (f"Runbook: {data['runbook']}\nName: {data['name']}\nTraits: {traits}"
+                + (f"\nInputs: {chosen}" if chosen else "")
                 + (f"\nTarget: {data['target']}" if data.get("target") else "")
                 + f"\nWhy: {data['rationale']}")
     if name == "audit_findings":

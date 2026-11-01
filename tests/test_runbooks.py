@@ -6,7 +6,7 @@ import yaml
 
 from factory import ConfigError, load_config
 from factory.paths import ROOT, RUNBOOKS_DIR
-from factory.runbook import Runbook, catalog, holds, load_runbook, load_staff, mermaid, outline, resolve
+from factory.runbook import Runbook, catalog, holds, load_runbook, load_staff, mermaid, outline, resolve, resolve_inputs
 from factory.runbook import fill
 from test_config import ENV, base, write
 
@@ -25,8 +25,10 @@ def staff(cfg):
     return load_staff(AGENTS, cfg)
 
 
-def plan_for(name, cfg, staff, **traits):
-    return resolve(catalog()[name], traits, staff, cfg)
+def plan_for(name, cfg, staff, surfaces=None, **traits):
+    """A plan; `surfaces` is the app-build input, the other keywords are traits."""
+    rb = catalog()[name]
+    return resolve(rb, traits, staff, cfg, inputs=resolve_inputs(rb, {"surfaces": surfaces} if surfaces else {}))
 
 
 def ids(plan):
@@ -41,31 +43,36 @@ def test_shipped_runbooks_load():
         assert load_runbook(p).name == p.stem
 
 
-def test_frontend_only_is_the_default_app_build(cfg, staff):
+def test_one_ui_surface_is_the_default_app_build(cfg, staff):
     plan = plan_for("app-build", cfg, staff)
-    assert plan.surfaces == ["web"] and plan.traits == {"frontend": True, "backend": False}
+    assert plan.surfaces == ["web"] and plan.traits == {}
     assert ids(plan) == ["spec", "tests", "develop", "verify"]
-    assert "localStorage" in plan.notes["web"]
+    assert "only surface" in plan.notes["web"]  # the surface is told it is alone
+    assert "localStorage" in plan.templates["web"].stack  # the persistence rule lives in the template
 
 
-def test_backend_only_app_build_has_no_ui_and_no_contract(cfg, staff):
-    plan = plan_for("app-build", cfg, staff, frontend=False, backend=True)
+def test_one_api_surface_has_no_contract(cfg, staff):
+    plan = plan_for("app-build", cfg, staff, surfaces="api=fastapi")
     assert plan.surfaces == ["api"] and "contract" not in ids(plan)
     assert plan.templates["api"].suite == "pytest"
 
 
-def test_full_stack_adds_the_contract_and_both_scaffolds(cfg, staff):
-    plan = plan_for("app-build", cfg, staff, backend=True)
+def test_two_surfaces_add_the_contract_and_both_scaffolds(cfg, staff):
+    plan = plan_for("app-build", cfg, staff, surfaces="web=react-vite,api=fastapi")
     assert plan.surfaces == ["web", "api"]
     assert ids(plan) == ["spec", "contract", "tests", "develop", "verify"]
     assert "mock fetch" in plan.templates["web"].stack  # the rule lives in the template, not in the runbook
-    assert "localStorage" not in plan.notes["web"]  # that note is only for an app without a backend
+    assert "only surface" not in plan.notes["web"] and "api (fastapi" in plan.notes["web"]
     assert {"analyst", "architect", "tester", "developer", "verifier"} == set(plan.roles())
 
 
-def test_a_app_build_needs_at_least_one_surface(cfg, staff):
-    with pytest.raises(ConfigError, match="no scaffold"):
-        plan_for("app-build", cfg, staff, frontend=False)
+def test_an_app_needs_a_template_that_exists_for_each_surface(cfg, staff):
+    with pytest.raises(ConfigError, match="template 'nope'"):
+        plan_for("app-build", cfg, staff, surfaces="web=nope")
+    with pytest.raises(ConfigError, match="directory=template"):
+        plan_for("app-build", cfg, staff, surfaces="web")
+    with pytest.raises(ConfigError, match="listed twice"):
+        plan_for("app-build", cfg, staff, surfaces="web=react-vite,web=fastapi")
 
 
 def test_research_writes_no_code_and_can_skip_review(cfg, staff):
@@ -77,7 +84,7 @@ def test_research_writes_no_code_and_can_skip_review(cfg, staff):
 
 def test_unknown_trait_is_rejected(cfg, staff):
     with pytest.raises(ConfigError, match="no trait mobile"):
-        plan_for("app-build", cfg, staff, mobile=True)
+        plan_for("research", cfg, staff, mobile=True)
 
 
 def test_checker_must_not_share_the_authors_model(cfg, staff):
@@ -151,7 +158,7 @@ def test_staff_overrides_and_unknown_models(cfg):
 
 
 def test_outline_and_mermaid_show_every_step(cfg, staff):
-    plan = plan_for("app-build", cfg, staff, backend=True)
+    plan = plan_for("app-build", cfg, staff, surfaces="web=react-vite,api=fastapi")
     text, chart = outline(plan), mermaid(plan)
     for step in ids(plan):
         assert step in text and step in chart
@@ -206,7 +213,7 @@ def book(**changes):
     ({"steps__0__reads": ["later"]}, "no earlier step"),
     ({"steps__0__instructions": "{{ secret }}"}, "unknown template variable"),
     ({"steps__0__writes": "source"}, "only a step working in a surface"),
-    ({"steps__0__for_each": "surfaces"}, "no scaffolds"),
+    ({"steps__0__for_each": "surfaces"}, "need scaffolds or scaffolds_from"),
     ({"steps__0__cwd": "target"}, "needs_target"),
     ({"steps__0__for_each": "repos"}, "needs needs_repos"),
     ({"needs_repos": True, "steps__0__for_each": "repos"}, "for_each repos needs cwd: repo"),

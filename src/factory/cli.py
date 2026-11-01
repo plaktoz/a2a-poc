@@ -367,6 +367,8 @@ def cmd_run(args) -> int:
             return 1
         rb = books[choice["runbook"]]
         traits = {**choice["traits"], **traits}  # traits given on the command line win
+        inputs = {**{k: ",".join(v) if isinstance(v, list) else str(v) for k, v in choice["inputs"].items()},
+                  **inputs}  # so do inputs
         name = args.name or choice["name"]
         target = target or (str(Path(choice["target"]).resolve()) if choice.get("target") else None)
 

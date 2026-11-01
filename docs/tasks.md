@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 419 passed.
+Suite at the last check: 424 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -58,7 +58,8 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | committed | see `git log` |
 | Leftovers | C3, S4, S6, lint: done. S5, S8, S3: deferred, see Leftovers | none | committed | see `git log` |
 | Inputs | Runbook `inputs:`, `--input`, `--interface`, `confirm_input` human gate; no hardcoded values in the runbooks | none | committed | see `git log` |
-| Rename | `web-app` becomes `app-build`; step 1 of making it work for more than web apps | Inputs | committed | see `git log` |
+| Rename | `web-app` becomes `app-build`; step 1 of making it work for more than web apps | Inputs | committed | `94bb46c` |
+| Surfaces | `app-build` takes its parts from the `surfaces` input; `frontend` and `backend` traits are gone; triage sets inputs; step 2 | Rename | committed | see `git log` |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
 | P18 | Windows | | not built (deferred) | |
@@ -263,7 +264,7 @@ Decided by the owner (2026-10-31):
 
 Goal: no runbook holds a value that belongs to one job, or interface details. Found by reviewing every runbook.
 
-- Status: committed. The suite passes (419). Lint (`ruff --select F --ignore F811`) is clean. Only fake agents ran; no real LLM run is verified.
+- Status: committed. The suite passes (419 at that commit). Lint (`ruff --select F --ignore F811`) is clean. Only fake agents ran; no real LLM run is verified.
 - Files: `src/factory/runbook.py` (`InputDef`, `resolve_inputs`), `engine.py` (inputs, interface context, `_confirm_input`), `scaffold.py` (template `summary`, `start`, `api_prefix`), `cli.py` (`--input`, `--interface`), `runbooks/app-build.yaml`, `code-audit.yaml`, `impact-analysis.yaml`, `research.yaml`, `templates/react-vite.yaml`, `templates/fastapi.yaml`, `tests/test_inputs.py`, `README.md`.
 - Review: `app-build` named the stacks, the `/api/` prefix, the Vite proxy, fetch and mock rules, the file layout, run commands and the criteria range. `code-audit` fixed the lenses, their guidance, the finding cap and the ignored paths. `impact-analysis` fixed the ignored paths. `research` fixed the sub-question range, findings range, minimum sources and rounds. `change-request`, `bug-fix` and `api-design`: nothing to change.
 - [x] `inputs:` in the runbook model, with types and a default or required.
@@ -272,3 +273,17 @@ Goal: no runbook holds a value that belongs to one job, or interface details. Fo
 - [x] Stack conventions moved into the templates.
 - [x] A test that fails when a runbook holds a stack name, a fixed count or an interface detail.
 - [x] README and test count. Commit.
+
+### Surfaces: `app-build` is not only for web apps
+
+Goal: the app's parts are chosen by the user, not named by the runbook. A CLI, a worker or a library is another template.
+
+- Status: committed. The suite passes (424). Lint is clean. Only fake agents ran.
+- Decided by the owner (2026-11-01): name `app-build`; option A for the parts: a list input, with no `frontend` or `backend` trait.
+- Files: `src/factory/runbook.py` (`scaffolds_from`, `min_surfaces`, `parse_surfaces`, per-surface notes), `schemas.py` and `engine.py` (triage sets inputs), `cli.py`, `runbooks/app-build.yaml`, `templates/react-vite.yaml`, tests, `README.md`.
+- [x] Rename `web-app` to `app-build`.
+- [x] Input `surfaces`: `directory=template` pairs. Default `web=react-vite`.
+- [x] The contract step runs for two or more surfaces (`min_surfaces`). Input `contract_kind` says what the parts talk through.
+- [x] Rules about a UI (drag and drop, localStorage) moved into the `react-vite` template. Each surface is told what the other surfaces are.
+- [x] Triage can set inputs, checked against their types, so a shared app still gets a server.
+- [ ] Next: templates for the stacks that are missing (a Fastify API, a queue worker). Until then a surface with no template fails at plan time with its name.

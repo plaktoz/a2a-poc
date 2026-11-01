@@ -118,8 +118,8 @@ def test_the_cli_reads_inputs_and_the_interface_file(tmp_path):
 
 
 def test_inputs_choose_the_template_the_lenses_and_the_rounds(cfg, staff):
-    web = resolve(catalog()["app-build"], {"backend": True}, staff, cfg,
-                  inputs=resolve_inputs(catalog()["app-build"], {"backend_template": "fastapi"}))
+    web = resolve(catalog()["app-build"], {}, staff, cfg,
+                  inputs=resolve_inputs(catalog()["app-build"], {"surfaces": "web=react-vite,api=fastapi"}))
     assert web.templates["api"].name == "fastapi"
     audit = catalog()["code-audit"]
     plan = resolve(audit, {}, staff, cfg, inputs=resolve_inputs(audit, {"lenses": "security,perf"}))
@@ -146,7 +146,56 @@ def _items(plan, step_id):
 def test_a_template_that_does_not_exist_is_an_error_naming_it(cfg, staff):
     web = catalog()["app-build"]
     with pytest.raises(ConfigError, match="template 'nope'"):
-        resolve(web, {}, staff, cfg, inputs=resolve_inputs(web, {"frontend_template": "nope"}))
+        resolve(web, {}, staff, cfg, inputs=resolve_inputs(web, {"surfaces": "web=nope"}))
+
+
+# --- surfaces: the user chooses the parts of the app ------------------------------
+
+
+def test_a_surface_is_told_what_else_is_in_the_app(cfg, staff):
+    rb = catalog()["app-build"]
+    one = resolve(rb, {}, staff, cfg, inputs=resolve_inputs(rb, {"surfaces": "web=react-vite"}))
+    two = resolve(rb, {}, staff, cfg, inputs=resolve_inputs(rb, {"surfaces": "web=react-vite,api=fastapi"}))
+    assert "only surface" in one.notes["web"]
+    assert "api (fastapi" in two.notes["web"] and "web (react-vite" in two.notes["api"]
+
+
+def test_the_contract_step_needs_two_surfaces(cfg, staff):
+    rb = catalog()["app-build"]
+    for given, steps in (("web=react-vite", ["spec", "tests", "develop", "verify"]),
+                         ("api=fastapi", ["spec", "tests", "develop", "verify"]),
+                         ("web=react-vite,api=fastapi", ["spec", "contract", "tests", "develop", "verify"])):
+        plan = resolve(rb, {}, staff, cfg, inputs=resolve_inputs(rb, {"surfaces": given}))
+        assert [x.id for x in plan.steps()] == steps
+
+
+def test_scaffolds_from_needs_a_list_input_and_excludes_scaffolds():
+    with pytest.raises(ValueError, match="needs a declared input of type list"):
+        runbook(scaffolds_from="limit")
+    with pytest.raises(ValueError, match="use one"):
+        runbook(inputs={"parts": {"description": "d", "type": "list", "default": ["a=b"]}}, scaffolds_from="parts",
+                scaffolds={"web": {"template": "react-vite"}})
+
+
+def test_triage_sets_inputs_and_they_are_checked_against_their_type():
+    from factory.schemas import validate
+    books = catalog()
+    ctx = {"runbooks": {n: list(rb.traits) for n, rb in books.items()},
+           "inputs": {n: rb.inputs for n, rb in books.items()}}
+    ok = {"runbook": "app-build", "name": "family-list", "rationale": "r",
+          "inputs": {"surfaces": "web=react-vite, api=fastapi"}}
+    assert validate("triage", ok, ctx)["inputs"] == {"surfaces": ["web=react-vite", "api=fastapi"]}
+    with pytest.raises(ValueError, match="no input colour"):
+        validate("triage", {**ok, "inputs": {"colour": "red"}}, ctx)
+    with pytest.raises(ValueError, match="input criteria_count"):
+        validate("triage", {**ok, "inputs": {"criteria_count": ["a"]}}, ctx)
+
+
+def test_triage_inputs_are_shown_and_a_command_line_input_wins():
+    from factory.schemas import render, validate
+    out = validate("triage", {"runbook": "app-build", "name": "x", "rationale": "r",
+                              "inputs": {"surfaces": ["web=react-vite", "api=fastapi"]}})
+    assert "Inputs: surfaces=web=react-vite, api=fastapi" in render("triage", out)
 
 
 # --- the human gate ------------------------------------------------------------
@@ -262,6 +311,9 @@ def test_no_runbook_names_a_stack_or_a_fixed_count(name, text):
         assert stack not in yaml.safe_dump(yaml.safe_load(code)).replace("react-vite", ""), f"{name}: names {stack}"
     steps = yaml.safe_load(code)["steps"]
     text_of_steps = json.dumps(steps)
+    if name == "app-build":  # the steps of the general builder name no kind of surface; the description may give examples
+        for word in ("frontend", "backend", "browser", "localStorage", "HTTP"):
+            assert word not in text_of_steps, f"{name}: a step names {word}"
     assert not re.search(r"\b\d+ to \d+\b|at most \d+|at least \d+", text_of_steps), f"{name}: fixed count"
 
 

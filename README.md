@@ -4,7 +4,7 @@ Describe what you want in your own words. The factory picks a plan, hands each s
 
 The factory can:
 
-- build a web app (a React frontend, a FastAPI backend, or both),
+- build an app from one or more parts: a React UI, a FastAPI server, or both,
 - answer a research question in a report where every quote is checked against its source,
 - audit existing code and write a prioritized report,
 - design an HTTP API,
@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "419 passed"; no LLM is called
+uv run pytest                  # prints "424 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and app-build
 ```
 
@@ -35,7 +35,7 @@ Then start a run. It calls the LLMs and takes minutes.
 
 ```bash
 uv run factory check                                    # one short prompt to each model: are they reachable?
-uv run factory plan app-build --trait backend=yes     # show what a run would do; nothing runs
+uv run factory plan app-build --input surfaces=web=react-vite,api=fastapi   # show what a run would do; nothing runs
 uv run factory run --brief "a shared shopping list for my family"
 ```
 
@@ -45,7 +45,7 @@ The factory shows its plan and starts. It never asks a question. When a run need
 
 | Runbook | Use it to | Steps | You get |
 |---|---|---|---|
-| `app-build` | Build a frontend, a backend or both. Traits: `frontend` (default yes), `backend` (default no). Inputs: the two stack templates, the size of the spec, edge cases, extra rules. Interface details come with `--interface FILE`. | spec (a person confirms it while it has open questions), API contract (full stack only), tests for each surface, then a build loop | `SPEC.json`, `API.json`, `web/`, `api/` |
+| `app-build` | Build an app from one or more parts (surfaces), such as a UI and a server. Inputs: `surfaces` (the parts, as `directory=template` pairs; default `web=react-vite`), `contract_kind`, the size of the spec, edge cases, extra rules. Interface details come with `--interface FILE`. | spec (a person confirms it while it has open questions), contract between the surfaces (two or more surfaces only), tests for each surface, then a build loop | `SPEC.json`, `API.json` (two or more surfaces), one folder for each surface |
 | `research` | Answer a question from public sources. Trait: `review` (default yes). Inputs: `sub_questions`, `findings_per_question`, `min_sources`, `write_rounds`. | plan, investigate each sub-question in parallel, then a write loop | `PLAN.json`, `REPORT.md` |
 | `code-audit` | Review code without changing it. Needs `--target`. Inputs: `lenses`, `lens_guidance`, `max_findings`, `ignore_paths`. | audit through the lenses in parallel (default: security, correctness, maintainability, tests), then a write loop | `AUDIT.md` |
 | `api-design` | Turn a brief into a spec and an HTTP API contract. | spec, then a contract loop | `SPEC.json`, `API.json` |
@@ -56,10 +56,11 @@ The factory shows its plan and starts. It never asks a question. When a run need
 Examples:
 
 ```bash
-uv run factory run --brief "a kanban board with tickets and columns"        # frontend only
-uv run factory run --brief "a family shopping list" --trait backend=yes     # full stack
+uv run factory run --brief "a kanban board with tickets and columns"        # one surface: a UI
+uv run factory run --brief "a family shopping list" \
+    --input surfaces=web=react-vite,api=fastapi                               # two surfaces
 uv run factory run --brief "a URL shortener API" --runbook app-build \
-    --trait frontend=no --trait backend=yes                                  # backend only
+    --input surfaces=api=fastapi                                             # a server only
 uv run factory run --brief "which vector database fits a 10M-document RAG system?"
 uv run factory run --runbook code-audit --target apps/kanban-react --brief "is it ready to ship?"
 uv run factory run --runbook change-request --repo ~/code/shop --test-command "npm test" \
@@ -71,7 +72,7 @@ uv run factory run --runbook impact-analysis --repo ~/code/orders --repo ~/code/
 uv run factory run --brief "..." --staff writer=codex-gpt --staff verifier=codex-gemini
 ```
 
-Without `--runbook`, a triage agent reads the brief and chooses the runbook and its traits. The option `--trait` overrides its choice. If no runbook fits the request, triage answers `none`. The factory then prints the reason, makes no folder and exits with code 1.
+Without `--runbook`, a triage agent reads the brief and chooses the runbook, its traits and the inputs that the brief decides (for `app-build`, the surfaces). The options `--trait` and `--input` override its choice. If no runbook fits the request, triage answers `none`. The factory then prints the reason, makes no folder and exits with code 1.
 
 ## What happens in a run
 
@@ -298,7 +299,7 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 total: 7
 runbooks[7]{name,title,traits}:
   api-design,API design,none
-  app-build,Build a web app,frontend backend
+  app-build,Build an app,none
 ```
 
 - `--json` prints JSON instead.
@@ -457,7 +458,8 @@ A runbook is a YAML file in `runbooks/`. To add a kind of work, add a file. The 
 |---|---|---|
 | `role` | required | The role that does the step |
 | `instructions` | required | The task, with `{{ brief }}`, `{{ item.* }}`, `{{ surfaces }}`, `{{ test_files }}` and similar variables |
-| `when` | always | A trait condition such as `frontend and backend` |
+| `when` | always | A trait condition such as `review and not quick` |
+| `min_surfaces` | `0` | The step runs only when the app has at least this many surfaces |
 | `for_each` | none | `surfaces`, `inputs.<list>`, a list, or `<step>.<field>` |
 | `parallel` | `false` | Runs the items together, at most 6 at a time |
 | `reads` | none | The earlier results that the agent gets as context |
@@ -470,7 +472,7 @@ A runbook is a YAML file in `runbooks/`. To add a kind of work, add a file. The 
 | `cwd` | `surface` or `workspace` | The folder where the agent works. `target` is also allowed. |
 | `writes` | `none` | `none`, `tests` or `source` |
 
-A `loop` has `rounds` (default `budget`, or `inputs.<number>`) and its own `gates`. `scaffolds` places a template in a surface folder when its trait condition holds.
+A `loop` has `rounds` (default `budget`, or `inputs.<number>`) and its own `gates`. `scaffolds` places a template in a surface folder when its trait condition holds. `scaffolds_from: NAME` names a list input of `directory=template` pairs instead, so the user chooses the surfaces.
 
 Try a runbook before you run it: `uv run factory plan <runbook> --trait ...`. Check the models first with `uv run factory check`.
 
@@ -490,7 +492,7 @@ Interface details (paths, prefix, ports, auth, schemas) are not inputs and not i
 
 ### Templates
 
-A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library) and `fastapi` (FastAPI, pytest, uv). In a full-stack app, the web dev server proxies the backend's `api_prefix` (`/api/` for `react-vite`) to the backend. A app-build run picks its templates with the inputs `frontend_template` and `backend_template`.
+A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library) and `fastapi` (FastAPI, pytest, uv). With a server surface, the web dev server proxies the `api_prefix` (`/api/` for `react-vite`) to it. Each surface is told what the other surfaces are, so a template can give a rule for the case where it stands alone and for the case where it has a server. An `app-build` run picks its templates with the `surfaces` input, and a new kind of surface is a new template, with no change to the runbook.
 
 ### Web search
 
@@ -545,6 +547,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
 | `test_tasks.py` | 13 | The task list is written at the start, a stop mid-item keeps the done sub-tasks, a resume sends only the open ones, a reverted attempt marks none, and every stop prints the `--resume` command. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
+| `test_inputs.py` | 40 | Runbook inputs and the human gate: types, defaults, `--input`, `--interface`, surfaces, triage inputs, and a check that no shipped runbook holds a stack name, a fixed count or an interface detail. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
 | `test_runbooks.py` | 37 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. With only Claude enabled, every runbook plans and warns. |
 | `test_runs.py` | 5 | `factory runs` sums the run records and changes nothing. |
@@ -629,9 +632,9 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | Staff | The map from each role to a worker and a model. |
 | Worktree | A second working folder of a git repo, on its own branch. `change-request` and `bug-fix` work in one. |
 | Step | One task for one role, with an output and gates. |
-| Surface | A part of a web app: `web` (frontend) or `api` (backend). |
+| Surface | One part of an app, in its own folder with its own template and tests, such as `web` (a UI) or `api` (a server). The `surfaces` input of `app-build` lists them. |
 | Template | A scaffold folder with its metadata in `templates/<name>.yaml`. |
-| Trait | A yes-or-no choice that changes a runbook, such as `backend`. |
+| Trait | A yes-or-no choice that changes a runbook, such as `review` in `research`. |
 | Triage | The choice of a runbook and its traits for a brief. |
 | Worker | An entry in `llm.yaml`: a plugin that runs it, an endpoint and a list of models. |
 | Workspace | The folder `apps/<name>/` of one run. |

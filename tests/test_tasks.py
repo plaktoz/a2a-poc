@@ -11,7 +11,7 @@ import pytest
 
 from factory import repo
 from factory.engine import Engine, open_workspace
-from factory.runbook import catalog, resolve
+from factory.runbook import catalog, resolve, resolve_inputs
 from factory.tasks import TaskList, has_subtasks, plan_text
 from test_engine import Agents, strip_html, write_files
 from test_repo import APPROVE, SPEC, change_plan, git, repo_dir, run_record, scratch  # noqa: F401
@@ -211,7 +211,7 @@ def test_a_resume_on_an_accepted_item_sends_nothing_for_it(repo_dir, scratch, cf
 
 
 def test_a_reverted_attempt_marks_no_sub_task(tmp_path, cfg, staff):
-    """A app-build develop item whose files were reverted keeps its sub-tasks open."""
+    """An app-build develop item whose files were reverted keeps its sub-tasks open."""
     from test_engine import make_engine
 
     plan = resolve(catalog()["app-build"], {}, staff, cfg)
@@ -232,7 +232,7 @@ def test_a_reverted_attempt_marks_no_sub_task(tmp_path, cfg, staff):
 
 
 def test_a_surface_item_gets_only_the_criteria_of_its_surface(tmp_path, cfg, staff):
-    plan = resolve(catalog()["app-build"], {"backend": True}, staff, cfg)
+    plan = resolve(catalog()["app-build"], {}, staff, cfg, inputs=resolve_inputs(catalog()["app-build"], {"surfaces": "web=react-vite,api=fastapi"}))
     develop = next(s for s in plan.steps() if s.id == "develop")
     tl = TaskList(tmp_path)
     criteria = [{"id": "AC1", "text": "a", "surface": "web"}, {"id": "AC2", "text": "b", "surface": "api"}]

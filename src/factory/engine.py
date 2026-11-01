@@ -1056,13 +1056,16 @@ def triage(send: Send, brief: str, books: dict[str, Runbook], *, target: str | N
     req = {
         "run_id": run_id, "task": "triage", "item": None, "output": "triage", "cwd": str(cwd), "commands": {},
         "instructions": (
-            "Read the request and choose the runbook that fits it, and its traits. Also choose a short "
+            "Read the request and choose the runbook that fits it, and its traits. Set an input only when "
+            "the request decides it (for app-build, the surfaces the app needs); leave the rest to their "
+            "defaults. Also choose a short "
             "name for the work: lowercase words joined by hyphens. If the request names existing code "
             "to work on, put its path in target."),
         "context": [{"title": "The request", "body": brief},
                     {"title": "Runbooks", "body": describe_catalog(books)}]
         + ([{"title": "Target given by the user", "body": target}] if target else []),
-        "schema_ctx": {"runbooks": {n: list(rb.traits) for n, rb in books.items()}},
+        "schema_ctx": {"runbooks": {n: list(rb.traits) for n, rb in books.items()},
+                       "inputs": {n: rb.inputs for n, rb in books.items()}},
         "interactive": False, "checkpoint": on_input is not None, "feedback": "",
     }
     try:

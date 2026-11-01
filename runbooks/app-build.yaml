@@ -1,39 +1,41 @@
-# Build a web app: a browser frontend, an HTTP API backend, or both.
+# Build an app from a brief, in one or more parts (surfaces): a browser UI, an API, a worker, a CLI.
 #
 # Nothing about the app or its stack is fixed here. The values come from the user:
 #   --brief       what the app is for
-#   --input       the runbook's inputs below (stack templates, size of the spec, rules for the spec)
+#   --input       the runbook's inputs below: the surfaces and their templates, the size of the
+#                 spec, its edge cases and extra rules
 #   --interface   a file with interface details: API paths and prefix, ports, auth, schemas, data
 #                 formats. The agents read it as context; no runbook holds it.
-# The conventions of a stack (file layout, test tools, how to start it) live in its template under
-# templates/, so another stack is another template and no change to this file.
+# The conventions of a stack (file layout, test tools, how to start it, rules that depend on the
+# other surfaces) live in its template under templates/, so another stack is another template and
+# no change to this file.
 #
-# Traits pick the shape: frontend only (the default), backend only, or full stack, where an
-# API designer agrees the contract between them before either is built. Each surface is its own
+# The `surfaces` input lists the parts as directory=template pairs. Each surface is its own
 # scaffold directory with its own tests, so the tester, developer and verifier work per surface,
-# in parallel.
+# in parallel. With two or more surfaces, an architect agrees the contract between them before
+# any is built.
 #
 # A person confirms the spec before anything is built. If the spec still has open questions, the
 # run stops until a person answers them or confirms that the spec has the input the build needs.
 name: app-build
-title: Build a web app
+title: Build an app
 description: >
-  Specifies, tests, builds and verifies a web app from a brief: a browser frontend, an HTTP API
-  backend, or both connected by an agreed API contract. The stack templates and the rules for the
-  spec are inputs, and the interface details are supplied separately.
+  Specifies, tests, builds and verifies an app from a brief, in one or more parts (surfaces) such
+  as a browser UI, an HTTP API or a worker, connected by an agreed contract when there is more
+  than one. The surfaces and their templates, and the rules for the spec, are inputs. The
+  interface details are supplied separately.
 use_when: >
-  The request asks for software to be built: a web page or app, a UI, a service or an API.
-traits:
-  frontend: {description: "has a user interface in the browser", default: true}
-  backend: {description: "has a server with an HTTP API (data shared between users or devices, or a service for other programs)", default: false}
+  The request asks for software to be built: an app, a web page, a UI, a service, an API or a
+  tool. Choose the surfaces input to match what the app needs.
 
 inputs:
-  frontend_template:
-    description: "the template in templates/ for the frontend surface"
-    default: react-vite
-  backend_template:
-    description: "the template in templates/ for the backend surface"
-    default: fastapi
+  surfaces:
+    description: "the parts of the app, as directory=template pairs; each template is in templates/. One pair is a single-part app; a UI plus a server is web=react-vite,api=fastapi"
+    type: list
+    default: ["web=react-vite"]
+  contract_kind:
+    description: "what the parts of the app talk through, for the contract between them"
+    default: "an HTTP API"
   criteria_count:
     description: "how many acceptance criteria the spec should have, as a range"
     default: "6 to 14"
@@ -42,18 +44,9 @@ inputs:
     default: "empty input, duplicates, not-found and persistence"
   spec_rules:
     description: "extra rules the spec and the build must follow"
-    default: "Drag and drop must not be the only way to do something."
+    default: "none beyond the brief"
 
-scaffolds:
-  web:
-    template: "{{ inputs.frontend_template }}"
-    when: frontend
-    notes:
-      not backend: |
-        - There is no backend. Keep state in the browser (localStorage) when it must persist.
-  api:
-    template: "{{ inputs.backend_template }}"
-    when: backend
+scaffolds_from: surfaces
 
 steps:
   - id: spec
@@ -65,11 +58,11 @@ steps:
       The brief:
       {{ brief }}
 
-      The app has these surfaces (scaffold directories):
+      The app has these surfaces (scaffold directories), as the user chose them ({{ inputs.surfaces }}):
       {{ surface_summaries }}
       Give every acceptance criterion the surface whose tests will check it, and give every
-      surface at least one criterion. A criterion is one behaviour a user (a UI surface) or a
-      caller (an API surface) can observe. {{ inputs.spec_rules }}
+      surface at least one criterion. A criterion is one behaviour that a user or a caller of
+      that surface can observe. Rules for the spec: {{ inputs.spec_rules }}
       Ids are AC1, AC2, ... in order. Cover the whole brief, usually {{ inputs.criteria_count }}
       criteria, with edge cases such as {{ inputs.edge_cases }}.
       If this directory already has a SPEC.json, the brief extends that app: keep each existing
@@ -87,12 +80,14 @@ steps:
 
   - id: contract
     role: architect
-    when: frontend and backend
+    min_surfaces: 2
     reads: [spec, interface]
     instructions: |
-      Design the HTTP API between the frontend and the backend: every endpoint the UI needs for
-      its criteria, and every endpoint the backend criteria name. The frontend and the backend
-      are built separately from this contract, so be exact about paths, bodies, field names and
+      Design the contract between the surfaces of the app, which talk through
+      {{ inputs.contract_kind }}:
+      {{ surface_summaries }}
+      Cover everything one surface needs from another to meet its criteria. The surfaces are
+      built separately from this contract, so be exact about names, paths, bodies, fields and
       status codes. Where interface details are given, they win over your own choices.
     output: api_contract
     checkpoint: true
@@ -108,8 +103,8 @@ steps:
       Write the acceptance tests for the {{ item.surface }} surface, before it is built, in
       files matching {{ test_files }}. Write at least one test for every acceptance criterion
       whose surface is {{ item.surface }}, and no tests for other surfaces. The code does not
-      exist yet, so choose plain, conventional names (accessible names, routes, fields) and
-      follow the API contract and the interface details exactly when there are any. The
+      exist yet, so choose plain, conventional names (the ones the stack's own conventions suggest) and
+      follow the contract and the interface details exactly when there are any. The
       developer builds to your tests.
       Run `{{ test_command }}` once to check the tests load, then stop.
     gates: [secrets_clean, tests_named, tests_red]
@@ -126,10 +121,10 @@ steps:
         instructions: |
           Build the {{ item.surface }} surface so that every test passes. Read the tests first
           ({{ test_files }}), and implement every acceptance criterion whose surface is
-          {{ item.surface }}, following the API contract and the interface details exactly
-          when there are any. {{ inputs.spec_rules }}
+          {{ item.surface }}, following the contract and the interface details exactly
+          when there are any. Rules: {{ inputs.spec_rules }}
           Create or edit only files matching {{ source_files }}.
-          You may change a test only if it is wrong (a query that matches two elements, an
+          You may change a test only if it is wrong (a query that is ambiguous, an
           expectation that contradicts the spec); never weaken, remove or skip a check. Say
           which test you changed and why in test_change, or leave it empty. The tester reviews
           every such change.
