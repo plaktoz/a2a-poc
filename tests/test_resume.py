@@ -70,14 +70,14 @@ def test_the_cli_refuses_to_resume_an_accepted_run(monkeypatch, tmp_path, capsys
     (apps / "todo" / ".factory" / "run.json").write_text(json.dumps({"status": "accepted", "runbook": "research"}))
     monkeypatch.setattr(cli, "APPS_DIR", apps)
     assert cli.main(["run", "--resume", "--name", "todo", "--brief", "x"]) == 1
-    assert "already accepted" in capsys.readouterr().err
+    assert "already accepted" in capsys.readouterr().out
 
 
 def test_the_cli_resume_needs_a_name(capsys):
     from factory import cli
 
     assert cli.main(["run", "--resume", "--brief", "x"]) == 2
-    assert "--name" in capsys.readouterr().err
+    assert "--name" in capsys.readouterr().out
 
 
 class Crashing(Agents):

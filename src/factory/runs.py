@@ -77,27 +77,21 @@ def summarize(runs: list[Json]) -> Json:
     return out
 
 
-def render(summary: Json, unreadable: list[str]) -> str:
-    if not summary["runs"]:
-        return "No runs yet. Start one with `factory run --brief \"...\"`."
-    s = summary
-    lines = [f"Runs: {s['runs']} (" + ", ".join(f"{n} {k}" for k, n in sorted(s["by_status"].items())) + ")"]
-    for name, b in sorted(s["by_runbook"].items()):
-        lines.append(f"  {name}: {b['runs']} runs, {b['accepted']} accepted, ${b['cost_usd']:.4f}")
-    fp = s["first_pass"]
-    lines.append("First-attempt acceptance: "
-                 + (f"{fp['first_attempt']} of {fp['accepted_items']} items ({fp['rate']:.0%})" if fp else "no accepted items"))
-    if s["loop_rounds"]:
-        lines.append("Loop rounds:")
-        for name, a in sorted(s["loop_rounds"].items()):
-            lines.append(f"  {name}: {a['rounds'] / a['loops']:.1f} rounds on average over {a['loops']} loops "
-                         f"({a['accepted']} accepted)")
-    u = s["usage"]
-    unknown = f"; {u['calls_without_cost']} calls report no cost" if u["calls_without_cost"] else ""
-    lines.append(f"LLM calls: {u['calls']}, ${u['cost_usd']:.4f}{unknown}")
-    for model, m in sorted(s["by_model"].items()):
-        lines.append(f"  {model}: {m['calls']} calls, {m['input_tokens']:,} input and {m['output_tokens']:,} "
-                     f"output tokens, ${m['cost_usd']:.4f}")
+def view(s: Json, unreadable: list[str]) -> Json:
+    """The summary as `factory runs` prints it: the totals first, then the groups as uniform rows."""
+    if not s["runs"]:
+        return {"runs": "0 found", "note": "no run record under apps/", **({"unreadable": unreadable} if unreadable else {})}
+    u, fp = s["usage"], s["first_pass"]
+    out: Json = {
+        "runs": s["runs"],
+        "by_status": s["by_status"],
+        "cost_usd": u["cost_usd"], "calls": u["calls"], "calls_without_cost": u["calls_without_cost"],
+        "first_attempt_accepted": f"{fp['first_attempt']}/{fp['accepted_items']}" if fp else "no accepted items",
+        "by_runbook": [{"name": n, **b} for n, b in sorted(s["by_runbook"].items())],
+        "loop_rounds": [{"name": n, "loops": a["loops"], "avg_rounds": round(a["rounds"] / a["loops"], 1),
+                         "accepted": a["accepted"]} for n, a in sorted(s["loop_rounds"].items())],
+        "by_model": [{"model": n, **m} for n, m in sorted(s["by_model"].items())],
+    }
     if unreadable:
-        lines.append(f"Could not read: {', '.join(unreadable)}")
-    return "\n".join(lines)
+        out["unreadable"] = unreadable
+    return out

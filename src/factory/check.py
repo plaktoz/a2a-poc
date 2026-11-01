@@ -65,19 +65,17 @@ def check_all(cfg: Config, cwd: Path, workers: list[str] | None = None) -> list[
     return results
 
 
-def render(results: list[Result]) -> str:
+def report(results: list[Result], full: bool = False, fields: str | None = None) -> dict:
+    """What `factory check` prints: the totals first, then one row for each model (PRD FR-21, FR-23)."""
     if not results:
-        return "No enabled worker to check."
-    lines = []
-    for r in results:
-        mark = "ok  " if r.ok else "FAIL"
-        lines.append(f"{mark} {r.worker} / {r.model} ({r.seconds:.1f}s): {r.detail}")
-    passed = sum(r.ok for r in results)
-    cost = sum((r.usage or {}).get("cost_usd") or 0.0 for r in results)
-    tokens = sum((r.usage or {}).get("input_tokens", 0) + (r.usage or {}).get("output_tokens", 0)
-                 for r in results)
+        return {"checked": "0 found", "note": "no enabled worker to check"}
+    from . import out
+    rows = [{"worker": r.worker, "model": r.model, "ok": r.ok, "seconds": round(r.seconds, 1),
+             "tokens": (r.usage or {}).get("input_tokens", 0) + (r.usage or {}).get("output_tokens", 0),
+             "cost_usd": (r.usage or {}).get("cost_usd"), "detail": out.clip(r.detail, full)} for r in results]
     n_unpriced = sum(1 for r in results if r.usage and r.usage.get("cost_usd") is None)
-    unpriced = f" ({n_unpriced} calls have no price in docs/model-prices.md)" if n_unpriced else ""
-    lines.append(f"\n{passed}/{len(results)} models answered. Check cost: "
-                 f"{tokens} tokens, ${cost:.4f}{unpriced}.")
-    return "\n".join(lines)
+    return {"answered": f"{sum(r.ok for r in results)}/{len(results)}",
+            "tokens": sum(r["tokens"] for r in rows),
+            "cost_usd": round(sum(r["cost_usd"] or 0.0 for r in rows), 6),
+            "calls_without_price": n_unpriced,
+            "models": out.choose(rows, ["worker", "model", "ok", "detail"], ["seconds", "tokens", "cost_usd"], fields)}

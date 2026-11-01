@@ -242,14 +242,14 @@ def test_a_secret_in_an_untouched_file_does_not_stop_the_run(tmp_path, repo_dir,
 def test_pr_is_refused_for_a_runbook_that_changes_no_repo(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "APPS_DIR", tmp_path / "apps")
     assert cli.main(["run", "--runbook", "research", "--pr", "--brief", "x", "--yes"]) == 2
-    assert "--pr only applies to a runbook that changes a git repo" in capsys.readouterr().err
+    assert "--pr only applies to a runbook that changes a git repo" in capsys.readouterr().out
 
 
 def test_pr_is_refused_for_impact_analysis(monkeypatch, tmp_path, capsys, repo_dir):
     monkeypatch.setattr(cli, "APPS_DIR", tmp_path / "apps")
     assert cli.main(["run", "--runbook", "impact-analysis", "--repo", str(repo_dir), "--pr",
                      "--brief", "x", "--yes"]) == 2
-    assert "--pr only applies" in capsys.readouterr().err
+    assert "--pr only applies" in capsys.readouterr().out
 
 
 def test_the_engine_refuses_pr_without_a_worktree(tmp_path, cfg, staff):

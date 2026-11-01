@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "353 passed"; no LLM is called
+uv run pytest                  # prints "371 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
 ```
 
@@ -267,10 +267,10 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 
 | Command or option | Effect |
 |---|---|
-| `factory runbooks` | Lists the runbooks and when to use each |
+| `factory runbooks [--fields description,use_when,needs] [--full]` | Lists the runbooks: the total, then name, title and traits. `--fields` adds fields. |
 | `factory plan RUNBOOK` | Shows the plan without a run. Add `--mermaid` for a flowchart. |
-| `factory check [--worker NAME]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost, with Codex calls priced from the table. Exit code 0 only when every model answers. Run it before a long job. |
-| `factory runs [--json]` | Sums the runs in `apps/`: runs by status, how often a step was accepted on its first attempt, rounds per loop, and the cost of each model. It only reads `run.json` files. |
+| `factory check [--worker NAME] [--fields seconds,tokens,cost_usd]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost, with Codex calls priced from the table. Exit code 0 only when every model answers. Run it before a long job. |
+| `factory runs [--json]` | Sums the runs in `apps/`, totals first: runs by status, how often a step was accepted on its first attempt, rounds per loop, and the cost of each model. It only reads `run.json` files. |
 | `factory run --brief TEXT` | Runs the factory. `--brief` is required. |
 | `factory approve --name NAME [--changes TEXT]` | Answers a run with the status `awaiting`. Records you as the approver, then resumes the run. `--changes` sends a checkpoint's draft back. |
 | `--runbook NAME` | Skips triage |
@@ -286,6 +286,22 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `--resume` | Continues the stopped run in `--name`. It keeps the items that were accepted. It sends the other items with their open sub-tasks only (see "The task list"). It refuses a run that is accepted. |
 | `--yes` | Approves in advance. Every checkpoint is accepted and, with `--pr`, the push is approved. The record names `--yes` as the approver. |
 | `--config`, `--agents`, `--runbooks` | Use other settings files |
+
+**Output.** `runbooks`, `runs` and `check` print TOON (Token-Optimized Object Notation) by default. TOON is YAML-like text that names the keys of a list once:
+
+```text
+total: 7
+runbooks[7]{name,title,traits}:
+  api-design,API design,none
+  web-app,Build a web app,frontend backend
+```
+
+- `--json` prints JSON instead.
+- A list shows 3 or 4 fields for each row. `--fields A,B` adds more. An unknown field is a bad command.
+- Text over 200 characters is cut. The cut ends with the total size and `use --full`. `--full` shows all of it.
+- Totals come first. An empty result says so, for example `runs: 0 found`.
+- An error is data on stdout, for example `error: "no run to approve: ..."`, or `{"error": "..."}` with `--json`. Stderr carries logs only.
+- `factory run` and `factory plan` print text for a person. `factory plan` and the files that a run saves are prose by design.
 
 **Exit codes.** 0: the command succeeded. 1: the command failed, the run stopped or waits for approval, or the command was well formed but cannot be done (for example a bad config file or a missing run). 2: the command line is wrong (an unknown flag, a missing `--name`, a flag that does not fit the runbook).
 
@@ -482,6 +498,7 @@ The code is in `src/factory/`:
 | `repo.py` | Worktrees, the write guard and the commit for `change-request` and `bug-fix` |
 | `check.py` | `factory check` |
 | `runs.py` | `factory runs` |
+| `out.py` | TOON, `--json`, `--fields`, `--full` and errors as data |
 | `a2a_transport.py` | The A2A server, client and agent cards |
 | `scaffold.py`, `search.py`, `process.py`, `paths.py` | Templates, web search, command running, folder paths |
 
@@ -490,7 +507,8 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | Test file | Tests | What it proves |
 |---|---|---|
 | `test_a2a_transport.py` | 5 | A task returns its result, asks for input on the same task, fails with a reason, and serves its card. |
-| `test_check.py` | 6 | `factory check` tries every enabled model, reports usage and failures, and sets the exit code. |
+| `test_check.py` | 6 | `factory check` tries every enabled model, reports usage and failures with the totals first, and sets the exit code. |
+| `test_out.py` | 18 | TOON encodes lists, objects and strings that need quotes; `--json`, `--fields` and `--full` work; totals come first; an empty result says so; errors are data on stdout. |
 | `test_config.py` | 33 | `llm.yaml` loads, rejects literal keys and unknown models, makes `per_task_usd` optional, and loads a config with one model. |
 | `test_approve.py` | 9 | A checkpoint and the push wait at `awaiting: approval`, `factory approve` answers them with a person's decision or `--changes`, `--yes` is recorded as such, and a bad command exits 2. |
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
@@ -520,7 +538,7 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | Problem | Cause | Solution |
 |---|---|---|
 | `error: environment variables not set: ...` | A `${VAR}` in `llm.yaml` has no value. | Set the variables in "Quick start". |
-| `error: no runbook 'x'; runbooks are ...` | The runbook name is wrong. | Run `factory runbooks`. |
+| `error: "no runbook 'x'; runbooks are ..."` | The runbook name is wrong. | Run `factory runbooks`. |
 | `FAIL ... model 'x' is not in llm.allowed_models` or a load error at start | A model in `llm.yaml` is not in `llm.allowed_models`. | Add it to `allowed_models`, or remove it from the worker. Run `factory check` to confirm. |
 | `... both use <model>; the reviewer must use a different model` | A checker and its author share a model. | Change `agents.yaml` or use `--staff`. |
 | `apps/<name> already holds accepted work` | A run with this name finished. | Add `--rebuild`, or choose another `--name`. |

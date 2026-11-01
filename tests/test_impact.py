@@ -241,7 +241,7 @@ def args(**kw):
 def test_the_impact_runbook_needs_a_repo(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "APPS_DIR", tmp_path / "apps")
     assert cli.main(["run", "--runbook", "impact-analysis", "--brief", "x", "--yes"]) == 2
-    assert "pass --repo PATH once for each repo" in capsys.readouterr().err
+    assert "pass --repo PATH once for each repo" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("flag, value", [("--test-command", "npm test"), ("--base", "main")])
@@ -250,7 +250,7 @@ def test_the_impact_runbook_refuses_flags_for_a_change(monkeypatch, tmp_path, ca
     code = cli.main(["run", "--runbook", "impact-analysis", "--repo", str(repos[0]), flag, value,
                      "--brief", "x", "--yes"])
     assert code == 2
-    assert "do not apply to impact-analysis" in capsys.readouterr().err
+    assert "do not apply to impact-analysis" in capsys.readouterr().out
 
 
 def test_two_repos_with_one_folder_name_are_refused(tmp_path, repos):

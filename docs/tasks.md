@@ -55,7 +55,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | committed | see `git log` |
 | Impact | `impact-analysis` runbook: which services a change affects, across one or more repos. Report only. | P10 slice 1 | committed | `4773e48` |
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | `37a6a49` |
-| AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | in progress: FR-25 committed | see `git log` |
+| AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | in progress: FR-25 and the output format committed | see `git log` |
 | Leftovers | C3, S4, S5, S6, S8, rest of F, unused `Path` import | none | todo | |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
@@ -192,15 +192,25 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 - [x] `factory approve --name NAME [--changes TEXT]` records the decision in `approvals` and resumes the run.
 - [x] `--yes` is the explicit advance approval, recorded as `by: --yes`.
 - [x] Exit codes: 0 success, 1 failed or stopped or cannot be done, 2 bad command line.
-- [ ] Errors as structured data on stdout (with FR-20, the TOON output).
+- [x] Errors as structured data on stdout (built with the output format, below).
 
-#### FR-20 to FR-24, FR-26 to FR-29
+#### FR-20 to FR-24: the output format
+
+- Status: committed. The suite passes (371).
+- Files: `src/factory/out.py` (new: `toon`, `clip`, `choose`, `add_flags`, `error`, `show`), `src/factory/cli.py` (`runbooks`, `runs`, `check`, `_Parser`), `src/factory/runs.py` (`view`), `src/factory/check.py` (`report`), `tests/test_out.py`, `README.md`.
+- Decided: TOON is encoded in the factory (no new dependency). `run` and `plan` stay text for a person; the PRD says prose is for `plan` and the saved files.
+- [x] TOON output by default in `runbooks`, `runs`, `check`, and `--json`.
+- [x] `--fields` and `--full` (cut at 200 characters with the size and the flag).
+- [x] Totals first, definitive empty states (`runs: 0 found`).
+- [x] Structured errors on stdout, argparse errors too. Stderr stays empty.
+
+#### FR-26 to FR-29
 
 - Status: todo.
-- [ ] TOON output by default, `--json`, `--fields`, `--full`.
-- [ ] Totals first, definitive empty states.
-- [ ] Structured errors on stdout.
-- [ ] Ambient context, content first with no arguments, `help[]` lines, `--help` with one example for each command.
+- [ ] Content first: `factory` with no arguments prints live data.
+- [ ] `help[]` lines at the end of each command.
+- [ ] `--help` with one example for each command.
+- [ ] Ambient context: a setup command, a session hook and an Agent Skill.
 
 ### P10 slice 2: pull request
 

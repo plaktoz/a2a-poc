@@ -363,7 +363,7 @@ def test_the_cli_needs_a_test_command_for_the_change_request(monkeypatch, tmp_pa
 
     monkeypatch.setattr(cli, "APPS_DIR", tmp_path / "apps")
     assert cli.main(["run", "--runbook", "change-request", "--repo", str(repo_dir), "--brief", "x"]) == 2
-    assert "--test-command" in capsys.readouterr().err
+    assert "--test-command" in capsys.readouterr().out
 
 
 def test_the_cli_needs_a_repo_for_the_change_request(monkeypatch, tmp_path, capsys):
@@ -371,7 +371,7 @@ def test_the_cli_needs_a_repo_for_the_change_request(monkeypatch, tmp_path, caps
 
     monkeypatch.setattr(cli, "APPS_DIR", tmp_path / "apps")
     assert cli.main(["run", "--runbook", "change-request", "--test-command", "true", "--brief", "x"]) == 2
-    assert "--repo" in capsys.readouterr().err
+    assert "--repo" in capsys.readouterr().out
 
 
 def test_repo_flags_are_refused_for_other_runbooks(monkeypatch, tmp_path, capsys):
@@ -379,7 +379,7 @@ def test_repo_flags_are_refused_for_other_runbooks(monkeypatch, tmp_path, capsys
 
     monkeypatch.setattr(cli, "APPS_DIR", tmp_path / "apps")
     assert cli.main(["run", "--runbook", "research", "--test-command", "true", "--brief", "x", "--yes"]) == 2
-    assert "only applies to a runbook that changes a git repo" in capsys.readouterr().err
+    assert "only applies to a runbook that changes a git repo" in capsys.readouterr().out
 
 
 def test_the_cli_takes_the_folder_from_the_repo_name(repo_dir, scratch):

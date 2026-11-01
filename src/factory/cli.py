@@ -40,8 +40,9 @@ from .a2a_transport import Json
 from .config import ConfigError, FactoryError, load_config
 from .engine import Engine, name_from, new_run_id, open_workspace, triage
 from .fleet import Fleet
+from .out import UsageError
 from .paths import APPS_DIR, LLM_CONFIG, ROOT, RUNBOOKS_DIR
-from . import check, repo, runs, tasks
+from . import check, out, repo, runs, tasks
 from .check import check_all
 from .runbook import (LoopDef, Runbook, StaffDef, catalog, describe_catalog, load_staff, mermaid,
                       outline, resolve)
@@ -49,9 +50,6 @@ from .schemas import NO_RUNBOOK, render
 
 AGENTS_FILE = ROOT / "agents.yaml"
 
-
-class UsageError(FactoryError):
-    """The command line is wrong: a flag is missing, unknown or does not fit the runbook. Exit code 2."""
 
 YES, NO = {"yes", "y", "true", "1", "on"}, {"no", "n", "false", "0", "off"}
 
@@ -77,15 +75,22 @@ def parse_staff(pairs: list[str]) -> dict[str, StaffDef]:
     return out
 
 
+RUNBOOK_FIELDS = (["name", "title", "traits"], ["description", "use_when", "needs"])
+
+
 def cmd_runbooks(args) -> int:
-    print(describe_catalog(catalog(args.runbooks)))
+    rows = [{"name": rb.name, "title": rb.title, "traits": " ".join(rb.traits) or "none",
+             "description": out.clip(rb.description, args.full), "use_when": out.clip(rb.use_when, args.full),
+             "needs": ("target" if rb.needs_target else "repos" if rb.needs_repos else "none")}
+            for rb in catalog(args.runbooks).values()]
+    print(out.show({"total": len(rows), "runbooks": out.choose(rows, *RUNBOOK_FIELDS, args.fields)}, args))
     return 0
 
 
 def cmd_runs(args) -> int:
     records, unreadable = runs.load_runs(APPS_DIR)
     summary = runs.summarize(records)
-    print(json.dumps(summary, indent=2) if args.json else runs.render(summary, unreadable))
+    print(out.show(runs.view(summary, unreadable), args, plain=summary))
     return 0
 
 
@@ -97,7 +102,8 @@ def _plan(args, cfg, rb: Runbook, traits: dict[str, bool]):
 def cmd_check(args) -> int:
     cfg = load_config(args.config)
     results = check_all(cfg, ROOT, args.worker or None)
-    print(check.render(results))
+    report = check.report(results, args.full, args.fields)
+    print(out.show(report, args))
     return 0 if results and all(r.ok for r in results) else 1
 
 
@@ -323,23 +329,38 @@ def cmd_approve(args) -> int:
     return cmd_run(cont)
 
 
+class _Parser(argparse.ArgumentParser):
+    """An argparse parser whose errors are data on stdout, with exit code 2 (PRD FR-25)."""
+
+    as_json = False  # set by main() from the command line, before parsing
+
+    def error(self, message):
+        print(out.error(message, as_json=_Parser.as_json))
+        raise SystemExit(2)
+
+    def add_subparsers(self, **kw):
+        return super().add_subparsers(parser_class=_Parser, **kw)
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="factory", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = _Parser(prog="factory", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, default=LLM_CONFIG, help="llm.yaml")
     ap.add_argument("--agents", type=Path, default=AGENTS_FILE, help="agents.yaml: who plays each role")
     ap.add_argument("--runbooks", type=Path, default=RUNBOOKS_DIR, help="directory of runbook YAML files")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("runbooks", help="list the runbooks").set_defaults(fn=cmd_runbooks)
+    p = sub.add_parser("runbooks", help="list the runbooks")
+    out.add_flags(p, fields=True, full=True)
+    p.set_defaults(fn=cmd_runbooks)
 
     p = sub.add_parser("runs", help="sum up the runs in apps/ (read only)")
-    p.add_argument("--json", action="store_true", help="print the totals as JSON")
+    out.add_flags(p)
     p.set_defaults(fn=cmd_runs)
 
     p = sub.add_parser("check", help="send one short prompt to each model and report")
     p.add_argument("--worker", action="append", default=[], metavar="NAME",
                    help="check only this worker (repeatable)")
+    out.add_flags(p, fields=True, full=True)
     p.set_defaults(fn=cmd_check)
 
     p = sub.add_parser("plan", help="show what a run would do, without running it")
@@ -381,14 +402,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
     p.set_defaults(fn=cmd_approve)
 
-    args = ap.parse_args(argv)  # a bad command or flag exits with 2 (argparse)
+    _Parser.as_json = "--json" in (sys.argv[1:] if argv is None else argv)
+    args = ap.parse_args(argv)  # a bad command or flag exits with 2 (see _Parser.error)
     try:
         return args.fn(args)
     except UsageError as e:  # a bad command: exit 2, as argparse does (PRD FR-25)
-        print(f"error: {e}", file=sys.stderr)
+        print(out.error(str(e), as_json=_Parser.as_json))
         return 2
     except FactoryError as e:  # the command is well formed but cannot be done: exit 1
-        print(f"error: {e}", file=sys.stderr)
+        print(out.error(str(e), as_json=_Parser.as_json))
         return 1
 
 

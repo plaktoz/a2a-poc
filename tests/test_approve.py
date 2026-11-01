@@ -115,13 +115,13 @@ def test_approve_with_changes_records_them(apps, monkeypatch):
 def test_approve_refuses_a_run_that_does_not_wait(apps, capsys):
     waiting_run(apps, status="stopped")
     assert cli.main(["approve", "--name", "r"]) == 1
-    assert "not awaiting approval" in capsys.readouterr().err
+    assert "not awaiting approval" in capsys.readouterr().out
 
 
 def test_changes_do_not_apply_to_the_push(apps, capsys):
     waiting_run(apps, point="push")
     assert cli.main(["approve", "--name", "r", "--changes", "x"]) == 2
-    assert "--changes answers a checkpoint" in capsys.readouterr().err
+    assert "--changes answers a checkpoint" in capsys.readouterr().out
 
 
 def test_a_bad_command_exits_2_and_a_failed_one_exits_1(apps, capsys):

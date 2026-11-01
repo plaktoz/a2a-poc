@@ -196,4 +196,4 @@ def test_the_cli_needs_a_repo_and_a_test_command_for_bug_fix(monkeypatch, tmp_pa
     monkeypatch.setattr(cli, "APPS_DIR", tmp_path / "apps")
     flags = [str(repo_dir) if f == "REPO" else f for f in flags]
     assert cli.main(["run", "--runbook", "bug-fix", *flags, "--brief", "x"]) == 2
-    assert missing in capsys.readouterr().err
+    assert missing in capsys.readouterr().out

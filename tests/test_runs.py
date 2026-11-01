@@ -47,9 +47,9 @@ def test_summary_totals_status_runbooks_loops_and_models():
 
 
 def test_an_empty_apps_folder_says_so(tmp_path, capsys):
-    from factory.runs import render
+    from factory.runs import view
 
-    assert "No runs yet" in render(summarize([]), [])
+    assert view(summarize([]), [])["runs"] == "0 found"
 
 
 def test_unreadable_records_are_reported_not_fatal(tmp_path):

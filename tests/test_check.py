@@ -55,11 +55,12 @@ def test_a_model_outside_the_worker_is_a_failure_not_a_crash(tmp_path):
     assert not r.ok and "not allowed" in r.detail
 
 
-def test_the_render_totals_the_check_cost(tmp_path):
+def test_the_report_totals_the_check_cost_first(tmp_path):
     cfg = load(tmp_path, with_fake_everywhere(reply="pong"))
-    out = check.render(check.check_all(cfg, tmp_path))
+    report = check.report(check.check_all(cfg, tmp_path))
     n = sum(len(w.models) for w in cfg.enabled_workers())
-    assert f"{n}/{n} models answered" in out and "Check cost:" in out
+    assert list(report)[:3] == ["answered", "tokens", "cost_usd"] and report["answered"] == f"{n}/{n}"
+    assert set(report["models"][0]) == {"worker", "model", "ok", "detail"}  # the short default
 
 
 def test_cli_check_exits_zero_only_when_every_model_answers(tmp_path, monkeypatch, capsys):
@@ -70,4 +71,4 @@ def test_cli_check_exits_zero_only_when_every_model_answers(tmp_path, monkeypatc
     assert main(["--config", str(cfg_file), "check"]) == 0
     out = capsys.readouterr().out
     n = sum(len(w.models) for w in load_config(cfg_file).enabled_workers())
-    assert f"{n}/{n} models answered" in out
+    assert f"answered: {n}/{n}" in out
