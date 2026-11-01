@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "437 passed"; no LLM is called
+uv run pytest                  # prints "447 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and app-build
 ```
 
@@ -61,6 +61,9 @@ uv run factory run --brief "a family shopping list" \
     --input surfaces=web=react-vite,api=fastapi                               # two surfaces
 uv run factory run --brief "a URL shortener API" --runbook app-build \
     --input surfaces=api=fastapi                                             # a server only
+uv run factory run --runbook app-build --into ~/code/hcc --name hcc \
+    --input surfaces=web=react-vite,app=fastify,worker=bullmq-worker \
+    --brief "..."                                                            # builds in ~/code/hcc/hcc/, no commit
 uv run factory run --brief "which vector database fits a 10M-document RAG system?"
 uv run factory run --runbook code-audit --target apps/kanban-react --brief "is it ready to ship?"
 uv run factory run --runbook change-request --repo ~/code/shop --test-command "npm test" \
@@ -110,6 +113,8 @@ uv run factory approve --name kanban --changes "add a question on cost" # send t
 ### Where the results go
 
 Each run works in `apps/<name>/`. Use `--name` to choose the name, or let the factory choose it from the brief. Runs with different names do not share files or ports.
+
+**Building in a repo you already have (`--into`).** `--into REPO` makes the run work in `REPO/<name>/` instead of `apps/<name>/`, so the code lands in that repo, ready for you to review and commit. The factory commits nothing there. The run's own records (`.factory/`) stay in `REPO/<name>/.factory/`, which holds a `.gitignore` of its own, so they never show up as changes. `REPO` must be the top folder of a git repo and must be on a branch (not a detached HEAD). If the branch is `main`, `master` or the branch `origin` calls its default, the factory refuses; a person who accepts that passes `--allow-main`. `--into` is for a runbook that builds new code (`app-build`); it does not go with `--repo`. To approve or resume the run, pass the same `--into REPO` and `--name`. Pass `--name` as well, because the folder it names is added to the repo.
 
 | Path in `apps/<name>/` | Content |
 |---|---|
@@ -282,7 +287,9 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `--runbook NAME` | Skips triage |
 | `--trait NAME=yes\|no` | Sets a trait. Repeat it for more traits. |
 | `--staff ROLE=WORKER[:MODEL]` | Sets who plays a role in this run |
-| `--name NAME` | Works in `apps/NAME` |
+| `--name NAME` | Works in `apps/NAME` (or `REPO/NAME` with `--into`) |
+| `--into REPO` | Builds in `REPO/NAME` in an existing git repo that is on a branch. Nothing is committed. |
+| `--allow-main` | Lets `--into` build on `main`, `master` or the default branch. A person decides this. |
 | `--target PATH` | The code to audit |
 | `--repo PATH` | Repeatable. For `change-request` or `bug-fix`, the one git repo that changes; the work happens in a worktree. For `impact-analysis`, each repo that is read in place. |
 | `--base REF` | The commit that the new branch starts from. Default `HEAD`. |
@@ -547,6 +554,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
 | `test_tasks.py` | 13 | The task list is written at the start, a stop mid-item keeps the done sub-tasks, a resume sends only the open ones, a reverted attempt marks none, and every stop prints the `--resume` command. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
+| `test_into.py` | 10 | `--into` builds in a git repo that is on a branch, refuses a default branch without `--allow-main` and a detached HEAD, finds the run again on resume, and keeps `.factory/` out of the repo's changes. |
 | `test_templates.py` | 13 | Each shipped template has the files its metadata names and no starter test, the Node templates are locked and type-checked, and the `node` serve check works with the processes replaced. |
 | `test_inputs.py` | 40 | Runbook inputs and the human gate: types, defaults, `--input`, `--interface`, surfaces, triage inputs, and a check that no shipped runbook holds a stack name, a fixed count or an interface detail. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |

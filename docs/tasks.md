@@ -61,6 +61,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | Rename | `web-app` becomes `app-build`; step 1 of making it work for more than web apps | Inputs | committed | `94bb46c` |
 | Surfaces | `app-build` takes its parts from the `surfaces` input; `frontend` and `backend` traits are gone; triage sets inputs; step 2 | Rename | committed | see `git log` |
 | Templates | `fastify` API and `bullmq-worker` templates, and the `node` serve check | Surfaces | committed | see `git log` |
+| Into | `--into REPO`: build in an existing git repo on a branch; `--allow-main` for a default branch | Templates | committed | see `git log` |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
 | P18 | Windows | | not built (deferred) | |
@@ -300,3 +301,14 @@ Goal: `--input surfaces=web=react-vite,app=fastify,worker=bullmq-worker` plans a
 - [x] New `serve: node` check: type-check, start on a free port, `GET /api/health` answers `{"status": "ok"}`.
 - [ ] Not covered: the worker is not run against a real Redis, and MongoDB and Redis are not surfaces (they would be containers).
 - [ ] Next: decide where the HCC code is built, then turn the approved HCC spec into an `app-build` run.
+
+### Into: build directly in an existing repo
+
+Goal: a run builds in `<repo>/<name>/` instead of `apps/<name>/`, so the HCC code lands in the HCC repo.
+
+- Status: committed. The suite passes (447). Lint is clean. Only fake agents ran.
+- Decided by the owner (2026-11-01): build directly in the HCC repo; the repo must be on a branch; on `main`, ask for approval first (`--allow-main`). The live run uses HCC.
+- Files: `cli.py` (`--into`, `--allow-main`, `_into`), `repo.py` (`default_branches`), `engine.py` (`.factory/.gitignore`), `tests/test_into.py`, `README.md`.
+- [x] Refuses a detached HEAD, a folder that is not the top of a repo, `main`/`master`/the origin default without `--allow-main`, and `--into` with `--repo`.
+- [x] The factory commits nothing in the repo; `.factory/` ignores itself.
+- [ ] Next: the live `app-build` run for HCC with `--into /Users/tianhonglee/orca/workspaces/human-cheat-code/review-requirements` (branch `feat-hcc-react-ts-webapp`). Needs the owner's go-ahead: real models, real cost.

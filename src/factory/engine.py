@@ -74,6 +74,9 @@ def open_workspace(apps_dir: Path, name: str, rebuild: bool) -> tuple[Path, Any]
         raise ConfigError(f"name {name!r} must be lowercase letters, digits and hyphens (at most 40)")
     ws = apps_dir / name
     (ws / ".factory").mkdir(parents=True, exist_ok=True)
+    ignore = ws / ".factory" / ".gitignore"
+    if not ignore.exists():  # in a git repo, the run's records stay out of its changes
+        ignore.write_text("*\n")
     lock = (ws / ".factory" / "lock").open("w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

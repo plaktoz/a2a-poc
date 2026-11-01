@@ -21,7 +21,10 @@ review in advance. Examples:
   factory run --runbook bug-fix --repo ~/code/shop --test-command "npm test" --brief "the cart total ignores removed items"
 
 Work happens in apps/<name>/ (--name, or chosen from the brief), with the run log, the
-artifacts and every agent's log in apps/<name>/.factory/.
+artifacts and every agent's log in apps/<name>/.factory/. With --into REPO it happens in
+REPO/<name>/ instead, in a repo that is on a branch (the run commits nothing; .factory/ is not tracked):
+
+  factory run --runbook app-build --into ~/code/hcc --name hcc --input surfaces=web=react-vite,app=fastify --brief "..."
 
 A change request or a bug fix works on a git repo (--repo) in its own worktree, under FACTORY_SCRATCH
 (default ~/factory-scratch): <scratch>/<repo>/<feature>/tree, on the branch factory/<feature>.
@@ -299,9 +302,34 @@ def _read_repos(args) -> list[Path]:
     return paths
 
 
+def _into(args) -> Path | None:
+    """The git repo --into names, or None. The run builds in <repo>/<name>/, so the code lands in that repo.
+    The repo must be on a branch; a default branch (main, master) needs --allow-main."""
+    if not getattr(args, "into", None):
+        return None
+    if args.repo:
+        raise UsageError("--into and --repo do not go together: --repo works in a worktree of a repo, "
+                         "--into builds in the repo itself")
+    given = Path(args.into).expanduser().resolve()
+    top = repo.toplevel(given)
+    if top != given:
+        raise ConfigError(f"--into {args.into!r} must be the top folder of a git repo, not a folder inside one")
+    branch = repo.current_branch(top)
+    if branch is None:
+        raise ConfigError(f"--into {args.into!r} is on a detached HEAD. Check out a branch first.")
+    if branch in repo.default_branches(top) and not args.allow_main:
+        raise ConfigError(f"--into {args.into!r} is on {branch}, the default branch. Build on a feature branch, "
+                          "or pass --allow-main to build on it (a person decides; it is recorded).")
+    return top
+
+
 def _workdir(args, rb: Runbook | None = None) -> tuple[Path, Path | None]:
     """Where a run's folders go: apps/ for a plain run and for a read-only runbook, <scratch>/<repo>/ for a
-    runbook that changes a git repo (P10). Also the repo's top folder, or None."""
+    runbook that changes a git repo (P10), <repo>/ for --into. Also the repo's top folder, or None."""
+    if (into := _into(args)) is not None:
+        if rb is not None and (_changes_repo(rb) or rb.needs_repos):
+            raise UsageError(f"--into is for a runbook that builds new code (such as app-build), not {rb.name}")
+        return into, None
     if not args.repo or (rb is not None and not _changes_repo(rb)):
         return APPS_DIR, None
     top = repo.toplevel(args.repo[0])
@@ -315,7 +343,7 @@ def _find_home(args) -> Path:
     or a read-only runbook lives in apps/. The first folder that holds the run wins."""
     if not args.name:
         raise UsageError("--resume needs --name, the folder of the run to continue")
-    homes = [*([_workdir(args)[0]] if args.repo else []), APPS_DIR]
+    homes = [*([_workdir(args)[0]] if args.repo or getattr(args, "into", None) else []), APPS_DIR]
     for home in homes:
         if (home / args.name / ".factory" / "run.json").exists():
             return home
@@ -541,7 +569,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="a file with interface details (API paths, schemas, ports); read by the agents, never in a runbook")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]",
                    help="who plays a role in this run")
-    p.add_argument("--name", help="work in apps/<name> (default: chosen from the brief)")
+    p.add_argument("--name", help="work in apps/<name>, or <into>/<name> (default: chosen from the brief)")
+    p.add_argument("--into", metavar="REPO",
+                   help="build in this git repo, in <REPO>/<name>/, instead of in apps/. It must be on a "
+                        "branch; the factory commits nothing")
+    p.add_argument("--allow-main", action="store_true",
+                   help="let --into build on the default branch (main, master). A person decides this")
     p.add_argument("--target", help="existing code to work on (code-audit)")
     p.add_argument("--repo", action="append", default=[], metavar="PATH",
                    help="git repo: change-request and bug-fix change one (work happens in a worktree of it); "
@@ -564,6 +597,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--name", required=True, help="the run that waits")
     p.add_argument("--repo", action="append", default=[], metavar="PATH",
                    help="the repo of a change-request or bug-fix run (where its scratch folder is)")
+    p.add_argument("--into", metavar="REPO", help="the repo of a run started with --into")
+    p.add_argument("--allow-main", action="store_true", help="as for run")
     p.add_argument("--changes", metavar="TEXT", help="ask for changes to a checkpoint's draft instead of approving")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
     p.set_defaults(fn=cmd_approve)
