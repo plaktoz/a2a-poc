@@ -55,7 +55,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | committed | see `git log` |
 | Impact | `impact-analysis` runbook: which services a change affects, across one or more repos. Report only. | P10 slice 1 | committed | `4773e48` |
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | `37a6a49` |
-| AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | in progress: FR-25 and the output format committed | see `git log` |
+| AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | committed | see `git log` |
 | Leftovers | C3, S4, S5, S6, S8, rest of F, unused `Path` import | none | todo | |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
@@ -214,8 +214,11 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 
 #### FR-26: ambient context
 
-- Status: todo.
-- [ ] A setup command, a session hook and an Agent Skill. The next session starts with the runs in the current directory: name, status and cost.
+- Status: committed. The suite passes (384).
+- Files: `src/factory/cli.py` (`cmd_setup`, `cmd_session`, `SKILL`), `tests/test_out.py`, `README.md`.
+- Tests write only to temporary folders. A real Claude Code session with the hook is not verified. No person has done this check yet.
+- [x] `factory setup --dir PATH`: a `SessionStart` hook and an Agent Skill. A second run changes nothing.
+- [x] `factory session`: name, status and cost of each run.
 
 ### P10 slice 2: pull request
 
@@ -230,10 +233,6 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 - [x] A secret scan of the changed files before the commit.
 - [x] Tests with fakes only. No real push.
 - [x] README and test count. Commit.
-
-### AXI: FR-20 to FR-29
-
-- See `docs/code-review.md` section 4.
 
 ### Leftovers
 

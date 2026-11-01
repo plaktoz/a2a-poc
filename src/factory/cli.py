@@ -95,6 +95,72 @@ def cmd_home(args) -> int:
     return 0
 
 
+SKILL = """---
+name: factory
+description: Run the software factory (runbooks, agents on A2A) to build an app, research a question, audit code, change a repo, fix a bug or analyse the impact of a change. Use when the user asks for that work.
+---
+
+# factory
+
+Run `{bin}` with no arguments to see the runs and the runbooks. Every command prints TOON; add `--json` for JSON.
+
+- Start work: `factory run --brief "<what the user wants>"`. Add `--yes` only if the user agreed to approve every review in advance.
+- A run that needs a review stops with status `awaiting`. Show the draft to the user, then `factory approve --name <run>` or `--changes "<words>"`.
+- A stopped run continues with `factory run --resume --name <run>`.
+- Each command ends with `help[]` lines: the likely next commands.
+"""
+
+
+def session_summary(apps: Path) -> Json:
+    """A short summary of the runs in apps/ for the start of a session (PRD FR-26): name, status, cost."""
+    records, _ = runs.load_runs(apps)
+    rows = [{"name": r["app"], "status": r.get("status", "unknown"),
+             "cost_usd": round((r.get("usage") or {}).get("cost_usd", 0.0), 4)} for r in records]
+    return {"runs": rows if rows else "0 found"}
+
+
+def cmd_session(args) -> int:
+    """Print the summary that the session hook adds to a new session. Writes nothing."""
+    data = session_summary(APPS_DIR)
+    waiting = [r["name"] for r in data["runs"] if isinstance(data["runs"], list) and r["status"] == "awaiting"]
+    print(out.show(data, args, help=[f"factory approve --name {n}" for n in waiting] + ["factory"]))
+    return 0
+
+
+def cmd_setup(args) -> int:
+    """Install ambient context into --dir (default: here): a session hook in .claude/settings.json and an
+    Agent Skill in .claude/skills/factory/SKILL.md. Each Claude Code session there then starts with the
+    runs and their status. Running it again changes nothing (PRD FR-25)."""
+    root = Path(args.dir).expanduser().resolve()
+    if not root.is_dir():
+        raise UsageError(f"--dir {args.dir}: not a directory")
+    exe = str(Path(sys.argv[0]).resolve()) if sys.argv and sys.argv[0] else "factory"
+    command = f"{exe} session"
+    settings_path = root / ".claude" / "settings.json"
+    try:
+        settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+    except ValueError as e:
+        raise ConfigError(f"{settings_path} is not valid JSON ({e}); fix it, then run setup again") from None
+    hooks = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
+    known = any(h.get("command") == command for group in hooks for h in group.get("hooks", []))
+    if not known:
+        hooks.append({"hooks": [{"type": "command", "command": command}]})
+    skill_path = root / ".claude" / "skills" / "factory" / "SKILL.md"
+    skill = SKILL.format(bin=exe)
+    changed = []
+    if not known:
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+        changed.append(str(settings_path))
+    if not skill_path.exists() or skill_path.read_text() != skill:
+        skill_path.parent.mkdir(parents=True, exist_ok=True)
+        skill_path.write_text(skill)
+        changed.append(str(skill_path))
+    print(out.show({"setup": "changed" if changed else "already done", "dir": str(root), "files": changed},
+                   args, help=["factory session", "factory"]))
+    return 0
+
+
 def cmd_runbooks(args) -> int:
     rows = [{"name": rb.name, "title": rb.title, "traits": " ".join(rb.traits) or "none",
              "description": out.clip(rb.description, args.full), "use_when": out.clip(rb.use_when, args.full),
@@ -417,6 +483,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
     p.add_argument("--mermaid", action="store_true", help="print a Mermaid flowchart")
     p.set_defaults(fn=cmd_plan)
+
+    p = command("session", "print the runs for the start of a session (used by the hook)", "factory session")
+    out.add_flags(p)
+    p.set_defaults(fn=cmd_session)
+
+    p = command("setup", "install the session hook and the Agent Skill in a folder", "factory setup --dir ~/code/shop")
+    p.add_argument("--dir", default=".", help="the folder whose Claude Code sessions get the hook (default: here)")
+    out.add_flags(p)
+    p.set_defaults(fn=cmd_setup)
 
     p = command("run", "do the work", 'factory run --runbook research --brief "which vector database fits a 10M-document RAG system?"')
     p.add_argument("--brief", required=True, help="what you want, in your own words")

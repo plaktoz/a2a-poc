@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "381 passed"; no LLM is called
+uv run pytest                  # prints "384 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
 ```
 
@@ -268,6 +268,8 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | Command or option | Effect |
 |---|---|
 | `factory` | With no command: prints the runs in `apps/` and the runbooks. |
+| `factory setup [--dir PATH]` | Installs a Claude Code session hook (`.claude/settings.json`) and an Agent Skill (`.claude/skills/factory/SKILL.md`) in `PATH` (default: here). Run it again and nothing changes. See "Ambient context". |
+| `factory session` | Prints the name, status and cost of each run in `apps/`. The hook runs it at the start of a session. |
 | `factory runbooks [--fields description,use_when,needs] [--full]` | Lists the runbooks: the total, then name, title and traits. `--fields` adds fields. |
 | `factory plan RUNBOOK` | Shows the plan without a run. Add `--mermaid` for a flowchart. |
 | `factory check [--worker NAME] [--fields seconds,tokens,cost_usd]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost, with Codex calls priced from the table. Exit code 0 only when every model answers. Run it before a long job. |
@@ -305,6 +307,8 @@ runbooks[7]{name,title,traits}:
 - `factory` with no command prints live data and not help text: the path of the program, a description, the runs in `apps/` and the runbooks.
 - Each command ends with `help[]` lines. Each line is a command for a likely next step. A fixed flag stays and a run value is a placeholder such as `<run>`. For example, `factory runs` points to `factory approve --name <run>` when a run waits.
 - `factory <command> --help` shows the flags and one example.
+
+**Ambient context.** Run `factory setup --dir <folder>` once. The next Claude Code session in that folder starts with the output of `factory session`: the name, status and cost of each run, and the `factory approve` command for a run that waits. The Agent Skill tells the agent how to use the factory. `setup` adds one `SessionStart` hook and keeps the other settings. It refuses a `settings.json` that is not valid JSON and leaves it as it is.
 - `factory run` and `factory plan` print text for a person, with `help[]` lines at the end. The files that a run saves are prose by design.
 
 **Exit codes.** 0: the command succeeded. 1: the command failed, the run stopped or waits for approval, or the command was well formed but cannot be done (for example a bad config file or a missing run). 2: the command line is wrong (an unknown flag, a missing `--name`, a flag that does not fit the runbook).
@@ -512,7 +516,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 |---|---|---|
 | `test_a2a_transport.py` | 5 | A task returns its result, asks for input on the same task, fails with a reason, and serves its card. |
 | `test_check.py` | 6 | `factory check` tries every enabled model, reports usage and failures with the totals first, and sets the exit code. |
-| `test_out.py` | 28 | TOON encodes lists, objects and strings that need quotes; `--json`, `--fields` and `--full` work; totals come first; an empty result says so; errors are data on stdout; `factory` alone prints live data; `help[]` lines end a command; each `--help` has one example. |
+| `test_out.py` | 31 | TOON encodes lists, objects and strings that need quotes; `--json`, `--fields` and `--full` work; totals come first; an empty result says so; errors are data on stdout; `factory` alone prints live data; `help[]` lines end a command; each `--help` has one example; `factory setup` installs the session hook and the Agent Skill once; `factory session` prints the runs. |
 | `test_config.py` | 33 | `llm.yaml` loads, rejects literal keys and unknown models, makes `per_task_usd` optional, and loads a config with one model. |
 | `test_approve.py` | 9 | A checkpoint and the push wait at `awaiting: approval`, `factory approve` answers them with a person's decision or `--changes`, `--yes` is recorded as such, and a bad command exits 2. |
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |

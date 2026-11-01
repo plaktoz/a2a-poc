@@ -108,3 +108,42 @@ def test_every_subcommand_help_has_one_example(command, capsys):
         cli.main([command, "--help"])
     got = capsys.readouterr().out
     assert e.value.code == 0 and got.count("example:\n  factory ") == 1
+
+
+# --- FR-26: ambient context -----------------------------------------------------------------------
+
+
+def test_setup_installs_the_session_hook_and_the_skill_and_a_second_run_changes_nothing(tmp_path, capsys):
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]}}))
+    assert cli.main(["setup", "--dir", str(tmp_path), "--json"]) == 0
+    first = json.loads(capsys.readouterr().out)
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    [hook] = settings["hooks"]["SessionStart"][0]["hooks"]
+    assert hook["command"].endswith(" session") and settings["permissions"] == {"allow": ["Bash(ls)"]}
+    skill = (tmp_path / ".claude" / "skills" / "factory" / "SKILL.md").read_text()
+    assert skill.startswith("---\nname: factory\n") and "factory approve" in skill
+    assert first["setup"] == "changed" and len(first["files"]) == 2
+    before = (tmp_path / ".claude" / "settings.json").read_text()
+    assert cli.main(["setup", "--dir", str(tmp_path), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["setup"] == "already done"
+    assert (tmp_path / ".claude" / "settings.json").read_text() == before
+
+
+def test_setup_refuses_a_settings_file_it_cannot_read_and_a_missing_folder(tmp_path, capsys):
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text("{not json")
+    assert cli.main(["setup", "--dir", str(tmp_path)]) == 1
+    assert "not valid JSON" in capsys.readouterr().out
+    assert (tmp_path / ".claude" / "settings.json").read_text() == "{not json"  # left as it was
+    assert cli.main(["setup", "--dir", str(tmp_path / "nope")]) == 2
+
+
+def test_session_prints_name_status_and_cost_and_points_at_a_waiting_run(monkeypatch, tmp_path, capsys):
+    (tmp_path / "w" / ".factory").mkdir(parents=True)
+    (tmp_path / "w" / ".factory" / "run.json").write_text(
+        json.dumps({"status": "awaiting", "runbook": "research", "usage": {"cost_usd": 1.25}}))
+    monkeypatch.setattr(cli, "APPS_DIR", tmp_path)
+    assert cli.main(["session"]) == 0
+    got = capsys.readouterr().out
+    assert "runs[1]{name,status,cost_usd}:\n  w,awaiting,1.25" in got and "  - factory approve --name w" in got
