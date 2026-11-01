@@ -1,0 +1,17 @@
+# How the factory works with templates/react-vite/ (see src/factory/scaffold.py).
+surface: frontend
+suite: vitest
+serve: vite
+commands:
+  test: npx vitest run
+  build: npm run build
+test_files: ["src/*.test.jsx"]
+source_files: ["src/*"]
+protected: [package.json, package-lock.json, vite.config.js, index.html, src/main.jsx, src/setupTests.js]
+stack: |
+  - React 19 + Vite, plain JavaScript with JSX (no TypeScript).
+  - src/main.jsx renders the default export of src/App.jsx and imports src/App.css.
+  - Tests: Vitest + jsdom + @testing-library/react + @testing-library/user-event, with jest-dom
+    matchers. src/setupTests.js clears localStorage before each test and cleans up after it.
+  - Name every test with its criterion id and a colon: it('AC3: ...').
+  - No new dependencies: package.json is fixed.

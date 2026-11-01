@@ -2,7 +2,7 @@
 
 A project management kanban board: create tickets and add new statuses (columns) as you need them. React 19 + Vite, plain JavaScript, tested with Vitest and React Testing Library.
 
-The app is **generated** by the A2A pipeline from a spec. `src/App.jsx` and `src/App.css` are empty skeletons until a build has run, so `npm run dev` shows a blank page before that.
+The app is **generated** by the factory's `web-app` runbook from a spec. `src/App.jsx` and `src/App.css` are empty skeletons until a build has run, so `npm run dev` shows a blank page before that.
 
 ## Build the app
 
@@ -10,20 +10,21 @@ From the repo root (`a2a-poc/`):
 
 ```bash
 uv sync
-uv run python src/sample/pipeline.py --app kanban-react --rebuild
+uv run factory run --runbook web-app --name kanban-react --rebuild \
+    --brief "a project management kanban board: create tickets and add new statuses (columns)"
 ```
 
-1. Answer the requirements agent's questions, then accept the spec (`y`) or type the changes you want.
-2. The pipeline writes the tests, builds the app and verifies every acceptance criterion.
-3. On success it prints `Done: all N tests pass and every criterion is accepted.`
+1. Answer the requirements agent's questions, then accept the spec (press Enter) or type the changes you want.
+2. The factory writes the tests, builds the app and checks every acceptance criterion itself.
+3. On success it prints `Done.`
 
-The build writes `SPEC.json` and `src/`, plus `.factory/run.json` (the run log) and `.factory/agents/` (agent logs) in this directory. See `src/sample/README.md` for the environment variables the pipeline needs.
+The build writes `SPEC.json` and `src/`, plus `.factory/run.json` (the run log) and `.factory/agents/` (agent logs) in this directory. See the root `README.md` for the environment variables the factory needs.
 
 ## Start the app
 
 ```bash
 cd apps/kanban-react
-npm install        # first time only; the pipeline already does this
+npm install        # first time only; the factory already does this
 npm run dev        # http://localhost:5173
 ```
 

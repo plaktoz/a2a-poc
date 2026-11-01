@@ -1,5 +1,3 @@
-from .claude import claude_env
-from .codex import codex_argv
 from .config import (
     Config,
     ConfigError,
@@ -8,6 +6,8 @@ from .config import (
     Worker,
     load_config,
 )
+from .workers.claude import claude_env
+from .workers.codex import codex_argv
 
 __all__ = [
     "Config",

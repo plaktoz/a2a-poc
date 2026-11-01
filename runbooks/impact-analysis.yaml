@@ -1,0 +1,80 @@
+# Find out which services a change would affect. Nothing in the repos is changed.
+#
+# One agent per repo reads it in place and lists its links to other services (calls, events,
+# shared contracts, deploy dependencies). Each link is kept only if its evidence really is in the
+# cited file near the cited line. A writer then works out the impact from the verified links only.
+name: impact-analysis
+title: Impact analysis across repos
+description: >
+  Reads one or more git repos (for example the services of a microservice system) in place, lists
+  the links between them from the code, the API specs and the deploy config, checks every link
+  against the file it cites, and writes IMPACT.md: which services a change touches. No repo is
+  changed.
+use_when: >
+  The request asks what a new feature or a change would affect across services or repos, which
+  services depend on a piece of code or contract, or what breaks if something changes. It needs
+  the repo paths, one --repo for each repo. It does not change code.
+needs_repos: true
+steps:
+  - id: links
+    role: auditor
+    for_each: repos
+    parallel: true
+    cwd: repo
+    instructions: |
+      List the links between the service {{ item.name }} and the other services, from the code in
+      the current directory. The change being analysed:
+      {{ brief }}
+
+      Read the code, the API specs (OpenAPI, AsyncAPI, protobuf, GraphQL) and the deploy config
+      (docker-compose, Kubernetes, Helm) in this repo. Use these kinds:
+      - calls: this service makes a request to another service (HTTP, gRPC, a client library).
+      - publishes: this service sends an event or message to a topic or queue.
+      - subscribes: this service consumes events or messages from a topic or queue.
+      - reads: this service reads another service's data, through its API or its store.
+      - writes: this service writes another service's data, through its API or its store.
+      - deploys_with: this service is deployed with another (a compose dependency, a Helm
+        subchart, a Kubernetes reference).
+      - owns_contract: this service defines an API spec or schema that other services use.
+
+      Name the other service by its repo folder name when the code, a config or a spec shows it;
+      otherwise by the name the code uses for it. Give `file` relative to the current directory,
+      and `line`. Copy `evidence` exactly from that line or the lines around it. Report only links
+      you can point to. A service with no links is a valid result: say so in `summary`. Skip
+      node_modules, .venv, dist and other generated files.
+    output: service_links
+    gates: [link_verified]
+
+  - loop: write
+    rounds: budget
+    steps:
+      - id: impact
+        role: writer
+        reads: [links]
+        instructions: |
+          Write the impact report for this change, from the verified links only:
+          {{ brief }}
+
+          Open with the answer: the services the change affects directly, then the services it
+          affects through them. For each service, name the link that carries the impact, with its
+          file and line. A service is affected when the change touches a link to it, a contract it
+          owns, or a service it deploys with. List the services the links show are not affected.
+          Then list the gaps: a repo whose links were not found, links that were rejected, and any
+          impact the links do not show. Write "unknown" where the evidence does not decide it. Do
+          not state an impact stronger than the links allow.
+        output: report
+        save: IMPACT.md
+
+      - id: review
+        role: reviewer
+        reads: [links, impact]
+        instructions: |
+          Review the impact report against the verified links: is every affected service backed by
+          a link that shows it, is any service claimed affected without a link, and are the gaps
+          stated? Ask for changes only to what the writer can fix from those links. Do not ask for
+          checks beyond them; where the links do not decide an impact, the report must say unknown.
+        output: verdict
+        gates: [review_approves]
+
+finish:
+  - text: "The impact report is {{ workspace }}/IMPACT.md"

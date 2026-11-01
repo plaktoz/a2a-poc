@@ -1,0 +1,92 @@
+# Fix a bug in an existing git repo. The fix is committed on its own branch; nothing is pushed.
+#
+# Like change-request, the factory works in a git worktree on a new branch (factory/<name>), so
+# the original checkout is never touched. A bug fix starts from a failing test: a tester writes
+# one test that reproduces the bug, and the factory runs the repo's test command itself to prove
+# that the test fails (gate repro_fails). A developer then fixes the cause, the factory proves the
+# whole suite passes (gate repo_tests_pass), and an independent reviewer reads the diff. When the
+# loop passes, the factory makes one commit.
+name: bug-fix
+title: Fix a bug in an existing repo
+description: >
+  Fixes a bug in an existing git repository: writes the bug report as a spec, writes one test
+  that fails because of the bug, fixes the cause in a separate worktree on a new branch, runs the
+  repo's tests, has the diff reviewed, and commits the result. The branch is left for a person to
+  review.
+use_when: >
+  The request is to fix a bug, an error, a crash, a regression or wrong behaviour in code that
+  already lives in a git repository. It needs the repo path and the command that runs its tests.
+  Adding a feature or changing behaviour on purpose is a change-request, not a bug fix.
+needs_target: true
+steps:
+  - id: spec
+    role: analyst
+    cwd: target
+    instructions: |
+      Turn the bug report into a spec.
+
+      The bug report:
+      {{ brief }}
+
+      Read the code in the current directory to find where the bug is. In `goal`, state the steps
+      to reproduce it, the expected behaviour and the actual behaviour. Put the suspected cause in
+      `assumptions`. AC1 is "the bug no longer occurs" with the reproduction in its text. Add a
+      criterion for related behaviour that must keep working, only when it is at risk. Ids are
+      AC1, AC2, ... in order. List what you leave out in out_of_scope. The repo's tests run with
+      `{{ test_command }}`.
+    output: spec
+    checkpoint: true
+    save: SPEC.json
+
+  - id: reproduce
+    role: tester
+    cwd: target
+    writes: target
+    reads: [spec]
+    instructions: |
+      Write ONE test that reproduces the bug in the spec, in the repo in the current directory.
+      Follow the conventions of the tests that are already there. The test must fail on the
+      current code because of the bug, and fail for no other reason.
+
+      Do not change any source file: only add the test. Run `{{ test_command }}` to see the test
+      fail. Report the exact name of the test in `test_name`, as the test runner prints it.
+      Do not run git commands that change anything. Change files only in the current directory.
+    output: repro
+    gates: [secrets_clean, repro_fails]
+
+  - loop: build
+    rounds: budget
+    steps:
+      - id: fix
+        role: developer
+        cwd: target
+        writes: target
+        reads: [spec, reproduce]
+        instructions: |
+          Fix the bug in the repo in the current directory:
+          {{ brief }}
+
+          The reproduction test is in the context below. Find the cause and fix it with the
+          smallest change. Do not fix the symptom, and do not change what the bug report does not
+          cover. Never weaken, skip or delete the reproduction test or any other test. Run
+          `{{ test_command }}`: every test must pass.
+
+          Do not run git commands that change anything (no add, commit, checkout, reset or
+          stash): the factory makes the commit. Change files only in the current directory.
+          In `test_change`, say which existing test you changed and why, or leave it empty.
+        output: dev_result
+
+      - id: verify
+        role: reviewer
+        cwd: target
+        reads: [spec, reproduce, fix]
+        instructions: |
+          Review the fix against the spec. The diff is in the context below; read the changed files
+          for more. Approve only if all of these hold: the reproduction test is still there and
+          unchanged (or changed for a stated, sound reason), the change fixes the cause and not
+          only the symptom, the change touches only what the bug needs, and no existing test was
+          weakened. Otherwise list each change that is needed in issues. The factory runs the test
+          command itself, so do not run it.
+        output: verdict
+        gates: [review_approves]
+    gates: [repo_tests_pass]

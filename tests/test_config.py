@@ -53,9 +53,10 @@ def default_cfg():
 def test_shipped_config_loads():
     # Loads the real file as-is; which workers are enabled is up to the user.
     cfg = load_config(REPO / "llm.yaml", ENV)
-    assert cfg.llm.allowed_models == ["claude-test", "gpt-6.1-sol", "gemini-3.6-flash"]
+    assert cfg.llm.allowed_models == ["claude-test", "gpt-6.1-sol", "gpt-6-luna",
+                                      "gpt-advantage-assist", "gemini-3.7-flash"]
     assert set(cfg.workers) == {"claude-agent-sdk", "codex-gpt", "codex-gemini"}
-    assert cfg.budgets.per_task_usd == 30
+    assert cfg.budgets.per_task_usd is None  # not required: no cap is the default
     assert cfg.budgets.per_day_usd is None
 
 
@@ -166,6 +167,12 @@ def test_bad_url_is_rejected(tmp_path):
         load(tmp_path, data)
 
 
+def test_per_task_budget_is_optional(tmp_path):
+    data = base()
+    data["budgets"].pop("per_task_usd", None)  # the shipped llm.yaml sets no cap
+    assert load(tmp_path, data).budgets.per_task_usd is None
+
+
 @pytest.mark.parametrize("value", [0, -5])
 def test_per_task_budget_must_be_positive(tmp_path, value):
     data = base()
@@ -182,11 +189,11 @@ def test_disabling_all_workers_is_rejected(tmp_path):
         load(tmp_path, data)
 
 
-def test_reviewer_needs_two_models_when_must_differ(tmp_path):
+def test_a_config_with_one_model_loads_even_when_must_differ(tmp_path):
+    # The checker rule is checked per plan: with one model the plan warns (see test_runbooks.py).
     data = base()
     data["workers"]["codex-gpt"]["enabled"] = False
-    with pytest.raises(ConfigError, match="at least two reviewer candidates"):
-        load(tmp_path, data)
+    assert [w.name for w in load(tmp_path, data).enabled_workers()] == ["claude-agent-sdk"]
 
 
 def test_missing_file_is_a_config_error(tmp_path):
@@ -221,19 +228,6 @@ def test_check_request_rejects_disabled_and_unknown_workers():
         cfg.check_request("codex-gemini")
     with pytest.raises(ModelNotAllowed, match="unknown worker"):
         cfg.check_request("nope")
-
-
-def test_reviewer_differs_from_author():
-    cfg = default_cfg()
-    assert cfg.reviewer_for("claude-test") == "gpt-6.1-sol"
-    assert cfg.reviewer_for("gpt-6.1-sol") == "claude-test"
-
-
-def test_reviewer_skips_models_of_disabled_workers():
-    cfg = default_cfg()
-    # gemini is a candidate but its worker is disabled, so it is never picked.
-    assert cfg.reviewer_for("claude-test") != "gemini-3.6-flash"
-    assert cfg.reviewer_for("gpt-6.1-sol") != "gemini-3.6-flash"
 
 
 # ---- adapters ---------------------------------------------------------------
