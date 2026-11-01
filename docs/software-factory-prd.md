@@ -1,6 +1,6 @@
 # PRD: Multi-Harness, LLM-Agnostic Software Factory
 
-**Status:** Draft v0.13
+**Status:** Draft v0.14
 **Date:** 2026-10-31
 **Owner:** TBD
 **Basis:** Design reasoning from a research discussion (Oct 2026). Items marked *Assumption* or *Open question* are not yet validated.
@@ -243,6 +243,7 @@ No public benchmark compares these setups on your code. Run your own:
 | v0.2 | 2026-10-31 | Non-code workflows, the runbook format, triage and the command-line worker adapters moved into v1 scope (section 6). Non-goals in section 4 updated to match. Phase 6 narrowed to what is still undecided. Status and implementation gaps are tracked in `docs/code-review.md`, not here. |
 | v0.3 | 2026-10-31 | Added goal G6, the scope item and section 8.7 (FR-20 to FR-29): the command line follows the 10 AXI principles. Added open question 8. |
 | v0.4 | 2026-10-31 | Resolved open question 8: a run waits at a checkpoint with `awaiting: approval`, and `--yes` is the explicit approval for an agent. |
+| v0.14 | 2026-11-01 | FR-27 (no arguments prints live data), FR-28 (`help[]` lines) and FR-29 (one example in each `--help`) built. FR-26 is not built. |
 | v0.13 | 2026-11-01 | FR-20 to FR-24 built for `runbooks`, `runs` and `check`: TOON by default, `--json`, `--fields`, `--full`, totals first, empty states. FR-25 errors are data on stdout. |
 | v0.12 | 2026-11-01 | FR-25 built, except structured errors on stdout: no command prompts, `factory approve`, the approver record and exit codes 0, 1 and 2. |
 | v0.11 | 2026-10-31 | FR-30 built: the price table is `docs/model-prices.md`, from llm-prices.com, refreshed weekly by a skill. Aliases set by the owner. |

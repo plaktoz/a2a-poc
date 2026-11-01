@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "371 passed"; no LLM is called
+uv run pytest                  # prints "381 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
 ```
 
@@ -267,6 +267,7 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 
 | Command or option | Effect |
 |---|---|
+| `factory` | With no command: prints the runs in `apps/` and the runbooks. |
 | `factory runbooks [--fields description,use_when,needs] [--full]` | Lists the runbooks: the total, then name, title and traits. `--fields` adds fields. |
 | `factory plan RUNBOOK` | Shows the plan without a run. Add `--mermaid` for a flowchart. |
 | `factory check [--worker NAME] [--fields seconds,tokens,cost_usd]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost, with Codex calls priced from the table. Exit code 0 only when every model answers. Run it before a long job. |
@@ -301,7 +302,10 @@ runbooks[7]{name,title,traits}:
 - Text over 200 characters is cut. The cut ends with the total size and `use --full`. `--full` shows all of it.
 - Totals come first. An empty result says so, for example `runs: 0 found`.
 - An error is data on stdout, for example `error: "no run to approve: ..."`, or `{"error": "..."}` with `--json`. Stderr carries logs only.
-- `factory run` and `factory plan` print text for a person. `factory plan` and the files that a run saves are prose by design.
+- `factory` with no command prints live data and not help text: the path of the program, a description, the runs in `apps/` and the runbooks.
+- Each command ends with `help[]` lines. Each line is a command for a likely next step. A fixed flag stays and a run value is a placeholder such as `<run>`. For example, `factory runs` points to `factory approve --name <run>` when a run waits.
+- `factory <command> --help` shows the flags and one example.
+- `factory run` and `factory plan` print text for a person, with `help[]` lines at the end. The files that a run saves are prose by design.
 
 **Exit codes.** 0: the command succeeded. 1: the command failed, the run stopped or waits for approval, or the command was well formed but cannot be done (for example a bad config file or a missing run). 2: the command line is wrong (an unknown flag, a missing `--name`, a flag that does not fit the runbook).
 
@@ -508,7 +512,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 |---|---|---|
 | `test_a2a_transport.py` | 5 | A task returns its result, asks for input on the same task, fails with a reason, and serves its card. |
 | `test_check.py` | 6 | `factory check` tries every enabled model, reports usage and failures with the totals first, and sets the exit code. |
-| `test_out.py` | 18 | TOON encodes lists, objects and strings that need quotes; `--json`, `--fields` and `--full` work; totals come first; an empty result says so; errors are data on stdout. |
+| `test_out.py` | 28 | TOON encodes lists, objects and strings that need quotes; `--json`, `--fields` and `--full` work; totals come first; an empty result says so; errors are data on stdout; `factory` alone prints live data; `help[]` lines end a command; each `--help` has one example. |
 | `test_config.py` | 33 | `llm.yaml` loads, rejects literal keys and unknown models, makes `per_task_usd` optional, and loads a config with one model. |
 | `test_approve.py` | 9 | A checkpoint and the push wait at `awaiting: approval`, `factory approve` answers them with a person's decision or `--changes`, `--yes` is recorded as such, and a bad command exits 2. |
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |

@@ -204,13 +204,18 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 - [x] Totals first, definitive empty states (`runs: 0 found`).
 - [x] Structured errors on stdout, argparse errors too. Stderr stays empty.
 
-#### FR-26 to FR-29
+#### FR-27 to FR-29: content first, `help[]`, `--help`
+
+- Status: committed. The suite passes (381).
+- Files: `src/factory/cli.py` (`cmd_home`, `_next_steps`, `command()`), `src/factory/out.py` (`show(..., help=)`), `tests/test_out.py`, `README.md`.
+- [x] `factory` with no arguments prints live data.
+- [x] `help[]` lines at the end of `runbooks`, `runs`, `check`, `plan`, `run` and no-args.
+- [x] `--help` with one example for each command.
+
+#### FR-26: ambient context
 
 - Status: todo.
-- [ ] Content first: `factory` with no arguments prints live data.
-- [ ] `help[]` lines at the end of each command.
-- [ ] `--help` with one example for each command.
-- [ ] Ambient context: a setup command, a session hook and an Agent Skill.
+- [ ] A setup command, a session hook and an Agent Skill. The next session starts with the runs in the current directory: name, status and cost.
 
 ### P10 slice 2: pull request
 

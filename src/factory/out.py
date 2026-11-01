@@ -70,6 +70,8 @@ def _lines(key: str | None, v: Any) -> list[str]:
         n = len(v)
         if not n:
             return [f"{head}[0]:"]
+        if key == "help":  # command templates: one for each line, so a space or a flag needs no quotes
+            return [f"{head}[{n}]:", *(f"  - {x}" for x in v)]
         if all(_is_scalar(x) for x in v):
             return [f"{head}[{n}]: " + ",".join(_scalar(x) for x in v)]
         fields = list(v[0]) if isinstance(v[0], dict) else None
@@ -122,8 +124,11 @@ def error(message: str, as_json: bool = False) -> str:
     return json.dumps({"error": message}, indent=2) if as_json else toon({"error": message})
 
 
-def show(data: Any, args, *, plain: Any = None) -> str:
-    """The text to print: JSON when --json is set (`plain` if given, else `data`), otherwise TOON."""
+def show(data: Any, args, *, plain: Any = None, help: list[str] | None = None) -> str:
+    """The text to print: JSON when --json is set (`plain` if given, else `data`), otherwise TOON.
+    `help` is a list of command templates for the likely next steps; it ends the output (PRD FR-28)."""
+    tail = {"help": help} if help else {}
     if getattr(args, "json", False):
-        return json.dumps(data if plain is None else plain, indent=2)
-    return toon(data)
+        base = data if plain is None else plain
+        return json.dumps({**base, **tail}, indent=2)
+    return toon({**data, **tail})

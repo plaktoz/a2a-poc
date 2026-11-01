@@ -78,19 +78,42 @@ def parse_staff(pairs: list[str]) -> dict[str, StaffDef]:
 RUNBOOK_FIELDS = (["name", "title", "traits"], ["description", "use_when", "needs"])
 
 
+def cmd_home(args) -> int:
+    """`factory` with no command: live data first, not help text (PRD FR-27)."""
+    home = str(Path(sys.argv[0]).resolve() if sys.argv and sys.argv[0] else "factory")
+    user = str(Path.home())
+    if home.startswith(user):
+        home = "~" + home[len(user):]
+    records, unreadable = runs.load_runs(APPS_DIR)
+    books = catalog(args.runbooks)
+    rows = [{"name": r["app"], "status": r.get("status", "unknown"), "runbook": r.get("runbook", "unknown"),
+             "cost_usd": round((r.get("usage") or {}).get("cost_usd", 0.0), 4)} for r in records]
+    data = {"bin": home, "description": "A software factory: agents on A2A do a task from a runbook, and the "
+            "engine checks every result.", "runs": rows if rows else "0 found",
+            "runbooks": [{"name": rb.name, "title": rb.title} for rb in books.values()]}
+    print(out.show(data, args, help=["factory runbooks", "factory run --brief <brief>", "factory runs"]))
+    return 0
+
+
 def cmd_runbooks(args) -> int:
     rows = [{"name": rb.name, "title": rb.title, "traits": " ".join(rb.traits) or "none",
              "description": out.clip(rb.description, args.full), "use_when": out.clip(rb.use_when, args.full),
              "needs": ("target" if rb.needs_target else "repos" if rb.needs_repos else "none")}
             for rb in catalog(args.runbooks).values()]
-    print(out.show({"total": len(rows), "runbooks": out.choose(rows, *RUNBOOK_FIELDS, args.fields)}, args))
+    print(out.show({"total": len(rows), "runbooks": out.choose(rows, *RUNBOOK_FIELDS, args.fields)}, args,
+                   help=["factory plan <runbook>", "factory run --runbook <runbook> --brief <brief>",
+                         "factory runbooks --fields description,use_when,needs --full"]))
     return 0
 
 
 def cmd_runs(args) -> int:
     records, unreadable = runs.load_runs(APPS_DIR)
     summary = runs.summarize(records)
-    print(out.show(runs.view(summary, unreadable), args, plain=summary))
+    by_status = summary["by_status"]
+    nxt = ([f"factory approve --name <run>"] if by_status.get("awaiting") else []) + \
+          (["factory run --resume --name <run>"] if by_status.get("stopped") else [])
+    print(out.show(runs.view(summary, unreadable), args, plain=summary,
+                   help=nxt + ["factory run --brief <brief>", "factory runbooks"]))
     return 0
 
 
@@ -103,8 +126,10 @@ def cmd_check(args) -> int:
     cfg = load_config(args.config)
     results = check_all(cfg, ROOT, args.worker or None)
     report = check.report(results, args.full, args.fields)
-    print(out.show(report, args))
-    return 0 if results and all(r.ok for r in results) else 1
+    ok = bool(results) and all(r.ok for r in results)
+    print(out.show(report, args, help=(["factory run --brief <brief>"] if ok else
+                                       ["factory check --worker <worker>", "factory check --full"])))
+    return 0 if ok else 1
 
 
 def cmd_plan(args) -> int:
@@ -118,6 +143,8 @@ def cmd_plan(args) -> int:
     else:
         print(outline(plan))
         print(f"\nTask list (a run writes it to .factory/TASKS.md):\n{tasks.plan_text(plan)}")
+    print("\n" + out.toon({"help": [f"factory run --runbook {args.runbook} --brief <brief>",
+                                    f"factory plan {args.runbook} --mermaid"]}))
     return 0
 
 
@@ -258,6 +285,18 @@ def cmd_run(args) -> int:
                      target=target, resume=False, rebuild=args.rebuild, record=None, repos=repos)
 
 
+def _next_steps(engine) -> list[str]:
+    """The likely next commands after a run (PRD FR-28): fixed flags stay, run values are placeholders."""
+    data = engine.log.data
+    if data.get("status") == "awaiting":
+        point = (data.get("awaiting") or {}).get("point")
+        return ["factory approve --name <run>"] + (['factory approve --name <run> --changes "<what to change>"']
+                                                    if point != "push" else [])
+    if data.get("status") == "accepted":
+        return ["factory runs", "factory run --brief <brief>"]
+    return ["factory run --resume --name <run>", "factory runs"]
+
+
 def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, brief: str,
               run_id: str, earlier_usage: list | None, target: str | None,
               resume: bool, rebuild: bool, record: Json | None, repos: list[Path]) -> int:
@@ -279,7 +318,9 @@ def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, br
                             send_fallback=fleet.send_fallback, worktree=worktree,
                             test_command=args.test_command, repos=repos, pr=args.pr,
                             approved=bool(args.yes))
-            return 0 if engine.run() else 1
+            accepted = engine.run()
+            print("\n" + out.toon({"help": _next_steps(engine)}))
+            return 0 if accepted else 1
     finally:
         lock.close()
 
@@ -322,7 +363,8 @@ def cmd_approve(args) -> int:
                 "at": time.strftime("%Y-%m-%dT%H:%M:%S"), **({"changes": args.changes} if args.changes else {})}
     record["approvals"] = [*record.get("approvals", []), decision]
     path.write_text(json.dumps(record, indent=2) + "\n")
-    print(f"{'Changes asked for' if args.changes else 'Approved'}: {point} in {args.name}")
+    print(out.toon({"approved" if not args.changes else "changes_asked": point, "run": args.name,
+                    "by": "person"}))
     cont = argparse.Namespace(**{**vars(args), "resume": True, "yes": False, "pr": bool(record.get("pr")),
                                  "test_command": record.get("test_command"), "base": None, "target": None,
                                  "trait": [], "brief": record.get("brief", ""), "runbook": None, "rebuild": False})
@@ -347,30 +389,36 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--config", type=Path, default=LLM_CONFIG, help="llm.yaml")
     ap.add_argument("--agents", type=Path, default=AGENTS_FILE, help="agents.yaml: who plays each role")
     ap.add_argument("--runbooks", type=Path, default=RUNBOOKS_DIR, help="directory of runbook YAML files")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="cmd")  # no command: print live data (cmd_home)
+    ap.set_defaults(fn=cmd_home)
 
-    p = sub.add_parser("runbooks", help="list the runbooks")
+    def command(name, help, example):
+        """A subcommand whose --help ends with one example (PRD FR-29)."""
+        return sub.add_parser(name, help=help, description=help, epilog=f"example:\n  {example}",
+                              formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    p = command("runbooks", "list the runbooks", "factory runbooks --fields use_when --full")
     out.add_flags(p, fields=True, full=True)
     p.set_defaults(fn=cmd_runbooks)
 
-    p = sub.add_parser("runs", help="sum up the runs in apps/ (read only)")
+    p = command("runs", "sum up the runs in apps/ (read only)", "factory runs --json")
     out.add_flags(p)
     p.set_defaults(fn=cmd_runs)
 
-    p = sub.add_parser("check", help="send one short prompt to each model and report")
+    p = command("check", "send one short prompt to each model and report", "factory check --worker codex-gpt")
     p.add_argument("--worker", action="append", default=[], metavar="NAME",
                    help="check only this worker (repeatable)")
     out.add_flags(p, fields=True, full=True)
     p.set_defaults(fn=cmd_check)
 
-    p = sub.add_parser("plan", help="show what a run would do, without running it")
+    p = command("plan", "show what a run would do, without running it", "factory plan web-app --trait backend=yes")
     p.add_argument("runbook")
     p.add_argument("--trait", action="append", default=[], metavar="NAME=yes|no")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
     p.add_argument("--mermaid", action="store_true", help="print a Mermaid flowchart")
     p.set_defaults(fn=cmd_plan)
 
-    p = sub.add_parser("run", help="do the work")
+    p = command("run", "do the work", 'factory run --runbook research --brief "which vector database fits a 10M-document RAG system?"')
     p.add_argument("--brief", required=True, help="what you want, in your own words")
     p.add_argument("--runbook", help="skip triage and use this runbook")
     p.add_argument("--trait", action="append", default=[], metavar="NAME=yes|no")
@@ -394,7 +442,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="approve in advance: every checkpoint and the push (--pr). The record says --yes")
     p.set_defaults(fn=cmd_run)
 
-    p = sub.add_parser("approve", help="answer a run that waits at awaiting: approval, and continue it")
+    p = command("approve", "answer a run that waits at awaiting: approval, and continue it",
+                'factory approve --name kanban --changes "add a question on cost"')
     p.add_argument("--name", required=True, help="the run that waits")
     p.add_argument("--repo", action="append", default=[], metavar="PATH",
                    help="the repo of a change-request or bug-fix run (where its scratch folder is)")

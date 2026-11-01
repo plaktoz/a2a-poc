@@ -66,3 +66,45 @@ def test_errors_are_data_on_stdout_and_stderr_stays_empty(capsys):
         cli.main(["runbooks", "--no-such-flag", "--json"])
     got = capsys.readouterr()
     assert e.value.code == 2 and "unrecognized arguments" in json.loads(got.out)["error"] and got.err == ""
+
+
+# --- FR-27 to FR-29: content first, help[] lines, one example in each --help ---------------------
+
+
+def test_no_command_prints_live_data_not_help(monkeypatch, tmp_path, capsys):
+    (tmp_path / "a" / ".factory").mkdir(parents=True)
+    (tmp_path / "a" / ".factory" / "run.json").write_text(
+        json.dumps({"status": "accepted", "runbook": "research", "usage": {"cost_usd": 0.5}}))
+    monkeypatch.setattr(cli, "APPS_DIR", tmp_path)
+    assert cli.main([]) == 0
+    got = capsys.readouterr().out
+    assert got.startswith("bin: ") and "usage:" not in got
+    assert "runs[1]{name,status,runbook,cost_usd}:\n  a,accepted,research,0.5" in got
+    assert "runbooks[" in got and got.rstrip().splitlines()[-1].startswith("  - factory ")
+
+
+def test_a_data_command_ends_with_help_lines_that_use_placeholders(capsys):
+    assert cli.main(["runbooks"]) == 0
+    tail = capsys.readouterr().out.split("help[")[1].splitlines()[1:]
+    assert tail[0] == "  - factory plan <runbook>" and all(line.startswith("  - factory ") for line in tail)
+
+
+def test_help_lines_are_in_json_too(capsys):
+    assert cli.main(["runbooks", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["help"][0] == "factory plan <runbook>"
+
+
+def test_runs_points_at_approve_for_a_run_that_waits(monkeypatch, tmp_path, capsys):
+    (tmp_path / "a" / ".factory").mkdir(parents=True)
+    (tmp_path / "a" / ".factory" / "run.json").write_text(json.dumps({"status": "awaiting", "runbook": "research"}))
+    monkeypatch.setattr(cli, "APPS_DIR", tmp_path)
+    cli.main(["runs"])
+    assert "  - factory approve --name <run>" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", ["runbooks", "runs", "check", "plan", "run", "approve"])
+def test_every_subcommand_help_has_one_example(command, capsys):
+    with pytest.raises(SystemExit) as e:
+        cli.main([command, "--help"])
+    got = capsys.readouterr().out
+    assert e.value.code == 0 and got.count("example:\n  factory ") == 1
