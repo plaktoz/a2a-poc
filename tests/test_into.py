@@ -2,6 +2,7 @@
 default branch needs --allow-main. Real git repos in tmp_path; no LLM."""
 
 import argparse
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,7 +13,7 @@ from test_repo import git
 
 
 def args(**over):
-    base = dict(into=None, allow_main=False, repo=[], name="hcc", cmd="run")
+    base = dict(into=None, allow_main=False, at_root=False, repo=[], name="hcc", cmd="run")
     return argparse.Namespace(**{**base, **over})
 
 
@@ -100,3 +101,50 @@ def test_the_run_folder_keeps_its_records_out_of_the_repos_changes(tmp_path):
         assert git(top, "status", "--porcelain", "--untracked-files=all") == "?? hcc/web/a.txt"
     finally:
         lock.close()
+
+
+# --- --at-root: the repo's top folder is the workspace ---------------------------------------
+
+
+def test_at_root_needs_into():
+    with pytest.raises(cli.UsageError, match="--at-root needs --into"):
+        cli._into(args(at_root=True))
+
+
+def test_at_root_makes_the_repo_the_workspace_and_keeps_its_records_out_of_the_changes(tmp_path):
+    top = make_repo(tmp_path / "hcc", "feat-x")
+    ws, lock = open_workspace(top, "hcc", False, at_root=True)
+    try:
+        assert ws == top
+        (ws / ".factory" / "run.json").write_text("{}")
+        (ws / "web").mkdir()
+        (ws / "web" / "a.txt").write_text("code")
+        assert git(top, "status", "--porcelain", "--untracked-files=all") == "?? web/a.txt"
+    finally:
+        lock.close()
+
+
+def test_resume_and_approve_find_a_run_at_the_root(tmp_path):
+    top = make_repo(tmp_path / "hcc", "feat-x")
+    (top / ".factory").mkdir()
+    (top / ".factory" / "run.json").write_text('{"status": "stopped", "runbook": "app-build"}')
+    here = args(into=str(top), at_root=True)
+    assert cli._find_home(here) == top
+    assert cli._run_dir(here, top) == top
+    assert cli.resume_record(here, top)["status"] == "stopped"
+    assert cli._run_dir(args(into=str(top)), top) == top / "hcc"  # without --at-root the old place
+    with pytest.raises(ConfigError, match="no run to resume"):
+        cli._find_home(args(into=str(top)))
+
+
+def test_a_surface_folder_that_is_not_ours_is_not_overwritten(tmp_path, monkeypatch):
+    """The first run at the root refuses if the repo already has a folder named like a surface."""
+    top = make_repo(tmp_path / "hcc", "feat-x")
+    (top / "web").mkdir()
+    (top / "web" / "mine.txt").write_text("someone's")
+    plan = SimpleNamespace(surfaces=["web", "app"])
+    ns = args(into=str(top), at_root=True, config=None)
+    with pytest.raises(ConfigError, match="web/ already exists"):
+        cli._run_plan(ns, None, plan, workdir=top, top=None, name="hcc", brief="b", run_id="r",
+                      earlier_usage=None, target=None, resume=False, rebuild=False, record=None, repos=[])
+    assert (top / "web" / "mine.txt").read_text() == "someone's"

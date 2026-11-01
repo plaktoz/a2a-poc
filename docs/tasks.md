@@ -306,9 +306,20 @@ Goal: `--input surfaces=web=react-vite,app=fastify,worker=bullmq-worker` plans a
 
 Goal: a run builds in `<repo>/<name>/` instead of `apps/<name>/`, so the HCC code lands in the HCC repo.
 
-- Status: committed. The suite passes (447). Lint is clean. Only fake agents ran.
+- Status: committed. The suite passes (447). Lint is clean. Only fake agents ran. `--at-root` is the next task below.
 - Decided by the owner (2026-11-01): build directly in the HCC repo; the repo must be on a branch; on `main`, ask for approval first (`--allow-main`). The live run uses HCC.
 - Files: `cli.py` (`--into`, `--allow-main`, `_into`), `repo.py` (`default_branches`), `engine.py` (`.factory/.gitignore`), `tests/test_into.py`, `README.md`.
 - [x] Refuses a detached HEAD, a folder that is not the top of a repo, `main`/`master`/the origin default without `--allow-main`, and `--into` with `--repo`.
 - [x] The factory commits nothing in the repo; `.factory/` ignores itself.
 - [ ] Next: the live `app-build` run for HCC with `--into /Users/tianhonglee/orca/workspaces/human-cheat-code/review-requirements` (branch `feat-hcc-react-ts-webapp`). Needs the owner's go-ahead: real models, real cost.
+
+### At root: build at the top of the repo
+
+Goal: the first live HCC run stopped after 2 develop rounds, and the code sits in `review-requirements/hcc/`. AC62 puts `compose.yaml` at the repo root, so the surfaces belong there too. Two template faults also made the build fail: the fixed `server.ts` listened on `127.0.0.1` (AC66 needs `0.0.0.0`), and the fixed `worker.ts` hard-coded the concurrency (AC7 needs `SEQUENTIAL` to set it to 1).
+
+- Status: committed. The suite passes (453). Lint is clean. Only fake agents ran.
+- Decided by the owner (2026-11-01): "do it", after the question whether the repo root is better.
+- Files: `cli.py` (`--at-root`, `_run_dir`), `engine.py` (`open_workspace(at_root=)`), `templates/fastify/src/server.ts` (`HOST`), `templates/bullmq-worker/src/{worker,settings}.ts`, the two template `.yaml` files, `tests/test_into.py`, `tests/test_templates.py`, `README.md`.
+- [x] `--into REPO --at-root`: the workspace is the repo itself; `approve` and `--resume` find the run there; a surface folder that already exists is refused.
+- [x] `server.ts` reads `HOST` (default `0.0.0.0`); the worker takes concurrency and queue from `settings.ts`, which the developer may change.
+- [ ] Next: move the HCC run from `review-requirements/hcc/` to the repo root and resume it (`--resume --at-root`). Only `app` and `worker` develop again, then verify.

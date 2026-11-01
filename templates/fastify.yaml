@@ -14,8 +14,8 @@ stack: |
   - Node + Fastify 5 + TypeScript (strict, ES modules). Import local files with a .js ending:
     `import { x } from './x.js'`.
   - src/app.ts exports buildApp(): FastifyInstance. src/server.ts (fixed) listens with it on
-    127.0.0.1 and the PORT environment variable (default 8000). It must keep GET /api/health
-    returning 200.
+    the HOST environment variable (default 0.0.0.0, so a container can reach it) and the PORT
+    environment variable (default 8000). It must keep GET /api/health returning 200.
   - Every route is under /api/. State is in memory, owned by the app that buildApp() returns, so
     each new app starts empty.
   - Tests: Vitest in tests/*.test.ts, in the Node environment. Build a fresh app for every test and

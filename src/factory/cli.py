@@ -306,6 +306,8 @@ def _into(args) -> Path | None:
     """The git repo --into names, or None. The run builds in <repo>/<name>/, so the code lands in that repo.
     The repo must be on a branch; a default branch (main, master) needs --allow-main."""
     if not getattr(args, "into", None):
+        if getattr(args, "at_root", False):
+            raise UsageError("--at-root needs --into REPO: it builds at the top of that repo")
         return None
     if args.repo:
         raise UsageError("--into and --repo do not go together: --repo works in a worktree of a repo, "
@@ -338,6 +340,11 @@ def _workdir(args, rb: Runbook | None = None) -> tuple[Path, Path | None]:
     return workdir, top
 
 
+def _run_dir(args, home: Path) -> Path:
+    """The folder of the run: the home itself with --at-root, else <home>/<name>."""
+    return home if getattr(args, "at_root", False) else home / args.name
+
+
 def _find_home(args) -> Path:
     """The folder of the run --resume continues. A change lives in its repo's scratch folder, and a plain run
     or a read-only runbook lives in apps/. The first folder that holds the run wins."""
@@ -345,22 +352,24 @@ def _find_home(args) -> Path:
         raise UsageError("--resume needs --name, the folder of the run to continue")
     homes = [*([_workdir(args)[0]] if args.repo or getattr(args, "into", None) else []), APPS_DIR]
     for home in homes:
-        if (home / args.name / ".factory" / "run.json").exists():
+        if (_run_dir(args, home) / ".factory" / "run.json").exists():
             return home
     raise ConfigError(f"no run to {'approve' if args.cmd == 'approve' else 'resume'}: {args.name} has no run record in "
                       f"{', '.join(_shown(h) for h in homes)}")
 
 
 def resume_record(args, workdir: Path) -> Json:
-    """The run record of <workdir>/<name>, for --resume. Refuses a run that is accepted or missing."""
+    """The run record of the run folder, for --resume. Refuses a run that is accepted or missing."""
     if not args.name:
         raise UsageError("--resume needs --name, the folder of the run to continue")
-    path = workdir / args.name / ".factory" / "run.json"
+    run = _run_dir(args, workdir)
+    path = run / ".factory" / "run.json"
+    shown = _shown(run)
     if not path.exists():
-        raise ConfigError(f"nothing to resume: {workdir.name}/{args.name} has no run record")
+        raise ConfigError(f"nothing to resume: {shown} has no run record")
     record = json.loads(path.read_text())
     if record.get("status") == "accepted":
-        raise ConfigError(f"{workdir.name}/{args.name} is already accepted; there is nothing to resume")
+        raise ConfigError(f"{shown} is already accepted; there is nothing to resume")
     return record
 
 
@@ -428,9 +437,15 @@ def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, br
               resume: bool, rebuild: bool, record: Json | None, repos: list[Path], interface: str = "") -> int:
     """Lock <workdir>/<name>, make the repo worktree when the plan changes a repo, and run the engine.
     `repos` are the repos a read-only runbook reads in place; no worktree is made for them."""
-    ws, lock = open_workspace(workdir, name, rebuild)  # the lock comes first: one run per feature
+    at_root = bool(getattr(args, "at_root", False))
+    ws, lock = open_workspace(workdir, name, rebuild, at_root=at_root)  # the lock comes first: one run per feature
     try:
         print(f"\nWorking in {_shown(ws)}")
+        if at_root and not resume and not (ws / ".factory" / "run.json").exists():
+            taken = [d for d in plan.surfaces if (ws / d).exists()]
+            if taken:  # at the root, a folder with a surface's name is not ours to overwrite
+                raise ConfigError(f"--at-root: {', '.join(d + '/' for d in taken)} already exists in {_shown(ws)}. "
+                                  "Choose other surface folder names, or move the folders away")
         worktree = None
         if top is not None:
             worktree = (repo.reuse_worktree(record) if record
@@ -469,7 +484,7 @@ def _resume(args, cfg, books) -> int:
     # The inputs and the interface details come from the run record. A new --interface file replaces the old text.
     plan = _plan(args, cfg, rb, traits, record.get("inputs") or {})
     interface = read_interface(args.interface) or record.get("interface") or ""
-    print(f"Resuming run {record['run_id']} in {_shown(workdir / args.name)}")
+    print(f"Resuming run {record['run_id']} in {_shown(_run_dir(args, workdir))}")
     print(outline(plan))
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=args.name, brief=record["brief"],
                      run_id=record["run_id"], earlier_usage=None,
@@ -482,7 +497,7 @@ def cmd_approve(args) -> int:
     """Answer a run that waits at `awaiting: approval`: record the decision, then continue the run.
     A person runs this; the record says `person`. --changes sends a checkpoint's draft back."""
     home = _find_home(args)
-    path = home / args.name / ".factory" / "run.json"
+    path = _run_dir(args, home) / ".factory" / "run.json"
     record = json.loads(path.read_text())
     if record.get("status") != "awaiting" or not record.get("awaiting"):
         raise ConfigError(f"{args.name} is {record.get('status')}, not awaiting approval; there is nothing to approve")
@@ -575,6 +590,9 @@ def main(argv: list[str] | None = None) -> int:
                         "branch; the factory commits nothing")
     p.add_argument("--allow-main", action="store_true",
                    help="let --into build on the default branch (main, master). A person decides this")
+    p.add_argument("--at-root", action="store_true",
+                   help="with --into: build at the top of the repo (REPO/web, REPO/app, ...), not in REPO/<name>/. "
+                        "Refused if a surface folder is already there")
     p.add_argument("--target", help="existing code to work on (code-audit)")
     p.add_argument("--repo", action="append", default=[], metavar="PATH",
                    help="git repo: change-request and bug-fix change one (work happens in a worktree of it); "
@@ -599,6 +617,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="the repo of a change-request or bug-fix run (where its scratch folder is)")
     p.add_argument("--into", metavar="REPO", help="the repo of a run started with --into")
     p.add_argument("--allow-main", action="store_true", help="as for run")
+    p.add_argument("--at-root", action="store_true", help="the run was started with --at-root")
     p.add_argument("--changes", metavar="TEXT", help="ask for changes to a checkpoint's draft instead of approving")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
     p.set_defaults(fn=cmd_approve)

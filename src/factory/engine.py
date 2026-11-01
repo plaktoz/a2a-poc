@@ -68,11 +68,12 @@ class RoundFailed(Exception):
 # --- workspace --------------------------------------------------------------
 
 
-def open_workspace(apps_dir: Path, name: str, rebuild: bool) -> tuple[Path, Any]:
-    """Create and lock apps/<name>. The lock lasts until the file is closed or the process exits."""
+def open_workspace(apps_dir: Path, name: str, rebuild: bool, *, at_root: bool = False) -> tuple[Path, Any]:
+    """Create and lock apps/<name>, or apps_dir itself with at_root. The lock lasts until the file is closed
+    or the process exits."""
     if not schemas.APP_NAME.fullmatch(name):
         raise ConfigError(f"name {name!r} must be lowercase letters, digits and hyphens (at most 40)")
-    ws = apps_dir / name
+    ws = apps_dir if at_root else apps_dir / name
     (ws / ".factory").mkdir(parents=True, exist_ok=True)
     ignore = ws / ".factory" / ".gitignore"
     if not ignore.exists():  # in a git repo, the run's records stay out of its changes
@@ -86,7 +87,7 @@ def open_workspace(apps_dir: Path, name: str, rebuild: bool) -> tuple[Path, Any]
     run_file = ws / ".factory" / "run.json"
     if not rebuild and run_file.exists() and json.loads(run_file.read_text()).get("status") == "accepted":
         lock.close()
-        raise ConfigError(f"{apps_dir.name}/{name} already holds accepted work; pass --rebuild to redo it, "
+        raise ConfigError(f"{ws.parent.name}/{ws.name} already holds accepted work; pass --rebuild to redo it, "
                           "or choose another name")
     return ws, lock
 

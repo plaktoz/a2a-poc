@@ -16,7 +16,8 @@ stack: |
   - The job logic lives in handlers: src/handlers.ts exports `handlers`, a record from job name to
     an async function that takes the job data and returns its result, and handle(name, data).
     src/worker.ts (fixed) runs a BullMQ Worker on the REDIS_URL queue and calls handle() for each
-    job. A handler throws to fail the job; BullMQ then retries it.
+    job. It takes the queue name and the concurrency from src/settings.ts, which you may change
+    (for example to make one setting override another). A handler throws to fail the job; BullMQ then retries it.
   - Handlers must be safe to run twice with the same data (a retry): derive results from the data,
     and write results with an upsert, not an insert.
   - Handlers never import bullmq or open a Redis connection. Anything outside the process (files,

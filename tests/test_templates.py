@@ -65,6 +65,23 @@ def test_the_worker_keeps_redis_out_of_the_handlers():
     assert "src/worker.ts" in tpl.protected
 
 
+def test_the_api_listens_on_all_interfaces_unless_told_otherwise():
+    """A container reaches the API only if it listens on 0.0.0.0. server.ts is fixed, so a developer cannot change it."""
+    tpl = read_template("fastify")
+    text = (tpl.path / "src/server.ts").read_text()
+    assert "process.env.HOST ?? '0.0.0.0'" in text and "process.env.PORT" in text
+    assert "127.0.0.1" not in text and "src/server.ts" in tpl.protected
+
+
+def test_the_worker_takes_its_settings_from_a_file_the_developer_may_change():
+    """worker.ts is fixed, so the settings the spec may need to change live in settings.ts, which is not."""
+    tpl = read_template("bullmq-worker")
+    worker = (tpl.path / "src/worker.ts").read_text()
+    assert "concurrency()" in worker and "queueName()" in worker and "process.env.CONCURRENCY" not in worker
+    assert "src/settings.ts" not in tpl.protected and matches("src/settings.ts", tpl.source_files)
+    assert "CONCURRENCY" in (tpl.path / "src/settings.ts").read_text()
+
+
 # --- the node server gate, with the processes replaced ----------------------------------------
 
 
