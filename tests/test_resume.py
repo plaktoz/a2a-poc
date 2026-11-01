@@ -7,7 +7,7 @@ import pytest
 from factory import ConfigError
 from factory.engine import Engine
 from factory.runbook import catalog, resolve
-from test_engine import PLAN, URL, Agents, findings, make_engine, research_agents, report, GOOD, DEAD
+from test_engine import URL, Agents, make_engine, research_agents, report
 from test_usage import cfg, staff  # noqa: F401  (fixtures)
 
 

@@ -6,7 +6,6 @@ import fake_worker
 from factory import check
 from factory import load_config
 from factory.cli import main
-from factory.invoke import Tools
 from test_config import base, load
 
 

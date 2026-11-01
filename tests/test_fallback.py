@@ -6,11 +6,8 @@ import pytest
 from factory import ConfigError
 from factory.runbook import Fallback, Staff, catalog, load_staff, resolve
 from factory.roles import ROLES
-from factory.runbook import StaffDef
 from test_engine import PLAN, URL, Agents, findings, make_engine, report, GOOD, FAKE
 from test_usage import cfg, staff  # noqa: F401  (fixtures)
-from factory.paths import ROOT
-import json
 
 
 def write_agents(tmp_path, roles):

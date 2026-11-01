@@ -107,13 +107,20 @@ def gate(fn: Callable[[GateCtx, dict], None]) -> Callable[[GateCtx, dict], None]
 # --- test suites ------------------------------------------------------------
 
 
-def vitest(wd: Path) -> TestRun:
-    report = wd / ".factory" / "vitest.json"
+def _report_of(wd: Path, tool: str, report_name: str, command: Callable[[Path], list[str]]) -> Path:
+    """Run a suite that writes a report file, and return the file. A suite that wrote none is an error."""
+    report = wd / ".factory" / report_name
     report.parent.mkdir(exist_ok=True)
-    report.unlink(missing_ok=True)
-    r = run(["npx", "vitest", "run", "--reporter=json", f"--outputFile={report}"], cwd=wd)
+    report.unlink(missing_ok=True)  # a report left by an earlier run must not pass for this one
+    r = run(command(report), cwd=wd)
     if not report.exists():
-        raise RuntimeError(f"vitest wrote no report in {wd.name}:\n{tail(r)}")
+        raise RuntimeError(f"{tool} wrote no report in {wd.name}:\n{tail(r)}")
+    return report
+
+
+def vitest(wd: Path) -> TestRun:
+    report = _report_of(wd, "vitest", "vitest.json",
+                        lambda f: ["npx", "vitest", "run", "--reporter=json", f"--outputFile={f}"])
     data = json.loads(report.read_text())
     out = TestRun(data["numTotalTests"], data["numPassedTests"])
     for suite in data["testResults"]:
@@ -127,12 +134,8 @@ def vitest(wd: Path) -> TestRun:
 
 
 def pytest(wd: Path) -> TestRun:
-    report = wd / ".factory" / "junit.xml"
-    report.parent.mkdir(exist_ok=True)
-    report.unlink(missing_ok=True)
-    r = run([".venv/bin/pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={report}"], cwd=wd)
-    if not report.exists():
-        raise RuntimeError(f"pytest wrote no report in {wd.name}:\n{tail(r)}")
+    report = _report_of(wd, "pytest", "junit.xml",
+                        lambda f: [".venv/bin/pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={f}"])
     out = TestRun()
     for case in ET.parse(report).getroot().iter("testcase"):
         name = f"{case.get('classname', '')}::{case.get('name', '')}"

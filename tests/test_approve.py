@@ -8,7 +8,7 @@ import pytest
 
 from factory import cli
 from factory.engine import Engine
-from test_engine import PAGE, URL, Agents, make_engine, report, research_agents, strip_html
+from test_engine import PAGE, URL, make_engine, report, research_agents, strip_html
 from test_resume import research_plan
 from test_usage import cfg, staff  # noqa: F401  (fixtures)
 

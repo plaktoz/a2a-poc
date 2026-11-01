@@ -56,7 +56,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | Impact | `impact-analysis` runbook: which services a change affects, across one or more repos. Report only. | P10 slice 1 | committed | `4773e48` |
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | `37a6a49` |
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | committed | see `git log` |
-| Leftovers | C3, S4, S5, S6, S8, rest of F, unused `Path` import | none | todo | |
+| Leftovers | C3, S4, S6, lint: done. S5, S8, S3: deferred, see Leftovers | none | committed | see `git log` |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
 | P18 | Windows | | not built (deferred) | |
@@ -236,8 +236,8 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 
 ### Leftovers
 
-- S4 (scaffold types) and the unused `Path` import in `tests/test_runbooks.py`: built. Not committed.
-- Still open: C3, S5, S6, S8, the rest of F. See `docs/code-review.md` section 1.
+- Done: S4 (`Suite` and `Serve` are `Literal`), S6 (`_report_of` in `gates.py`), C3 (the README says `per_day_usd` is unused), the unused imports (ruff `F`, with F811 ignored: it flags the pytest fixture idiom).
+- Deferred by design: S5 (bundle `worker, model` when a change touches both), S8 (move the test-review prompt out of `engine.py`; defer with the `engine.py` split), S3 (the rest of F, until a ninth schema).
 
 ### Impact: `impact-analysis` runbook
 

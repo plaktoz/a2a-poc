@@ -44,7 +44,7 @@ from .out import UsageError
 from .paths import APPS_DIR, LLM_CONFIG, ROOT, RUNBOOKS_DIR
 from . import check, out, repo, runs, tasks
 from .check import check_all
-from .runbook import (LoopDef, Runbook, StaffDef, catalog, describe_catalog, load_staff, mermaid,
+from .runbook import (LoopDef, Runbook, StaffDef, catalog, load_staff, mermaid,
                       outline, resolve)
 from .schemas import NO_RUNBOOK, render
 
@@ -176,7 +176,7 @@ def cmd_runs(args) -> int:
     records, unreadable = runs.load_runs(APPS_DIR)
     summary = runs.summarize(records)
     by_status = summary["by_status"]
-    nxt = ([f"factory approve --name <run>"] if by_status.get("awaiting") else []) + \
+    nxt = (["factory approve --name <run>"] if by_status.get("awaiting") else []) + \
           (["factory run --resume --name <run>"] if by_status.get("stopped") else [])
     print(out.show(runs.view(summary, unreadable), args, plain=summary,
                    help=nxt + ["factory run --brief <brief>", "factory runbooks"]))
