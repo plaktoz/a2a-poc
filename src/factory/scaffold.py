@@ -6,7 +6,7 @@ how to work with it, so runbooks never hard-code paths or commands:
   surface:     what it is, for people ("frontend", "backend")
   stack:       text every agent working in it is given (fixed; agents may not change it)
   suite:       vitest | pytest       how the orchestrator runs and reads its tests
-  serve:       vite | asgi | null    how the `serves` gate starts it
+  serve:       vite | asgi | node | null    how the `serves` gate starts it
   commands:    {test: ..., build: ...}  commands agents may run in it
   test_files:  globs the tester writes
   source_files: globs the developer writes
@@ -33,7 +33,7 @@ KEEP = {"node_modules", ".venv"}  # installed, not generated: survive a reset
 IGNORED = {*KEEP, ".git", "dist", ".factory", "__pycache__", ".pytest_cache"}
 
 Suite = Literal["vitest", "pytest"]
-Serve = Literal["vite", "asgi", None]
+Serve = Literal["vite", "asgi", "node", None]
 
 
 @dataclass(frozen=True)

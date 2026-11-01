@@ -60,6 +60,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | Inputs | Runbook `inputs:`, `--input`, `--interface`, `confirm_input` human gate; no hardcoded values in the runbooks | none | committed | see `git log` |
 | Rename | `web-app` becomes `app-build`; step 1 of making it work for more than web apps | Inputs | committed | `94bb46c` |
 | Surfaces | `app-build` takes its parts from the `surfaces` input; `frontend` and `backend` traits are gone; triage sets inputs; step 2 | Rename | committed | see `git log` |
+| Templates | `fastify` API and `bullmq-worker` templates, and the `node` serve check | Surfaces | committed | see `git log` |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
 | P18 | Windows | | not built (deferred) | |
@@ -278,7 +279,7 @@ Goal: no runbook holds a value that belongs to one job, or interface details. Fo
 
 Goal: the app's parts are chosen by the user, not named by the runbook. A CLI, a worker or a library is another template.
 
-- Status: committed. The suite passes (424). Lint is clean. Only fake agents ran.
+- Status: committed. The suite passed (424) at that commit. Lint is clean. Only fake agents ran.
 - Decided by the owner (2026-11-01): name `app-build`; option A for the parts: a list input, with no `frontend` or `backend` trait.
 - Files: `src/factory/runbook.py` (`scaffolds_from`, `min_surfaces`, `parse_surfaces`, per-surface notes), `schemas.py` and `engine.py` (triage sets inputs), `cli.py`, `runbooks/app-build.yaml`, `templates/react-vite.yaml`, tests, `README.md`.
 - [x] Rename `web-app` to `app-build`.
@@ -286,4 +287,16 @@ Goal: the app's parts are chosen by the user, not named by the runbook. A CLI, a
 - [x] The contract step runs for two or more surfaces (`min_surfaces`). Input `contract_kind` says what the parts talk through.
 - [x] Rules about a UI (drag and drop, localStorage) moved into the `react-vite` template. Each surface is told what the other surfaces are.
 - [x] Triage can set inputs, checked against their types, so a shared app still gets a server.
-- [ ] Next: templates for the stacks that are missing (a Fastify API, a queue worker). Until then a surface with no template fails at plan time with its name.
+- [x] Templates for the missing stacks: see Templates below.
+
+### Templates: a Fastify API and a BullMQ worker
+
+Goal: `--input surfaces=web=react-vite,app=fastify,worker=bullmq-worker` plans and builds with no change to a runbook or the engine.
+
+- Status: committed. The suite passes (437). Lint is clean. A tester-style test passed and the server answered `/api/health` on a scratch copy of `fastify`. Only fake agents ran; no real LLM built anything with these templates.
+- Files: `templates/fastify{,.yaml}`, `templates/bullmq-worker{,.yaml}`, `serve_node` in `gates.py`, `Serve` in `scaffold.py`, `tests/test_templates.py`.
+- [x] `fastify`: `buildApp()` in `src/app.ts`, fixed `src/server.ts`, `GET /api/health`, Vitest through `app.inject`, `tsc --noEmit` as the lint command, port 8000 (the port `react-vite` proxies).
+- [x] `bullmq-worker`: handlers in `src/handlers.ts` (no Redis in tests), fixed `src/worker.ts`. `serve: null`, because the gate cannot start it without Redis.
+- [x] New `serve: node` check: type-check, start on a free port, `GET /api/health` answers `{"status": "ok"}`.
+- [ ] Not covered: the worker is not run against a real Redis, and MongoDB and Redis are not surfaces (they would be containers).
+- [ ] Next: decide where the HCC code is built, then turn the approved HCC spec into an `app-build` run.

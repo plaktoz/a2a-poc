@@ -4,7 +4,7 @@ Describe what you want in your own words. The factory picks a plan, hands each s
 
 The factory can:
 
-- build an app from one or more parts: a React UI, a FastAPI server, or both,
+- build an app from one or more parts: a React UI, a FastAPI or Fastify server, a BullMQ worker, or any mix of them,
 - answer a research question in a report where every quote is checked against its source,
 - audit existing code and write a prioritized report,
 - design an HTTP API,
@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "424 passed"; no LLM is called
+uv run pytest                  # prints "437 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and app-build
 ```
 
@@ -325,7 +325,7 @@ The engine never trusts a claim from an agent. It runs the tests itself and comp
 | `tests_named` | Each criterion of the surface has a test named after it. No test is skipped, focused or marked todo. | retry the step |
 | `tests_red` | The new tests load and at least one fails. | retry the step |
 | `tests_green` | The suite loads and no test fails. | new round |
-| `serves` | The build serves: `vite build` and preview, or uvicorn answering `/openapi.json`. | new round |
+| `serves` | The build serves: `vite build` and preview, uvicorn answering `/openapi.json`, or a Node API that type-checks, starts and answers `/api/health`. | new round |
 | `counts_match` | The verifier's counts equal the counts of the engine's own run. | retry the step |
 | `criteria_covered` | Every criterion has a verdict that starts with `PASS`. | stop the run |
 | `citations_verified` | Each finding quote is on the page that it cites. The gate drops the others. | retry the step |
@@ -492,7 +492,7 @@ Interface details (paths, prefix, ports, auth, schemas) are not inputs and not i
 
 ### Templates
 
-A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library) and `fastapi` (FastAPI, pytest, uv). With a server surface, the web dev server proxies the `api_prefix` (`/api/` for `react-vite`) to it. Each surface is told what the other surfaces are, so a template can give a rule for the case where it stands alone and for the case where it has a server. An `app-build` run picks its templates with the `surfaces` input, and a new kind of surface is a new template, with no change to the runbook.
+A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library), `fastapi` (FastAPI, pytest, uv), `fastify` (Fastify, TypeScript, Vitest; its `serve: node` check starts it and calls `GET /api/health`) and `bullmq-worker` (a BullMQ worker in TypeScript, Vitest; job logic is in handlers that tests call without Redis, so it has no `serve` check). A template ships no test: the tester writes them. The Fastify API listens on port 8000, where the web dev server proxies `/api`. With a server surface, the web dev server proxies the `api_prefix` (`/api/` for `react-vite`) to it. Each surface is told what the other surfaces are, so a template can give a rule for the case where it stands alone and for the case where it has a server. An `app-build` run picks its templates with the `surfaces` input, and a new kind of surface is a new template, with no change to the runbook.
 
 ### Web search
 
@@ -547,6 +547,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
 | `test_tasks.py` | 13 | The task list is written at the start, a stop mid-item keeps the done sub-tasks, a resume sends only the open ones, a reverted attempt marks none, and every stop prints the `--resume` command. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
+| `test_templates.py` | 13 | Each shipped template has the files its metadata names and no starter test, the Node templates are locked and type-checked, and the `node` serve check works with the processes replaced. |
 | `test_inputs.py` | 40 | Runbook inputs and the human gate: types, defaults, `--input`, `--interface`, surfaces, triage inputs, and a check that no shipped runbook holds a stack name, a fixed count or an interface detail. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
 | `test_runbooks.py` | 37 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. With only Claude enabled, every runbook plans and warns. |

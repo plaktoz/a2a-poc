@@ -1,0 +1,28 @@
+# How the factory works with templates/fastify/ (see src/factory/scaffold.py).
+surface: backend
+summary: the HTTP API in Node, tested through Fastify's inject with Vitest
+start: npm start
+suite: vitest
+serve: node
+commands:
+  test: npx vitest run
+  lint: npx tsc --noEmit
+test_files: ["tests/*.test.ts"]
+source_files: ["src/*"]
+protected: [package.json, package-lock.json, tsconfig.json, src/server.ts]
+stack: |
+  - Node + Fastify 5 + TypeScript (strict, ES modules). Import local files with a .js ending:
+    `import { x } from './x.js'`.
+  - src/app.ts exports buildApp(): FastifyInstance. src/server.ts (fixed) listens with it on
+    127.0.0.1 and the PORT environment variable (default 8000). It must keep GET /api/health
+    returning 200.
+  - Every route is under /api/. State is in memory, owned by the app that buildApp() returns, so
+    each new app starts empty.
+  - Tests: Vitest in tests/*.test.ts, in the Node environment. Build a fresh app for every test and
+    call it with app.inject({ method, url, payload }); never listen on a port. Name every test with
+    its criterion id and a colon: it('AC3: ...').
+  - Check input with JSON schemas on the routes. Answer errors with the status and JSON body the
+    contract names.
+  - No new dependencies: package.json is fixed. `npx tsc --noEmit` must pass.
+  - Layout: one plugin per resource under src/routes/, types in src/types.ts, state in a store object
+    created by buildApp().

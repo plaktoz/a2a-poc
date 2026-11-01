@@ -189,9 +189,10 @@ def _get(url: str) -> tuple[int, str]:
         return resp.status, resp.read().decode("utf-8", "replace")
 
 
-def _serve(argv: list[str], cwd: Path, url: str, check: Callable[[str], str | None]) -> str | None:
+def _serve(argv: list[str], cwd: Path, url: str, check: Callable[[str], str | None],
+           env: dict[str, str] | None = None) -> str | None:
     """Start a server, wait for `url`, and return check(body), or what went wrong."""
-    proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL,
+    proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, env={**os.environ, **(env or {})},
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(60):
@@ -248,7 +249,27 @@ def serve_asgi(wd: Path) -> str | None:
     return _serve(argv, wd, f"http://127.0.0.1:{port}/openapi.json", check)
 
 
-SERVERS: dict[str, Callable[[Path], str | None]] = {"vite": serve_vite, "asgi": serve_asgi}
+def serve_node(wd: Path) -> str | None:
+    """None if the Node API type-checks, starts, and answers its health route."""
+    wd = wd.resolve()
+    r = run(["npx", "tsc", "--noEmit"], cwd=wd)
+    if r.returncode != 0:
+        return f"`npx tsc --noEmit` failed:\n{tail(r)}"
+    port = free_port()
+
+    def check(body: str) -> str | None:
+        try:
+            ok = json.loads(body).get("status") == "ok"
+        except ValueError:
+            ok = False
+        return None if ok else f"/api/health did not answer {{\"status\": \"ok\"}}: {body[:300]}"
+
+    # Run tsx directly, not through npx, so terminate() reaches the server process.
+    return _serve([str(wd / "node_modules/.bin/tsx"), "src/server.ts"], wd,
+                  f"http://127.0.0.1:{port}/api/health", check, env={"PORT": str(port)})
+
+
+SERVERS: dict[str, Callable[[Path], str | None]] = {"vite": serve_vite, "asgi": serve_asgi, "node": serve_node}
 
 
 # --- development gates ------------------------------------------------------

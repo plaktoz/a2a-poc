@@ -258,6 +258,8 @@ def test_the_shipped_templates_declare_their_packages():
     _, pypi = declared_packages(TEMPLATES_DIR / "fastapi")
     assert {"react", "vite", "vitest"} <= npm
     assert pypi == {"fastapi", "uvicorn", "pytest", "httpx"}
+    assert {"fastify", "vitest", "typescript"} <= declared_packages(TEMPLATES_DIR / "fastify")[0]
+    assert {"bullmq", "vitest"} <= declared_packages(TEMPLATES_DIR / "bullmq-worker")[0]
 
 
 # --- the registry probe, with urlopen replaced (no network) ------------------
