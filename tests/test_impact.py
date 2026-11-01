@@ -226,7 +226,7 @@ def test_the_engine_refuses_this_runbook_without_repos(tmp_path, cfg, staff):
     ws = tmp_path / "ws"
     (ws / ".factory").mkdir(parents=True)
     with pytest.raises(ConfigError, match="needs --repo"):
-        Engine(plan, cfg, ws, impact_agents(), brief="b", name="n", interactive=False, say=lambda m: None,
+        Engine(plan, cfg, ws, impact_agents(), brief="b", name="n", say=lambda m: None,
                install=False)
 
 

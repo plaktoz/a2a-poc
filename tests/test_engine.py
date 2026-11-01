@@ -48,7 +48,6 @@ class Agents:
 def make_engine(plan, cfg, tmp_path, agents, **kw):
     ws = tmp_path / "ws"
     (ws / ".factory").mkdir(parents=True, exist_ok=True)
-    kw.setdefault("interactive", False)
     return Engine(plan, cfg, ws, agents, brief="b", name="n", say=lambda m: None,
                   fetch=lambda url: strip_html(PAGE) if url == URL else None, install=False, **kw)
 
@@ -140,14 +139,16 @@ def test_run_stops_when_rounds_run_out(cfg, staff, tmp_path):
     assert draft.count("NOT APPROVED") == 1 and f"[a]({URL})" in draft  # one banner; the draft is kept
 
 
-def test_checkpoint_asks_the_person(cfg, staff, tmp_path):
+def test_a_checkpoint_waits_for_approval_and_asks_nothing(cfg, staff, tmp_path):
     plan = resolve(catalog()["research"], {"review": False}, staff, cfg)
     agents = research_agents([report(f"[a]({URL})")], [])
-    engine = make_engine(plan, cfg, tmp_path, agents, interactive=True, ask=lambda q: "")
-    assert engine.run()
-    assert [r["checkpoint"] for role, r in agents.requests if role == "analyst"] == [True]
-    # Parallel steps never pause for a person.
-    assert all(not r["checkpoint"] for role, r in agents.requests if role == "researcher")
+    engine = make_engine(plan, cfg, tmp_path, agents, wait_at_checkpoints=True)
+    assert not engine.run()
+    record = json.loads((engine.ws / ".factory" / "run.json").read_text())
+    assert record["status"] == "awaiting" and record["detail"] == "approval"
+    assert record["awaiting"] == {"point": "plan", "approve": "factory approve --name n"}
+    assert [role for role, _ in agents.requests] == ["analyst"]  # nothing runs after the checkpoint
+    assert all(not r["checkpoint"] and not r["interactive"] for _, r in agents.requests)  # no prompt
 
 
 @pytest.mark.parametrize("quote, ok", [

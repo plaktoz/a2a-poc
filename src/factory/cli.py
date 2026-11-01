@@ -5,9 +5,12 @@
   factory runs  [--json]                            sum up the runs in apps/ (read only)
   factory check [--worker W ...]                    send one short prompt to each model
   factory run   --brief "..." [options]             do the work
+  factory approve --name NAME [--changes "..."]     answer a run that waits at `awaiting: approval`
 
 `run` picks the runbook itself (a triage agent reads the brief) unless --runbook is given, and
-shows you its choice and the plan before any work starts. Examples:
+prints its choice and the plan. No command asks a question. A run that needs a person's review
+stops at `awaiting: approval` and prints the `factory approve` command; --yes approves every
+review in advance. Examples:
 
   factory run --brief "a kanban board where I can add tickets and columns"
   factory run --brief "a shared shopping list for my family" --trait backend=yes
@@ -30,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from .a2a_transport import Json
@@ -44,6 +48,11 @@ from .runbook import (LoopDef, Runbook, StaffDef, catalog, describe_catalog, loa
 from .schemas import NO_RUNBOOK, render
 
 AGENTS_FILE = ROOT / "agents.yaml"
+
+
+class UsageError(FactoryError):
+    """The command line is wrong: a flag is missing, unknown or does not fit the runbook. Exit code 2."""
+
 YES, NO = {"yes", "y", "true", "1", "on"}, {"no", "n", "false", "0", "off"}
 
 
@@ -52,7 +61,7 @@ def parse_traits(pairs: list[str]) -> dict[str, bool]:
     for p in pairs:
         key, sep, value = p.partition("=")
         if not sep or value.lower() not in YES | NO:
-            raise ConfigError(f"--trait {p!r}: use NAME=yes or NAME=no")
+            raise UsageError(f"--trait {p!r}: use NAME=yes or NAME=no")
         out[key.strip()] = value.lower() in YES
     return out
 
@@ -62,14 +71,10 @@ def parse_staff(pairs: list[str]) -> dict[str, StaffDef]:
     for p in pairs:
         role, sep, rest = p.partition("=")
         if not sep or not rest:
-            raise ConfigError(f"--staff {p!r}: use ROLE=WORKER or ROLE=WORKER:MODEL")
+            raise UsageError(f"--staff {p!r}: use ROLE=WORKER or ROLE=WORKER:MODEL")
         worker, _, model = rest.partition(":")
         out[role.strip()] = StaffDef(worker=worker, model=model or None)
     return out
-
-
-def _ask_yes(question: str) -> bool:
-    return input(question).strip().lower() in ("", *YES)
 
 
 def cmd_runbooks(args) -> int:
@@ -100,7 +105,7 @@ def cmd_plan(args) -> int:
     cfg = load_config(args.config)
     books = catalog(args.runbooks)
     if args.runbook not in books:
-        raise ConfigError(f"no runbook {args.runbook!r}; runbooks are {', '.join(books)}")
+        raise UsageError(f"no runbook {args.runbook!r}; runbooks are {', '.join(books)}")
     plan = _plan(args, cfg, books[args.runbook], parse_traits(args.trait))
     if args.mermaid:
         print(mermaid(plan))
@@ -131,23 +136,23 @@ def _check_repo_args(args, rb: Runbook) -> None:
                                       ("--test-command", args.test_command)) if value]
     if rb.needs_repos:
         if not repos:
-            raise ConfigError(f"runbook {rb.name} reads git repos: pass --repo PATH once for each repo")
+            raise UsageError(f"runbook {rb.name} reads git repos: pass --repo PATH once for each repo")
         if args.base or args.test_command or args.target:
-            raise ConfigError(f"--base, --test-command and --target do not apply to {rb.name}, "
+            raise UsageError(f"--base, --test-command and --target do not apply to {rb.name}, "
                               "which only reads the repos")
     elif _changes_repo(rb):
         if len(repos) != 1:
-            raise ConfigError(f"runbook {rb.name} changes one git repo: pass --repo PATH once, the repo folder")
+            raise UsageError(f"runbook {rb.name} changes one git repo: pass --repo PATH once, the repo folder")
         if not args.test_command:
-            raise ConfigError(f"runbook {rb.name} needs --test-command, the command that runs the repo's "
+            raise UsageError(f"runbook {rb.name} needs --test-command, the command that runs the repo's "
                               'tests, for example --test-command "npm test"')
         if args.target:
-            raise ConfigError("--target is not used with --repo: the repo is the target")
+            raise UsageError("--target is not used with --repo: the repo is the target")
     elif given:
-        raise ConfigError(f"{', '.join(given)} only applies to a runbook that changes a git repo "
+        raise UsageError(f"{', '.join(given)} only applies to a runbook that changes a git repo "
                           "(change-request, bug-fix) or reads git repos (impact-analysis)")
     if args.pr and not _changes_repo(rb):
-        raise ConfigError(f"--pr only applies to a runbook that changes a git repo (change-request, bug-fix), "
+        raise UsageError(f"--pr only applies to a runbook that changes a git repo (change-request, bug-fix), "
                           f"not {rb.name}")
 
 
@@ -183,19 +188,19 @@ def _find_home(args) -> Path:
     """The folder of the run --resume continues. A change lives in its repo's scratch folder, and a plain run
     or a read-only runbook lives in apps/. The first folder that holds the run wins."""
     if not args.name:
-        raise ConfigError("--resume needs --name, the folder of the run to continue")
+        raise UsageError("--resume needs --name, the folder of the run to continue")
     homes = [*([_workdir(args)[0]] if args.repo else []), APPS_DIR]
     for home in homes:
         if (home / args.name / ".factory" / "run.json").exists():
             return home
-    raise ConfigError(f"nothing to resume: {args.name} has no run record in "
+    raise ConfigError(f"no run to {'approve' if args.cmd == 'approve' else 'resume'}: {args.name} has no run record in "
                       f"{', '.join(_shown(h) for h in homes)}")
 
 
 def resume_record(args, workdir: Path) -> Json:
     """The run record of <workdir>/<name>, for --resume. Refuses a run that is accepted or missing."""
     if not args.name:
-        raise ConfigError("--resume needs --name, the folder of the run to continue")
+        raise UsageError("--resume needs --name, the folder of the run to continue")
     path = workdir / args.name / ".factory" / "run.json"
     if not path.exists():
         raise ConfigError(f"nothing to resume: {workdir.name}/{args.name} has no run record")
@@ -208,9 +213,8 @@ def resume_record(args, workdir: Path) -> Json:
 def cmd_run(args) -> int:
     cfg = load_config(args.config)
     books = catalog(args.runbooks)
-    interactive = not args.yes
     if args.resume:
-        return _resume(args, cfg, books, interactive)
+        return _resume(args, cfg, books)
     traits = parse_traits(args.trait)
     target = str(Path(args.target).resolve()) if args.target else None
 
@@ -219,7 +223,7 @@ def cmd_run(args) -> int:
     triage_usage: list = []  # the LLM calls of triage, logged in the run
     if args.runbook:
         if args.runbook not in books:
-            raise ConfigError(f"no runbook {args.runbook!r}; runbooks are {', '.join(books)}")
+            raise UsageError(f"no runbook {args.runbook!r}; runbooks are {', '.join(books)}")
         rb, name = books[args.runbook], args.name or name_from(args.brief)
     else:
         staff = load_staff(args.agents, cfg, parse_staff(args.staff))
@@ -243,16 +247,13 @@ def cmd_run(args) -> int:
     repos = _read_repos(args) if rb.needs_repos else []
     plan = _plan(args, cfg, rb, traits)
     print(outline(plan))
-    if interactive and not _ask_yes("\nRun this plan? [Y/n] "):
-        print("Not started. Change it with --runbook, --trait or --staff.")
-        return 1
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=name, brief=args.brief,
-                     interactive=interactive, run_id=run_id, earlier_usage=triage_usage,
+                     run_id=run_id, earlier_usage=triage_usage,
                      target=target, resume=False, rebuild=args.rebuild, record=None, repos=repos)
 
 
 def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, brief: str,
-              interactive: bool, run_id: str, earlier_usage: list | None, target: str | None,
+              run_id: str, earlier_usage: list | None, target: str | None,
               resume: bool, rebuild: bool, record: Json | None, repos: list[Path]) -> int:
     """Lock <workdir>/<name>, make the repo worktree when the plan changes a repo, and run the engine.
     `repos` are the repos a read-only runbook reads in place; no worktree is made for them."""
@@ -267,7 +268,7 @@ def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, br
         with Fleet(plan.staff, plan.roles(), ws / ".factory" / "agents", args.config) as fleet:
             print("A2A agents:", *(f"  {line}" for line in fleet.describe()), sep="\n")
             engine = Engine(plan, cfg, ws, fleet.send, brief=brief, name=name,
-                            target=Path(target) if target else None, interactive=interactive,
+                            target=Path(target) if target else None, wait_at_checkpoints=not args.yes,
                             earlier_usage=earlier_usage, run_id=run_id, resume=resume,
                             send_fallback=fleet.send_fallback, worktree=worktree,
                             test_command=args.test_command, repos=repos, pr=args.pr,
@@ -277,7 +278,7 @@ def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, br
         lock.close()
 
 
-def _resume(args, cfg, books, interactive: bool) -> int:
+def _resume(args, cfg, books) -> int:
     """Continue the run's folder from its run record: items it accepted are kept, the rest run again."""
     home = _find_home(args)
     record = resume_record(args, home)
@@ -293,14 +294,33 @@ def _resume(args, cfg, books, interactive: bool) -> int:
     plan = _plan(args, cfg, rb, traits)
     print(f"Resuming run {record['run_id']} in {_shown(workdir / args.name)}")
     print(outline(plan))
-    if interactive and not _ask_yes("\nResume this plan? [Y/n] "):
-        print("Not started.")
-        return 1
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=args.name, brief=record["brief"],
-                     interactive=interactive, run_id=record["run_id"], earlier_usage=None,
+                     run_id=record["run_id"], earlier_usage=None,
                      target=record.get("target"), resume=True, rebuild=True,
                      record=record if top is not None else None,  # accepted runs were refused above
                      repos=repos)
+
+
+def cmd_approve(args) -> int:
+    """Answer a run that waits at `awaiting: approval`: record the decision, then continue the run.
+    A person runs this; the record says `person`. --changes sends a checkpoint's draft back."""
+    home = _find_home(args)
+    path = home / args.name / ".factory" / "run.json"
+    record = json.loads(path.read_text())
+    if record.get("status") != "awaiting" or not record.get("awaiting"):
+        raise ConfigError(f"{args.name} is {record.get('status')}, not awaiting approval; there is nothing to approve")
+    point = record["awaiting"]["point"]
+    if args.changes and point == "push":
+        raise UsageError("--changes answers a checkpoint; the push takes only an approval")
+    decision = {"point": point, "decision": "changes" if args.changes else "accept", "by": "person",
+                "at": time.strftime("%Y-%m-%dT%H:%M:%S"), **({"changes": args.changes} if args.changes else {})}
+    record["approvals"] = [*record.get("approvals", []), decision]
+    path.write_text(json.dumps(record, indent=2) + "\n")
+    print(f"{'Changes asked for' if args.changes else 'Approved'}: {point} in {args.name}")
+    cont = argparse.Namespace(**{**vars(args), "resume": True, "yes": False, "pr": bool(record.get("pr")),
+                                 "test_command": record.get("test_command"), "base": None, "target": None,
+                                 "trait": [], "brief": record.get("brief", ""), "runbook": None, "rebuild": False})
+    return cmd_run(cont)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -345,20 +365,31 @@ def main(argv: list[str] | None = None) -> int:
                    help='the command that runs the repo\'s tests, e.g. "npm test" (change-request, bug-fix)')
     p.add_argument("--pr", action="store_true",
                    help="after the commit, push the branch to origin and open a pull request (change-request, "
-                        "bug-fix). Needs approval: a person answers the prompt, or --yes approves it")
+                        "bug-fix). Needs approval: factory approve, or --yes in advance")
     p.add_argument("--rebuild", action="store_true", help="redo work that was already accepted")
     p.add_argument("--resume", action="store_true",
                    help="continue the run in --name: keep what it accepted, redo the rest")
     p.add_argument("--yes", action="store_true",
-                   help="no questions or approvals: agents decide, and every checkpoint is accepted")
+                   help="approve in advance: every checkpoint and the push (--pr). The record says --yes")
     p.set_defaults(fn=cmd_run)
 
-    args = ap.parse_args(argv)
+    p = sub.add_parser("approve", help="answer a run that waits at awaiting: approval, and continue it")
+    p.add_argument("--name", required=True, help="the run that waits")
+    p.add_argument("--repo", action="append", default=[], metavar="PATH",
+                   help="the repo of a change-request or bug-fix run (where its scratch folder is)")
+    p.add_argument("--changes", metavar="TEXT", help="ask for changes to a checkpoint's draft instead of approving")
+    p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
+    p.set_defaults(fn=cmd_approve)
+
+    args = ap.parse_args(argv)  # a bad command or flag exits with 2 (argparse)
     try:
         return args.fn(args)
-    except FactoryError as e:
+    except UsageError as e:  # a bad command: exit 2, as argparse does (PRD FR-25)
         print(f"error: {e}", file=sys.stderr)
         return 2
+    except FactoryError as e:  # the command is well formed but cannot be done: exit 1
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

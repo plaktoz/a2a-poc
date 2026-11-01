@@ -29,7 +29,7 @@ def test_a_resumed_run_does_not_repeat_accepted_items(cfg, staff, tmp_path):
 
     # Resume with a working writer: the plan and the research are kept, not asked again.
     agents = research_agents([report(f"[a]({URL})")], [])
-    resumed = Engine(plan, cfg, engine.ws, agents, brief="b", name="n", interactive=False,
+    resumed = Engine(plan, cfg, engine.ws, agents, brief="b", name="n",
                      say=lambda m: None, fetch=lambda url: None, install=False,
                      run_id=saved["run_id"], resume=True)
     assert resumed.run()
@@ -50,7 +50,7 @@ def test_resume_refuses_a_run_for_another_runbook(cfg, staff, tmp_path):
     run["runbook"] = "code-audit"
     (engine.ws / ".factory" / "run.json").write_text(json.dumps(run))
     with pytest.raises(ConfigError, match="not code-audit|for runbook"):
-        Engine(plan, cfg, engine.ws, research_agents([], []), brief="b", name="n", interactive=False,
+        Engine(plan, cfg, engine.ws, research_agents([], []), brief="b", name="n",
                say=lambda m: None, fetch=lambda url: None, install=False, resume=True)
 
 
@@ -59,7 +59,7 @@ def test_resume_needs_an_existing_record(cfg, staff, tmp_path):
     (tmp_path / "ws" / ".factory").mkdir(parents=True)
     with pytest.raises(ConfigError, match="nothing to resume"):
         Engine(plan, cfg, tmp_path / "ws", research_agents([], []), brief="b", name="n",
-               interactive=False, say=lambda m: None, fetch=lambda url: None, install=False, resume=True)
+               say=lambda m: None, fetch=lambda url: None, install=False, resume=True)
 
 
 def test_the_cli_refuses_to_resume_an_accepted_run(monkeypatch, tmp_path, capsys):
@@ -69,7 +69,7 @@ def test_the_cli_refuses_to_resume_an_accepted_run(monkeypatch, tmp_path, capsys
     (apps / "todo" / ".factory").mkdir(parents=True)
     (apps / "todo" / ".factory" / "run.json").write_text(json.dumps({"status": "accepted", "runbook": "research"}))
     monkeypatch.setattr(cli, "APPS_DIR", apps)
-    assert cli.main(["run", "--resume", "--name", "todo", "--brief", "x"]) == 2
+    assert cli.main(["run", "--resume", "--name", "todo", "--brief", "x"]) == 1
     assert "already accepted" in capsys.readouterr().err
 
 

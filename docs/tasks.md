@@ -55,7 +55,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | P20 | Run task list, so a stopped run continues from the last done sub-task | P12 | committed | see `git log` |
 | Impact | `impact-analysis` runbook: which services a change affects, across one or more repos. Report only. | P10 slice 1 | committed | `4773e48` |
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | `37a6a49` |
-| AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | todo | |
+| AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | in progress: FR-25 committed | see `git log` |
 | Leftovers | C3, S4, S5, S6, S8, rest of F, unused `Path` import | none | todo | |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
@@ -179,13 +179,36 @@ Goal: a run that stops (tokens used up, LLM down, network down) continues from i
 - [x] README: intro, quick start, runbook table, example, "Fix a bug", gate, test table, troubleshooting. Test count 282.
 - [x] Commit.
 
+### AXI: FR-20 to FR-29
+
+- Depends on P12.
+- Built in pieces, one commit each.
+
+#### FR-25: never prompt, `factory approve`, exit codes
+
+- Status: committed. The suite passes (353).
+- Files: `src/factory/engine.py` (`Awaiting.point`, `_approve`, `_checkpoint`, `_changes_asked`, `approve_command`, `wait_at_checkpoints`), `src/factory/cli.py` (`cmd_approve`, `UsageError`, no prompts), `tests/test_approve.py`, `README.md`.
+- [x] No command prompts. A checkpoint and the push stop the run at `awaiting: approval`, with `awaiting: {point, approve}` in the record.
+- [x] `factory approve --name NAME [--changes TEXT]` records the decision in `approvals` and resumes the run.
+- [x] `--yes` is the explicit advance approval, recorded as `by: --yes`.
+- [x] Exit codes: 0 success, 1 failed or stopped or cannot be done, 2 bad command line.
+- [ ] Errors as structured data on stdout (with FR-20, the TOON output).
+
+#### FR-20 to FR-24, FR-26 to FR-29
+
+- Status: todo.
+- [ ] TOON output by default, `--json`, `--fields`, `--full`.
+- [ ] Totals first, definitive empty states.
+- [ ] Structured errors on stdout.
+- [ ] Ambient context, content first with no arguments, `help[]` lines, `--help` with one example for each command.
+
 ### P10 slice 2: pull request
 
 - Depends on P10 slice 1 and P6 (secret scan).
 - Status: committed. The suite passes (330).
 - Files: `src/factory/repo.py` (`push_branch`, `create_pr`, `has_remote`, `remote_url`, `current_branch`), `src/factory/engine.py` (`_pull_request`, `_approver`, `Awaiting`, `_pr_body`), `src/factory/gates.py` (`scan_files`), `src/factory/cli.py` (`--pr`), `tests/test_pr.py`, `README.md`.
 - Tests use a bare repo in a temporary folder as `origin` and a fake `gh`. No real push and no `gh pr create` ran. A real push to GitHub is not verified. No person has done this check yet.
-- Decided: only `--yes` approves the push, because commands never prompt (PRD FR-25). A run without it stops at `awaiting: approval`. The `factory approve` command is in the AXI task.
+- Decided: only `--yes` approves the push, because commands never prompt (PRD FR-25). A run without it stops at `awaiting: approval`. Since AXI FR-25, `factory approve` approves it too.
 - [x] `--pr`: `git push -u origin factory/<feature>`, then `gh pr create`.
 - [x] Without `--yes`, stop with `awaiting: approval` and print the resume command. Record who approved.
 - [x] The PR body holds the acceptance criteria, the gates and the usage totals.

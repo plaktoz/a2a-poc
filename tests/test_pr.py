@@ -47,19 +47,17 @@ def gh(monkeypatch):
     return calls
 
 
-def start(tmp_path, repo_dir, scratch, cfg, staff, *, approved=False, interactive=False, ask=None,
-          agents=None, feature="cart"):
+def start(tmp_path, repo_dir, scratch, cfg, staff, *, approved=False, agents=None, feature="cart"):
     """A change-request run with --pr, started the way the CLI does."""
     ws, lock = open_workspace(scratch / repo_dir.name, feature, rebuild=False)
     wt = repo.open_worktree(repo_dir, feature, None, ws)
     return build(tmp_path, ws, wt, cfg, staff, agents or change_agents(dev_writes=WRITES),
-                 approved=approved, interactive=interactive, ask=ask), ws, lock
+                 approved=approved), ws, lock
 
 
-def build(tmp_path, ws, wt, cfg, staff, agents, *, approved=False, interactive=False, ask=None, resume=False,
-          pr=True, say=lambda m: None):
+def build(tmp_path, ws, wt, cfg, staff, agents, *, approved=False, resume=False, pr=True, say=lambda m: None):
     return Engine(change_plan(cfg, staff), cfg, ws, agents, brief="add a cart", name=ws.name,
-                  target=wt.tree, interactive=interactive, say=say, ask=ask or (lambda q: "n"),
+                  target=wt.tree, say=say,
                   fetch=lambda url: strip_html(""), install=False, worktree=wt, test_command="true",
                   pr=pr, approved=approved, resume=resume)
 
@@ -92,7 +90,7 @@ def test_yes_pushes_the_branch_and_opens_the_pull_request(tmp_path, repo_dir, sc
 
 
 def test_without_approval_the_run_waits_and_pushes_nothing(tmp_path, repo_dir, scratch, cfg, staff, origin, gh):
-    engine, ws, lock = start(tmp_path, repo_dir, scratch, cfg, staff)  # not interactive, no --yes
+    engine, ws, lock = start(tmp_path, repo_dir, scratch, cfg, staff)  # no --yes
     assert not run_it(engine, lock)
     record = run_record(ws)
     assert record["status"] == "awaiting" and record["detail"] == "approval"
@@ -107,8 +105,9 @@ def test_the_waiting_message_gives_the_command_that_approves(tmp_path, repo_dir,
     engine = build(tmp_path, ws, wt, cfg, staff, change_agents(dev_writes=WRITES), say=said.append)
     run_it(engine, lock)
     text = "\n".join(said)
-    assert "Waiting for approval" in text and "factory run --resume --name cart" in text
-    assert str(repo_dir.resolve()) in text and "--pr --yes" in text
+    assert "Waiting for approval" in text and "is committed but not pushed" in text
+    assert f"To approve, run: factory approve --name cart --repo {repo_dir.resolve()}" in text
+    assert run_record(ws)["awaiting"]["point"] == "push"
 
 
 def test_without_pr_nothing_is_pushed_even_with_yes(tmp_path, repo_dir, scratch, cfg, staff, origin, gh):
@@ -165,6 +164,22 @@ def test_an_approved_awaiting_run_resumes_to_the_pull_request(tmp_path, repo_dir
     assert agents.requests == [] and run_record(ws)["status"] == "accepted"
     assert run_record(ws)["pull_request"]["approved_by"] == "--yes"
     assert git(origin, "rev-parse", "factory/cart") == waiting["commit"]
+
+
+def test_a_person_approves_the_push_with_factory_approve(tmp_path, repo_dir, scratch, cfg, staff, origin, gh):
+    import json
+    engine, ws, lock = start(tmp_path, repo_dir, scratch, cfg, staff)
+    run_it(engine, lock)
+    waiting = run_record(ws)
+    assert waiting["awaiting"]["point"] == "push" and waiting["pr"] is True
+    waiting["approvals"] = [*waiting.get("approvals", []),
+                            {"point": "push", "decision": "accept", "by": "person", "at": "now"}]
+    (ws / ".factory" / "run.json").write_text(json.dumps(waiting))  # what `factory approve` writes
+    ws, lock = open_workspace(scratch / "shop", "cart", rebuild=True)
+    engine = build(tmp_path, ws, repo.reuse_worktree(waiting), cfg, staff, Agents({}), resume=True)
+    assert run_it(engine, lock)
+    assert run_record(ws)["pull_request"]["approved_by"] == "person"
+    assert "Approved by: person" in gh.argv[0][gh.argv[0].index("--body") + 1]
 
 
 def test_a_missing_gh_stops_the_run_with_a_clear_message(tmp_path, repo_dir, scratch, cfg, staff, origin, monkeypatch):

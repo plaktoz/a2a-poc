@@ -75,7 +75,7 @@ def make_change(tmp_path, repo_dir, scratch, cfg, staff, agents, *, feature="car
     ws, lock = open_workspace(scratch / repo_dir.name, feature, rebuild=False)
     wt = repo.open_worktree(repo_dir, feature, base, ws, say=say)
     engine = Engine(change_plan(cfg, staff), cfg, ws, agents, brief="add a cart", name=feature,
-                    target=wt.tree, interactive=False, say=say, fetch=lambda url: strip_html(""),
+                    target=wt.tree, say=say, fetch=lambda url: strip_html(""),
                     install=False, worktree=wt, test_command=test_command)
     return engine, ws, lock
 

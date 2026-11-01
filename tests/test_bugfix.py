@@ -66,7 +66,7 @@ def make_fix(repo_dir, scratch, cfg, staff, agents, test_command, feature="total
     wt = repo.open_worktree(repo_dir, feature, None, ws, say=lambda m: None)
     plan = resolve(catalog()["bug-fix"], {}, staff, cfg)
     engine = Engine(plan, cfg, ws, agents, brief="the cart total counts removed items", name=feature,
-                    target=wt.tree, interactive=False, say=lambda m: None, fetch=lambda url: strip_html(""),
+                    target=wt.tree, say=lambda m: None, fetch=lambda url: strip_html(""),
                     install=False, worktree=wt, test_command=test_command)
     return engine, ws, lock
 

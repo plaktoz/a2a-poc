@@ -50,11 +50,11 @@ AXI means the 10 principles at https://axi.md/. They are FR-20 to FR-29 in the P
 
 | Requirement | Gap in the code | Related |
 |---|---|---|
-| FR-25: never prompt, exit code 1 on a stopped run, errors as data | `cli.py:109` asks "Run this plan?". Checkpoints ask on the terminal. Errors go to stderr. `FactoryError` exits with 2, and AXI keeps 2 for a bad command. | P8, P12 |
+| FR-25: never prompt, exit code 1 on a stopped run, errors as data | Built: no command prompts, checkpoints and the push wait at `awaiting: approval`, `factory approve` answers them, exit codes 0, 1 and 2. Open: errors still go to stderr as text. | P8, P12 |
 | FR-20 to FR-24: TOON output, small default fields, truncation, totals, empty states | All output is prose. | P9 |
 | FR-26 to FR-29: ambient context, content first, `help[]` lines, help | `factory` with no arguments prints an argparse error. | P9 |
 
-FR-25 and checkpoints are decided in PRD v0.4 (question 8). A run waits at a checkpoint with `awaiting: approval`. The `--yes` flag is the explicit agent approval. The run records who approved. The `factory approve` command and the approver record are not built.
+FR-25 and checkpoints are decided in PRD v0.4 (question 8). A run waits at a checkpoint with `awaiting: approval`. The `--yes` flag is the explicit agent approval. The run records who approved. The `factory approve` command and the approver record (`approvals` in `run.json`) are built.
 
 ## 5. Suggested build order
 

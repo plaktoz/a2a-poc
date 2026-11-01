@@ -56,7 +56,7 @@ def test_the_last_retry_goes_to_the_fallback_and_is_accepted(cfg, staff, tmp_pat
         ("researcher", "investigate", "Q1"): [findings("Q1", GOOD, FAKE)],
         ("researcher", "investigate", "Q2"): [findings("Q2", GOOD)],
     })
-    engine = make_engine(plan, cfg, tmp_path, main, send_fallback=fallback, interactive=False)
+    engine = make_engine(plan, cfg, tmp_path, main, send_fallback=fallback)
     lines = []
     engine.say = lines.append
     assert engine.run()
@@ -74,6 +74,6 @@ def test_no_fallback_means_no_switch(cfg, staff, tmp_path):
         ("writer", "report"): [report(f"[a]({URL})")],
     })
     fallback = Agents({})
-    engine = make_engine(plan, cfg, tmp_path, main, send_fallback=fallback, interactive=False)
+    engine = make_engine(plan, cfg, tmp_path, main, send_fallback=fallback)
     engine.run()
     assert fallback.requests == []

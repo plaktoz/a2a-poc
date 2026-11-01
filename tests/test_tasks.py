@@ -30,7 +30,7 @@ def entry(ws, step, item=None):
 
 def engine_for(ws, wt, cfg, staff, agents, *, resume=False, said=None, test_command="true"):
     return Engine(change_plan(cfg, staff), cfg, ws, agents, brief="add a cart", name=ws.name,
-                  target=wt.tree, interactive=False, say=(said.append if said is not None else lambda m: None),
+                  target=wt.tree, say=(said.append if said is not None else lambda m: None),
                   fetch=lambda url: strip_html(""), install=False, worktree=wt, test_command=test_command,
                   resume=resume)
 

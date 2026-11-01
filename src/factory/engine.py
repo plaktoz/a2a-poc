@@ -6,7 +6,8 @@ The engine owns everything that decides whether work is accepted, so no agent gr
 - it checks which files the agent changed, and reverts any change outside the agent's role,
 - a developer's edit to the tests is kept only if the tester approves it,
 - it runs the step's gates (test suites, builds, citations, ...),
-- it asks the person at each checkpoint, and records every step in .factory/run.json.
+- it waits for a person's approval at each checkpoint (`awaiting: approval`, answered by
+  `factory approve`), unless --yes approves it, and records every step in .factory/run.json.
 
 It talks to agents only through `send(role, request, on_input) -> reply`, so the same engine
 drives A2A agents (agents.RoleAgents) or fakes in tests.
@@ -41,7 +42,6 @@ from .runbook import LoopDef, Plan, Runbook, StepDef, describe_catalog, fill, ho
 from .scaffold import IGNORED, Template, matches, place, reset
 
 Send = Callable[[str, Json, Callable[[Json], Json] | None], Json]
-MAX_CONVERSATION = 6  # questions and reviews on one checkpoint before the run stops
 API_PREFIX = "/api/"
 
 
@@ -50,7 +50,12 @@ class Stop(Exception):
 
 
 class Awaiting(Stop):
-    """The run waits for a person's approval. Its state is saved, and nothing is pushed."""
+    """The run waits for a person's approval at `point` (a checkpoint step, or "push"). Its state is
+    saved, and nothing is pushed. `factory approve` answers it (PRD FR-25: commands never prompt)."""
+
+    def __init__(self, message: str, point: str) -> None:
+        super().__init__(message)
+        self.point = point
 
 
 class RoundFailed(Exception):
@@ -183,6 +188,7 @@ class RunLog:
                 *previous.get("resumes", []), {"started": time.strftime("%Y-%m-%dT%H:%M:%S"), "factory": factory}]}
             self.data.pop("detail", None)
             self.data.pop("ended", None)
+            self.data.pop("awaiting", None)
             self._write()
 
     def loop_round(self, loop: str, rounds_used: int, accepted: bool) -> None:
@@ -246,8 +252,8 @@ class Item:
 
 class Engine:
     def __init__(self, plan: Plan, cfg: Config, workspace: Path, send: Send, *, brief: str,
-                 name: str, target: Path | None = None, interactive: bool = True,
-                 say: Callable[[str], None] = print, ask: Callable[[str], str] = input,
+                 name: str, target: Path | None = None, wait_at_checkpoints: bool = False,
+                 say: Callable[[str], None] = print,
                  fetch: Callable[[str], str | None] = fetch_text, install: bool = True,
                  earlier_usage: list[Json] | None = None, run_id: str | None = None,
                  resume: bool = False, send_fallback: Send | None = None,
@@ -258,11 +264,13 @@ class Engine:
         self.run_id = run_id or new_run_id()
         self.brief, self.name, self.target = brief, name, target
         self.worktree, self.test_command = worktree, test_command  # P10: a change in a git worktree
-        self.pr, self.approved = pr, approved  # slice 2: push and open a PR, only once approved with --yes
+        self.pr, self.approved = pr, approved  # approved: --yes, which approves the checkpoints and the push
         if pr and worktree is None:
             raise ConfigError(f"runbook {plan.runbook.name} needs --repo before --pr can open a pull request")
         self.repos = list(repos or [])  # impact-analysis: the repos to read, in place and never changed
-        self.interactive, self.say, self.ask, self.fetch, self.install = interactive, say, ask, fetch, install
+        # Without --yes, a checkpoint waits for `factory approve`. Off (the default), --yes approves it.
+        self.wait_at_checkpoints = wait_at_checkpoints
+        self.say, self.fetch, self.install = say, fetch, install
         self.artifacts: dict[str, Any] = {}
         self._artifacts_lock = threading.Lock()
         self._done: set[tuple[str, str | None]] = set()  # (step, item) accepted in an earlier attempt
@@ -288,6 +296,8 @@ class Engine:
         if resume:
             self.tasks.load(self._done)  # first: `plan` writes the file, and keeps the entries it has
         self.tasks.plan(plan)
+        if worktree is not None:  # `factory approve` continues the run with these
+            self.log.update(test_command=test_command, pr=pr)
 
     def _resume(self) -> None:
         """Load the record of the earlier attempt. Every step item it accepted is kept, not run again."""
@@ -305,6 +315,9 @@ class Engine:
         for e in previous.get("events", []):
             latest[(e["step"], e["item"])] = e["status"]  # the last event of an item decides
         self._done = {key for key, status in latest.items() if status == "accepted"}
+        # A person asked for changes at a checkpoint: that step runs again, with the changes as feedback.
+        decisions = {a["point"]: a["decision"] for a in previous.get("approvals", [])}
+        self._done -= {(s.id, None) for s in self.plan.steps() if s.checkpoint and decisions.get(s.id) == "changes"}
         writes = {s.id: s.writes for s in self.plan.steps()}
         # Code that an accepted step wrote must stay: the scaffolds are reset only if none was accepted.
         self._scaffolds_reset = any(writes.get(step, "none") != "none" for step, _ in self._done)
@@ -333,6 +346,7 @@ class Engine:
                     self._pull_request()
         except Awaiting as e:
             self._save_artifacts()
+            self.log.update(awaiting={"point": e.point, "approve": self.approve_command()})
             self.log.save("awaiting", "approval")
             self.say(f"\n{e}")
             self.say(self.log.usage_line())
@@ -404,11 +418,52 @@ class Engine:
             parts.append("--pr")
         return shlex.join(parts)
 
+    def approve_command(self) -> str:
+        """The command that answers `awaiting: approval` and continues the run."""
+        parts = ["factory", "approve", "--name", self.name]
+        if self.worktree is not None:
+            parts += ["--repo", str(self.worktree.repo)]
+        return shlex.join(parts)
+
+    # --- approvals (PRD FR-25 and open question 8)
+
+    def _approval(self, point: str) -> Json | None:
+        """The latest decision on `point`: {point, decision: accept|changes, by: person|--yes, at, changes}."""
+        return next((a for a in reversed(self.log.data.get("approvals", [])) if a["point"] == point), None)
+
+    def _approve(self, point: str, waiting: str, by_default: bool) -> str:
+        """Who approved `point`. A person's `factory approve`, or --yes (`by_default`), or the run waits."""
+        latest = self._approval(point)
+        if latest and latest["decision"] == "accept":
+            return latest["by"]
+        if by_default:
+            self.log.update(approvals=[*self.log.data.get("approvals", []), {
+                "point": point, "decision": "accept", "by": "--yes", "at": time.strftime("%Y-%m-%dT%H:%M:%S")}])
+            return "--yes"
+        raise Awaiting(f"Waiting for approval: {waiting}\nTo approve, run: {self.approve_command()}", point)
+
+    def _checkpoint(self, s: StepDef) -> None:
+        """A person approves the step's result before the run uses it, or asks for changes."""
+        draft = schemas.render(s.output, self.artifacts[s.id])
+        where = f" It is saved in {fill(s.save, self._values(None))}." if s.save else ""
+        waiting = (f"the result of {s.id} needs a person's review.{where}\n\n{draft}\n\n"
+                   f"To ask for changes instead, run: {self.approve_command()} --changes \"<what to change>\"")
+        by = self._approve(s.id, waiting, by_default=not self.wait_at_checkpoints)
+        self.say(f"  {s.id}: approved by {by}")
+
+    def _changes_asked(self, s: StepDef) -> str:
+        """The changes a person asked for in the step's last draft, as feedback for the next one."""
+        latest = self._approval(s.id) if s.checkpoint else None
+        if not latest or latest["decision"] != "changes" or s.id not in self.artifacts:
+            return ""
+        return (f"A person reviewed your previous draft and asked for these changes:\n{latest['changes']}\n\n"
+                f"Your previous draft:\n{schemas.render(s.output, self.artifacts[s.id])}")
+
     def _pull_request(self) -> None:
         """Push the committed branch to origin and open a pull request (P10 slice 2).
 
         Nothing is pushed before approval. Without --yes, the run stops with `awaiting: approval`, and a
-        person approves it by running the resume command again. The record keeps who approved.
+        person approves it with `factory approve`. The record keeps who approved.
         """
         assert self.worktree is not None
         if done := self.log.data.get("pull_request"):
@@ -436,12 +491,9 @@ class Engine:
         self.say(f"Pushed {wt.branch} to origin. Pull request: {url}")
 
     def _approver(self, branch: str, remote: str) -> str:
-        """Who approves the push. Only `--yes` approves it: a run with no `--yes` stops with
-        `awaiting: approval` and pushes nothing. Commands never prompt (PRD FR-25)."""
-        if self.approved:
-            return "--yes"
-        raise Awaiting(f"Waiting for approval: {branch} is committed but not pushed to {remote}. To approve, run: "
-                       f"{self.resume_command()} --yes")
+        """Who approves the push: a person with `factory approve`, or --yes. Without one, the run stops
+        with `awaiting: approval` and pushes nothing. Commands never prompt (PRD FR-25)."""
+        return self._approve("push", f"{branch} is committed but not pushed to {remote}.", by_default=self.approved)
 
     def _pr_body(self, approver: str) -> str:
         """The acceptance criteria, the gates that checked each step, the usage and who approved the push."""
@@ -511,7 +563,7 @@ class Engine:
             if (s.id, item.key) in self._done and self._stored(s, item):
                 self.say(f"  {s.id}{f' [{item.key}]' if item.key else ''}: accepted in an earlier attempt, kept")
                 return
-            fb = feedback.get(item.key) or feedback.get(None, "")
+            fb = feedback.get(item.key) or feedback.get(None, "") or self._changes_asked(s)
             try:
                 out = self.attempt(s, item, fb)
             except RoundFailed as e:
@@ -529,6 +581,8 @@ class Engine:
             raise RoundFailed(failures)
         if s.save:
             self._save(s)
+        if s.checkpoint:
+            self._checkpoint(s)
 
     def attempt(self, s: StepDef, item: Item, feedback: str) -> Json:
         """Run one item of a step, retrying it with feedback. Raises RoundFailed or Stop."""
@@ -552,7 +606,7 @@ class Engine:
             self.tasks.set(s.id, item.key, "running")
             try:
                 reply = self._send(s.id, item.key, s.role, self._request(s, item, cwd, feedback),
-                                   self._on_input(s), via=self.send_fallback if switch else None)
+                                   None, via=self.send_fallback if switch else None)
                 out = reply.get("output", {})
                 # Checked before the reply is read, so a bad reply cannot hide a change.
                 if in_tree:
@@ -633,7 +687,7 @@ class Engine:
             "output": s.output, "schema_ctx": self._schema_ctx(s),
             "commands": self._commands(item),
             "cwd": str(cwd), "feedback": feedback,
-            "interactive": self.interactive, "checkpoint": self.interactive and s.checkpoint,
+            "interactive": False, "checkpoint": False,  # commands never prompt: a checkpoint waits instead
         }
 
     def _commands(self, item: Item | None) -> dict[str, str]:
@@ -674,27 +728,6 @@ class Engine:
         if s.output == "api_contract" and {"web", "api"} <= set(self.plan.surfaces):
             return {"api_prefix": API_PREFIX}  # the web dev server proxies /api to the backend
         return {}
-
-    def _on_input(self, s: StepDef) -> Callable[[Json], Json] | None:
-        if not self.interactive or s.parallel:
-            return None
-        turns = 0
-
-        def answer(data: Json) -> Json:
-            nonlocal turns
-            turns += 1
-            if turns > MAX_CONVERSATION:
-                raise Stop(f"no agreement on {s.id} after {MAX_CONVERSATION} rounds of questions and review")
-            if data.get("kind") == "questions":
-                self.say("\nThe agent has questions (press Enter to let it decide):")
-                return {"answers": [self.ask(f"  {q}\n  > ").strip() or "You decide." for q in data["questions"]]}
-            self.say(f"\n{data.get('rendered', '')}\n")
-            reply = self.ask("Accept? Press Enter to accept, or type the changes you want: ").strip()
-            if reply.lower() in ("", "y", "yes"):
-                return {"accept": True}
-            return {"accept": False, "changes": reply}
-
-        return answer
 
     # --- checks
 

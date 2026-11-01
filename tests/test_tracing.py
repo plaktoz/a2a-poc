@@ -113,6 +113,11 @@ class FakeFleet:
     def send(self, role, request, on_input=None):
         return {"output": self.reply}
 
+    send_fallback = send
+
+    def describe(self):
+        return []
+
 
 def run_cli(monkeypatch, tmp_path, reply, argv):
     from factory import cli
@@ -132,10 +137,14 @@ def test_a_request_that_fits_no_runbook_prints_a_disclaimer_and_makes_no_workspa
     assert not (tmp_path / "apps").exists()
 
 
-def test_a_request_that_fits_a_runbook_still_gets_a_plan(monkeypatch, tmp_path, capsys):
+def test_a_request_that_fits_a_runbook_still_gets_a_plan_and_asks_nothing(monkeypatch, tmp_path, capsys):
     reply = {"runbook": "research", "name": "diet", "rationale": "a question to answer"}
-    monkeypatch.setattr("builtins.input", lambda *_: "n")  # decline the plan: the run stops there
-    code = run_cli(monkeypatch, tmp_path, reply, [])
+
+    def no_prompt(*_):
+        raise AssertionError("a command must never prompt (PRD FR-25)")
+
+    monkeypatch.setattr("builtins.input", no_prompt)
+    code = run_cli(monkeypatch, tmp_path, reply, [])  # the analyst's reply is the triage one: not a plan
     out = capsys.readouterr().out
     assert code == 1 and "There is no runbook" not in out
-    assert "Runbook: research" in out and "Not started." in out
+    assert "Runbook: research" in out and "Working in" in out  # the run started without a question

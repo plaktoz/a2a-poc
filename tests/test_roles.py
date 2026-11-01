@@ -83,5 +83,5 @@ def test_a_bad_roles_file_is_reported_by_the_command_not_at_import(tmp_path, mon
     bad.write_text("roles: {writer: {title: x}}\n")
     monkeypatch.setenv(ROLES_ENV, str(bad))
     monkeypatch.setattr("factory.roles.ROLES._roles", None)  # read the file again
-    assert main(["runbooks"]) == 2
+    assert main(["runbooks"]) == 1  # a bad file: the command failed (exit 2 is for a bad command line)
     assert "error: roles.yaml: role 'writer', description" in capsys.readouterr().err

@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "343 passed"; no LLM is called
+uv run pytest                  # prints "353 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
 ```
 
@@ -39,7 +39,7 @@ uv run factory plan web-app --trait backend=yes     # show what a run would do; 
 uv run factory run --brief "a shared shopping list for my family"
 ```
 
-The factory shows its plan and waits for your OK. Add `--yes` to skip every question.
+The factory shows its plan and starts. It never asks a question. When a run needs your review, it stops with the status `awaiting` and prints the command that answers it (`factory approve`). Add `--yes` to approve every review in advance.
 
 ## What you can ask for
 
@@ -79,26 +79,32 @@ Without `--runbook`, a triage agent reads the brief and chooses the runbook and 
 flowchart TD
     B["Brief"] --> T["triage agent<br/>picks the runbook and traits<br/>(skipped by --runbook)"]
     T --> P["resolve the plan<br/>traits, staff, independence check"]
-    P --> A{"You approve<br/>the plan?"}
-    A -->|"no"| N["Not started (exit 1)"]
-    A -->|"yes"| F["Fleet starts one agent<br/>for each role"]
+    P --> F["Fleet starts one agent<br/>for each role"]
     F --> E["Engine runs the steps<br/>and loops"]
     E --> D["Done (exit 0)"]
     E -->|"a step or loop fails<br/>with no retry left"| S["Stopped (exit 1)"]
-    linkStyle 0,1,2,4,5,6 stroke-width:3px
+    E -->|"a checkpoint or the push<br/>needs a person"| W["Awaiting approval (exit 1)"]
+    W -->|"factory approve"| E
+    linkStyle 0,1,2,3,4 stroke-width:3px
 ```
 
-**Figure 1.** A run from brief to result. The thick line is a run that passes every check. The option `--yes` skips the approval.
+**Figure 1.** A run from brief to result. The thick line is a run that passes every check. The option `--yes` approves every review in advance, so the run never waits.
 
 1. The factory loads the settings, the runbooks and the staff.
 2. It resolves the plan and refuses a plan that breaks the checker rule (see "Roles and staffing").
-3. It asks you to approve the plan.
-4. It creates and locks the folder `apps/<name>/`.
-5. It starts one agent process for each role in the plan.
-6. It runs the steps and loops in order.
-7. It writes `run.json` and stops the agents.
+3. It creates and locks the folder `apps/<name>/`.
+4. It starts one agent process for each role in the plan.
+5. It runs the steps and loops in order.
+6. It writes `run.json` and stops the agents.
 
-At a **checkpoint** the factory shows you a result before it uses it. Press Enter to accept, or type the changes you want. The analyst can also ask you questions. Press Enter to let the agent decide. After 6 turns at one checkpoint, the run stops. A parallel step never pauses for a person.
+No command prompts. At a **checkpoint** a person must review a result before the run uses it. The run saves the draft, stops with the status `awaiting` and the detail `approval`, and prints the command that answers it. The run record has `awaiting: {point, approve}`.
+
+```bash
+uv run factory approve --name kanban                                   # accept the draft and continue the run
+uv run factory approve --name kanban --changes "add a question on cost" # send the draft back with your words
+```
+
+`factory approve` writes your decision to `approvals` in `run.json`, then resumes the run. After `--changes`, the agent writes a new draft from your words and the run waits again. `--changes` applies to a checkpoint only. The push (see "Open a pull request") takes an approval only. An agent that runs the factory can pass `--yes` to approve every checkpoint and the push in advance. Each entry in `approvals` names who approved: `person` or `--yes`. The analyst does not ask questions during a run, because nobody is there to answer.
 
 ### Where the results go
 
@@ -115,7 +121,7 @@ Each run works in `apps/<name>/`. Use `--name` to choose the name, or let the fa
 | `.factory/agents/<role>.log` | The log of one agent |
 | `.factory/lock` | Stops a second run with the same name |
 
-The status in `run.json` is `running`, `accepted`, `stopped` or `error`. After an accepted run, the same name needs `--rebuild`.
+The status in `run.json` is `running`, `awaiting`, `accepted`, `stopped` or `error`. After an accepted run, the same name needs `--rebuild`.
 
 #### The run record
 
@@ -129,6 +135,9 @@ The status in `run.json` is `running`, `accepted`, `stopped` or `error`. After a
 | `resumes` | One entry for each `--resume`, with its start time |
 | `repo`, `base`, `branch`, `tree`, `commit` | Only for `change-request` and `bug-fix`. See "Change a git repo". |
 | `pull_request` | Only after `--pr` opened one: `remote`, `branch`, `base`, `url`, `approved_by` and `approved_at`. |
+| `approvals` | One entry for each decision on a checkpoint or the push: `point`, `decision` (`accept` or `changes`), `by` (`person` or `--yes`), `at` and, for `changes`, the `changes` text. |
+| `awaiting` | Only while the status is `awaiting`: the `point` that waits and the `approve` command that answers it. |
+| `test_command`, `pr` | The `--test-command` and `--pr` of the run, so `factory approve` and `--resume` can continue it. |
 | `repos` | Only for `impact-analysis`: the folders it read. It has no branch and no commit. |
 
 #### The task list
@@ -201,9 +210,9 @@ uv run factory run --runbook change-request --repo ~/code/shop --test-command "n
 ```
 
 1. The run commits as before. Before the commit, the factory scans the changed files for secrets. A secret stops the run and nothing is committed.
-2. Without `--yes`, the run stops with the status `awaiting` and the detail `approval`. Nothing is pushed. The console prints the command that approves it. The command is the same run with `--resume ... --pr --yes`.
-3. With `--yes`, the factory runs `git push -u origin factory/<name>`, then `gh pr create`. The base is the branch that your checkout is on. A checkout on no branch is an error.
-4. The pull request body holds the acceptance criteria, the gates that checked each step, the usage totals, the run ID and who approved. The record keeps the same in `pull_request`. `approved_by` is `--yes`.
+2. Without `--yes`, the run stops with the status `awaiting` and the detail `approval`. Nothing is pushed. The console prints `factory approve --name <name>`. That command records you as the approver, then pushes and opens the pull request.
+3. After an approval or with `--yes`, the factory runs `git push -u origin factory/<name>`, then `gh pr create`. The base is the branch that your checkout is on. A checkout on no branch is an error.
+4. The pull request body holds the acceptance criteria, the gates that checked each step, the usage totals, the run ID and who approved. The record keeps the same in `pull_request`. `approved_by` is `person` or `--yes`.
 
 If the push or `gh` fails, the commit stays on the branch. The run stops and prints the `--resume` command. The resume does not run an agent or commit again. A repo with no `origin` stops the run in the same way.
 
@@ -263,6 +272,7 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `factory check [--worker NAME]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost, with Codex calls priced from the table. Exit code 0 only when every model answers. Run it before a long job. |
 | `factory runs [--json]` | Sums the runs in `apps/`: runs by status, how often a step was accepted on its first attempt, rounds per loop, and the cost of each model. It only reads `run.json` files. |
 | `factory run --brief TEXT` | Runs the factory. `--brief` is required. |
+| `factory approve --name NAME [--changes TEXT]` | Answers a run with the status `awaiting`. Records you as the approver, then resumes the run. `--changes` sends a checkpoint's draft back. |
 | `--runbook NAME` | Skips triage |
 | `--trait NAME=yes\|no` | Sets a trait. Repeat it for more traits. |
 | `--staff ROLE=WORKER[:MODEL]` | Sets who plays a role in this run |
@@ -271,11 +281,13 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `--repo PATH` | Repeatable. For `change-request` or `bug-fix`, the one git repo that changes; the work happens in a worktree. For `impact-analysis`, each repo that is read in place. |
 | `--base REF` | The commit that the new branch starts from. Default `HEAD`. |
 | `--test-command CMD` | The command that runs the repo's tests, such as `"npm test"`. Required for `change-request` and `bug-fix`. |
-| `--pr` | `change-request` and `bug-fix` only. After the commit, pushes the branch to `origin` and opens a pull request. Needs `--yes`. See "Open a pull request". |
+| `--pr` | `change-request` and `bug-fix` only. After the commit, pushes the branch to `origin` and opens a pull request. Needs an approval: `factory approve` after the run waits, or `--yes` in advance. See "Open a pull request". |
 | `--rebuild` | Redoes accepted work |
 | `--resume` | Continues the stopped run in `--name`. It keeps the items that were accepted. It sends the other items with their open sub-tasks only (see "The task list"). It refuses a run that is accepted. |
-| `--yes` | Asks nothing. The agents decide and every checkpoint is accepted. With `--pr`, it is also the approval to push. |
+| `--yes` | Approves in advance. Every checkpoint is accepted and, with `--pr`, the push is approved. The record names `--yes` as the approver. |
 | `--config`, `--agents`, `--runbooks` | Use other settings files |
+
+**Exit codes.** 0: the command succeeded. 1: the command failed, the run stopped or waits for approval, or the command was well formed but cannot be done (for example a bad config file or a missing run). 2: the command line is wrong (an unknown flag, a missing `--name`, a flag that does not fit the runbook).
 
 ## How the factory checks its agents
 
@@ -338,7 +350,7 @@ A **role** is a job in a runbook. `roles.yaml` defines each role. `agents.yaml` 
 | Role | Does | Default worker | Tools |
 |---|---|---|---|
 | `triage` | Picks the runbook, the traits and a name | `claude-agent-sdk` | none |
-| `analyst` | Turns a brief into a spec or a research plan. Asks you questions. | `claude-agent-sdk` | none |
+| `analyst` | Turns a brief into a spec or a research plan. Its draft is a checkpoint that a person reviews. | `claude-agent-sdk` | none |
 | `architect` | Designs the API contract | `claude-agent-sdk` | none |
 | `tester` | Writes the tests first. Judges a test change. | `codex-gpt` | edit, test |
 | `developer` | Builds the code that passes the tests | `codex-gpt` | edit, test, build |
@@ -399,7 +411,7 @@ Every call must report its worker, model, tokens and cost. A worker can set `opt
 
 ### roles.yaml
 
-Edit a prompt or a capability here, or add a block for a new role. No code changes. The loader checks the file. A bad file gives `error: ...` and exit code 2.
+Edit a prompt or a capability here, or add a block for a new role. No code changes. The loader checks the file. A bad file gives `error: ...` and exit code 1.
 
 | Field | Default | Effect |
 |---|---|---|
@@ -409,7 +421,7 @@ Edit a prompt or a capability here, or add a block for a new role. No code chang
 | `edit` | `false` | The role can create and change files |
 | `web` | `false` | The role can fetch web pages |
 | `runs` | none | The commands the role can run: `test`, `build`, `search`, `curl` |
-| `asks` | `false` | The role can pause to ask you questions |
+| `asks` | `false` | The role may ask questions. Commands never prompt, so a run sends no question to a person. The role states its assumptions instead. |
 
 ## Add a kind of work
 
@@ -480,10 +492,11 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_a2a_transport.py` | 5 | A task returns its result, asks for input on the same task, fails with a reason, and serves its card. |
 | `test_check.py` | 6 | `factory check` tries every enabled model, reports usage and failures, and sets the exit code. |
 | `test_config.py` | 33 | `llm.yaml` loads, rejects literal keys and unknown models, makes `per_task_usd` optional, and loads a config with one model. |
+| `test_approve.py` | 9 | A checkpoint and the push wait at `awaiting: approval`, `factory approve` answers them with a person's decision or `--changes`, `--yes` is recorded as such, and a bad command exits 2. |
 | `test_engine.py` | 24 | Gates, retries, rounds, role checks, checkpoints, triage and the workspace lock work with fake agents. |
 | `test_fallback.py` | 5 | A role's fallback takes the last attempt only, and a bad fallback fails to load. |
 | `test_bugfix.py` | 12 | `bug-fix` proves the bug with a failing test before the fix, makes one commit, and leaves the checkout unchanged. |
-| `test_pr.py` | 17 | `--pr` pushes only with `--yes`, waits at `awaiting: approval` without it, scans for secrets before the commit, puts the criteria, gates and usage in the pull request, and a resume after a failed push does not commit again. |
+| `test_pr.py` | 18 | `--pr` pushes only with `--yes`, waits at `awaiting: approval` without it, scans for secrets before the commit, puts the criteria, gates and usage in the pull request, and a resume after a failed push does not commit again. |
 | `test_impact.py` | 23 | `impact-analysis` keeps only the links whose evidence is in the cited file, reads each repo in place, reverts any change to a repo, and refuses bad `--repo` values. |
 | `test_gates_p6.py` | 35 | `secrets_clean`, `lint_clean` and `packages_exist` catch what they must, mask secrets and survive a registry outage. |
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
@@ -519,7 +532,8 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | `the bug is not reproduced: every test passes` | The tester's test passes, or the tester wrote no test. | Describe the steps to reproduce in the `--brief`, or check that `--test-command` runs the new test. |
 | `the failing output does not name your test` | The suite fails for another reason, or the command hides test names. | Fix the failing suite first, or use a test command that prints the name of each failing test. |
 | `branch factory/<name> already exists` | An earlier run used the name. | Choose another `--name`, or delete the branch. |
-| `--resume needs --name` or `nothing to resume` | `--resume` has no run to continue. | Give the `--name` of a stopped run. |
+| `--resume needs --name` or `no run to resume` | `--resume` has no run to continue. | Give the `--name` of a stopped run. |
+| `no run to approve` or `not awaiting approval` | `factory approve` has no run, or the run does not wait. | Give the `--name` of a run with the status `awaiting`. |
 | `There is no runbook for this request` | Triage answered `none`. | Rephrase the brief, or add a runbook. |
 | `error: ... roles.yaml ...` | The roles file is not valid. | Read the reason in the message and fix the file. |
 | `factory.search: unrecognized arguments` | `--sources` got a space-separated list. | Write `--sources wikipedia,openalex`. |
@@ -544,7 +558,6 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 - **A wrong test command gives a false green.** `repo_tests_pass` trusts `--test-command`. `repro_fails` needs the command to print the name of a failing test. A command that runs no tests passes. Check the command yourself.
 - **Worktrees stay.** The factory never removes a worktree or a branch. Use the command that the run prints.
 - **No merge.** `--pr` pushes the branch and opens a pull request. It never merges. The pull request needs `origin` and a logged-in `gh` (GitHub CLI), so it works with GitHub only.
-- **Approval is `--yes` only.** A run without `--yes` stops at `awaiting: approval`. A `factory approve` command is not built yet.
 - **Codex prices come from a table.** `docs/model-prices.md` is refreshed weekly. A price can lag the provider by days. A prompt over 272k tokens costs more than the lower tier the table lists. A model with no price shows an unknown cost, and the run total counts it as unknown.
 
 ## Glossary

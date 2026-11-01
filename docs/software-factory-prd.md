@@ -1,6 +1,6 @@
 # PRD: Multi-Harness, LLM-Agnostic Software Factory
 
-**Status:** Draft v0.11
+**Status:** Draft v0.12
 **Date:** 2026-10-31
 **Owner:** TBD
 **Basis:** Design reasoning from a research discussion (Oct 2026). Items marked *Assumption* or *Open question* are not yet validated.
@@ -225,7 +225,7 @@ No public benchmark compares these setups on your code. Run your own:
 5. What are the budget caps per task and per day? Deferred. Cost is logged only.
 6. **Not required for now (owner, 2026-10-31).** No pilot repository or risk tier is chosen.
 7. **Decided by the owner (2026-10-31).** The owner of the factory owns the scorecard and the routing decisions (`agents.yaml`).
-8. **Resolved in v0.4.** A checkpoint needs a person, and FR-25 says commands never prompt. A run that reaches a checkpoint stops and saves its state as `awaiting: approval`, with the command that answers it, such as `factory approve <run>`. An agent can approve a checkpoint with `--yes`, which is an explicit choice. The run must record whether a person or `--yes` approved each checkpoint. The approve command and this record are not built yet.
+8. **Resolved in v0.4.** A checkpoint needs a person, and FR-25 says commands never prompt. A run that reaches a checkpoint stops and saves its state as `awaiting: approval`, with the command that answers it, such as `factory approve <run>`. An agent can approve a checkpoint with `--yes`, which is an explicit choice. The run must record whether a person or `--yes` approved each checkpoint. Built in v0.12: `factory approve --name <run>` and the `approvals` field of `run.json`.
 9. **Decided by the owner (2026-10-31), not built.** Triage can answer "none" with a reason, and the run stops before any work. The user sees a disclaimer that there is no runbook for the request. Before this, triage had to choose a runbook, and a choice outside the catalog was rejected. A catch-all runbook would hide the gap.
 
 ## 16. Assumptions
@@ -243,6 +243,7 @@ No public benchmark compares these setups on your code. Run your own:
 | v0.2 | 2026-10-31 | Non-code workflows, the runbook format, triage and the command-line worker adapters moved into v1 scope (section 6). Non-goals in section 4 updated to match. Phase 6 narrowed to what is still undecided. Status and implementation gaps are tracked in `docs/code-review.md`, not here. |
 | v0.3 | 2026-10-31 | Added goal G6, the scope item and section 8.7 (FR-20 to FR-29): the command line follows the 10 AXI principles. Added open question 8. |
 | v0.4 | 2026-10-31 | Resolved open question 8: a run waits at a checkpoint with `awaiting: approval`, and `--yes` is the explicit approval for an agent. |
+| v0.12 | 2026-11-01 | FR-25 built, except structured errors on stdout: no command prompts, `factory approve`, the approver record and exit codes 0, 1 and 2. |
 | v0.11 | 2026-10-31 | FR-30 built: the price table is `docs/model-prices.md`, from llm-prices.com, refreshed weekly by a skill. Aliases set by the owner. |
 | v0.10 | 2026-10-31 | Added FR-30: a price table gives the cost of calls whose provider reports no cost (Codex). Owner request. |
 | v0.9 | 2026-10-31 | Question 3 changed: no Windows support for now (NFR cross-platform, P18 deferred). Question 1: the plugin is a module path named in `llm.yaml` (P19). |
