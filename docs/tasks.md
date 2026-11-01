@@ -322,4 +322,17 @@ Goal: the first live HCC run stopped after 2 develop rounds, and the code sits i
 - Files: `cli.py` (`--at-root`, `_run_dir`), `engine.py` (`open_workspace(at_root=)`), `templates/fastify/src/server.ts` (`HOST`), `templates/bullmq-worker/src/{worker,settings}.ts`, the two template `.yaml` files, `tests/test_into.py`, `tests/test_templates.py`, `README.md`.
 - [x] `--into REPO --at-root`: the workspace is the repo itself; `approve` and `--resume` find the run there; a surface folder that already exists is refused.
 - [x] `server.ts` reads `HOST` (default `0.0.0.0`); the worker takes concurrency and queue from `settings.ts`, which the developer may change.
-- [ ] Next: move the HCC run from `review-requirements/hcc/` to the repo root and resume it (`--resume --at-root`). Only `app` and `worker` develop again, then verify.
+- [x] Next: move the HCC run from `review-requirements/hcc/` to the repo root and resume it (`--resume --at-root`). Done: the build was accepted (27 calls, $9.55). Then the containers were added in the HCC repo (see the next section).
+
+### Container stack and seed for HCC
+
+Goal: the HCC app runs as a Podman Compose stack (web, app, worker, db, queue), loads the 11 seed files on first start, and keeps its data across `down` and `up`. The factory's own templates had two gaps that the live stack showed.
+
+- Status: committed. The HCC repo has the stack and the wired app (commits `54eaf6b`, `896df0e`); this factory change adds the template fixes (`d621a21`). The stack was checked live: all services healthy, the seed processed (11 sources, 84 insights), data unchanged after `down` and `up`.
+- Decided by the owner (2026-11-01): "approval is given. you can plan and implement without asking me".
+- Found while running it: BullMQ 6 needs `ioredis` installed (the worker crashed without it), and `tsx`, the start command, was a dev dependency, so `npm ci --omit=dev` removed it. Both templates now keep `tsx` as a runtime dependency; the worker template adds `ioredis`.
+- [x] Templates: `tsx` is a runtime dependency in `fastify` and `bullmq-worker`; `bullmq-worker` has `ioredis`. Test added (`test_the_start_command_runs_on_the_production_install`). Suite passes (454).
+- [x] Committed as `20e26e9` on its own. Not pushed.
+- Open in the HCC repo, not in this task: a burst of raw files (946 for 11 sources) appeared in one early run and did not come back on a clean start. The cause is not confirmed; a seed id is now derived from the file name, so a repeat seed overwrites instead of adding.
+- Open: a Claude key was once in this shell's environment and was echoed by `podman compose config`. Rotate it.
+

@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "453 passed"; no LLM is called
+uv run pytest                  # prints "454 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and app-build
 ```
 
@@ -558,7 +558,7 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_tasks.py` | 13 | The task list is written at the start, a stop mid-item keeps the done sub-tasks, a resume sends only the open ones, a reverted attempt marks none, and every stop prints the `--resume` command. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
 | `test_into.py` | 14 | `--into` builds in a git repo that is on a branch, refuses a default branch without `--allow-main` and a detached HEAD, finds the run again on resume, and keeps `.factory/` out of the repo's changes. `--at-root` builds in the top folder, finds its run on resume and approve, and refuses a surface folder that already exists. |
-| `test_templates.py` | 15 | Each shipped template has the files its metadata names and no starter test, the Node templates are locked and type-checked, and the `node` serve check works with the processes replaced. The API listens on `HOST` (default `0.0.0.0`), and the worker reads its settings from `src/settings.ts`, which the developer may change. |
+| `test_templates.py` | 16 | Each shipped template has the files its metadata names and no starter test, the Node templates are locked and type-checked, and the `node` serve check works with the processes replaced. The API listens on `HOST` (default `0.0.0.0`), and the worker reads its settings from `src/settings.ts`, which the developer may change. Both Node templates keep `tsx` (the start command) and the worker keeps `ioredis` (BullMQ's Redis client) as runtime dependencies, so a production install runs. |
 | `test_inputs.py` | 40 | Runbook inputs and the human gate: types, defaults, `--input`, `--interface`, surfaces, triage inputs, and a check that no shipped runbook holds a stack name, a fixed count or an interface detail. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
 | `test_runbooks.py` | 37 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. With only Claude enabled, every runbook plans and warns. |

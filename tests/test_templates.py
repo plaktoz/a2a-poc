@@ -65,6 +65,17 @@ def test_the_worker_keeps_redis_out_of_the_handlers():
     assert "src/worker.ts" in tpl.protected
 
 
+def test_the_start_command_runs_on_the_production_install():
+    """A container installs with `npm ci --omit=dev`, so tsx (the start command) and every client the code imports must be
+    runtime dependencies. bullmq 6 loads ioredis only when it is installed, so the worker names it itself."""
+    for name in ("fastify", "bullmq-worker"):
+        pkg = json.loads((read_template(name).path / "package.json").read_text())
+        assert "tsx" in pkg["dependencies"], f"{name}: tsx must be a runtime dependency"
+        assert "tsx" not in pkg.get("devDependencies", {}), f"{name}: tsx is still a dev dependency"
+    worker = json.loads((read_template("bullmq-worker").path / "package.json").read_text())
+    assert "ioredis" in worker["dependencies"]
+
+
 def test_the_api_listens_on_all_interfaces_unless_told_otherwise():
     """A container reaches the API only if it listens on 0.0.0.0. server.ts is fixed, so a developer cannot change it."""
     tpl = read_template("fastify")
