@@ -18,7 +18,7 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "384 passed"; no LLM is called
+uv run pytest                  # prints "419 passed"; no LLM is called
 uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
 ```
 
@@ -45,13 +45,13 @@ The factory shows its plan and starts. It never asks a question. When a run need
 
 | Runbook | Use it to | Steps | You get |
 |---|---|---|---|
-| `web-app` | Build a frontend, a backend or both. Traits: `frontend` (default yes), `backend` (default no). | spec, API contract (full stack only), tests for each surface, then a build loop | `SPEC.json`, `API.json`, `web/`, `api/` |
-| `research` | Answer a question from public sources. Trait: `review` (default yes). | plan, investigate each sub-question in parallel, then a write loop | `PLAN.json`, `REPORT.md` |
-| `code-audit` | Review code without changing it. Needs `--target`. | audit through 4 lenses in parallel (security, correctness, maintainability, tests), then a write loop | `AUDIT.md` |
+| `web-app` | Build a frontend, a backend or both. Traits: `frontend` (default yes), `backend` (default no). Inputs: the two stack templates, the size of the spec, edge cases, extra rules. Interface details come with `--interface FILE`. | spec (a person confirms it while it has open questions), API contract (full stack only), tests for each surface, then a build loop | `SPEC.json`, `API.json`, `web/`, `api/` |
+| `research` | Answer a question from public sources. Trait: `review` (default yes). Inputs: `sub_questions`, `findings_per_question`, `min_sources`, `write_rounds`. | plan, investigate each sub-question in parallel, then a write loop | `PLAN.json`, `REPORT.md` |
+| `code-audit` | Review code without changing it. Needs `--target`. Inputs: `lenses`, `lens_guidance`, `max_findings`, `ignore_paths`. | audit through the lenses in parallel (default: security, correctness, maintainability, tests), then a write loop | `AUDIT.md` |
 | `api-design` | Turn a brief into a spec and an HTTP API contract. | spec, then a contract loop | `SPEC.json`, `API.json` |
 | `bug-fix` | Fix a bug, an error, a crash or a regression in an existing git repo. Needs `--repo` and `--test-command`. | spec (the bug report; you approve it), a tester writes one test that fails because of the bug and the factory runs your tests to prove it fails, then a fix loop: a developer fixes the cause, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
 | `change-request` | Add a feature to, or deliberately change, code in an existing git repo. Not for bugs: use `bug-fix`. Needs `--repo` and `--test-command`. | spec (you approve it), then a build loop: a developer changes the code in a worktree, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
-| `impact-analysis` | Find which services a new feature or a change would affect, across one or more repos (for example the services of a microservice system). Needs one `--repo` for each repo. Changes nothing. | one auditor per repo reads it in place and lists its links to other services, each checked against the cited line; then a writer works out the impact and a reviewer checks it | `IMPACT.md` |
+| `impact-analysis` | Find which services a new feature or a change would affect, across one or more repos (for example the services of a microservice system). Needs one `--repo` for each repo. Input: `ignore_paths`. Changes nothing. | one auditor per repo reads it in place and lists its links to other services, each checked against the cited line; then a writer works out the impact and a reviewer checks it | `IMPACT.md` |
 
 Examples:
 
@@ -104,7 +104,7 @@ uv run factory approve --name kanban                                   # accept 
 uv run factory approve --name kanban --changes "add a question on cost" # send the draft back with your words
 ```
 
-`factory approve` writes your decision to `approvals` in `run.json`, then resumes the run. After `--changes`, the agent writes a new draft from your words and the run waits again. `--changes` applies to a checkpoint only. The push (see "Open a pull request") takes an approval only. An agent that runs the factory can pass `--yes` to approve every checkpoint and the push in advance. Each entry in `approvals` names who approved: `person` or `--yes`. The analyst does not ask questions during a run, because nobody is there to answer.
+`factory approve` writes your decision to `approvals` in `run.json`, then resumes the run. After `--changes`, the agent writes a new draft from your words and the run waits again. `--changes` applies to a checkpoint only. The push (see "Open a pull request") takes an approval only. An agent that runs the factory can pass `--yes` to approve every checkpoint and the push in advance. Each entry in `approvals` names who approved: `person` or `--yes`. The analyst does not ask a question mid-step, because nobody is there to answer. A runbook step with `confirm_input` is the exception: see "Runbook inputs".
 
 ### Where the results go
 
@@ -275,6 +275,8 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `factory check [--worker NAME] [--fields seconds,tokens,cost_usd]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost, with Codex calls priced from the table. Exit code 0 only when every model answers. Run it before a long job. |
 | `factory runs [--json]` | Sums the runs in `apps/`, totals first: runs by status, how often a step was accepted on its first attempt, rounds per loop, and the cost of each model. It only reads `run.json` files. |
 | `factory run --brief TEXT` | Runs the factory. `--brief` is required. |
+| `--input NAME=VALUE` | `plan` and `run`. Sets an input of the runbook. Repeat it for more. A list input takes comma-separated values. A runbook with no value for an input uses its default, or refuses to start when the input is required. See "Runbook inputs". |
+| `--interface FILE` | `run`. A file of interface details (API paths and prefix, ports, auth, data formats). The agents read it as context. No runbook holds these. The run record keeps it, so `--resume` and `approve` use the same file. |
 | `factory approve --name NAME [--changes TEXT]` | Answers a run with the status `awaiting`. Records you as the approver, then resumes the run. `--changes` sends a checkpoint's draft back. |
 | `--runbook NAME` | Skips triage |
 | `--trait NAME=yes\|no` | Sets a trait. Repeat it for more traits. |
@@ -456,24 +458,39 @@ A runbook is a YAML file in `runbooks/`. To add a kind of work, add a file. The 
 | `role` | required | The role that does the step |
 | `instructions` | required | The task, with `{{ brief }}`, `{{ item.* }}`, `{{ surfaces }}`, `{{ test_files }}` and similar variables |
 | `when` | always | A trait condition such as `frontend and backend` |
-| `for_each` | none | `surfaces`, a list, or `<step>.<field>` |
+| `for_each` | none | `surfaces`, `inputs.<list>`, a list, or `<step>.<field>` |
 | `parallel` | `false` | Runs the items together, at most 6 at a time |
 | `reads` | none | The earlier results that the agent gets as context |
 | `output` | none | The schema that the reply must match. A wrong reply goes back to the agent. |
 | `gates` | none | The checks that the engine runs |
 | `checkpoint` | `false` | You review the result |
+| `confirm_input` | `false` | The step's result has a `questions` list. While it is not empty, the run stops at the point `<step>:input` until a person answers. `--yes` does not skip it. |
 | `save` | none | The file that receives the result |
 | `retries` | `1` | The extra attempts after a failure |
 | `cwd` | `surface` or `workspace` | The folder where the agent works. `target` is also allowed. |
 | `writes` | `none` | `none`, `tests` or `source` |
 
-A `loop` has `rounds` (default `budget`) and its own `gates`. `scaffolds` places a template in a surface folder when its trait condition holds.
+A `loop` has `rounds` (default `budget`, or `inputs.<number>`) and its own `gates`. `scaffolds` places a template in a surface folder when its trait condition holds.
 
 Try a runbook before you run it: `uv run factory plan <runbook> --trait ...`. Check the models first with `uv run factory check`.
 
+### Runbook inputs
+
+A runbook holds no value that belongs to one job. A value that varies is an **input**: the runbook declares it under `inputs:` with a `description`, a `type` (`text`, `number` or `list`) and either a `default` or `required: true`. Steps use it as `{{ inputs.name }}`, `for_each: inputs.name` (a list) or `rounds: inputs.name` (a number). The person gives it with `--input name=value`. `factory plan RUNBOOK` shows the values the run would use.
+
+```bash
+uv run factory run --runbook code-audit --target ./svc --brief "audit" \
+  --input lenses=security,performance --input max_findings=20 --input ignore_paths=vendor,dist
+uv run factory run --runbook web-app --trait backend=yes --brief "..." --interface api-notes.md
+```
+
+Interface details (paths, prefix, ports, auth, schemas) are not inputs and not in a runbook. They come in a file with `--interface`, and the steps that list `interface` under `reads` get it as context. The conventions of a stack (layout, proxy, how to start it) live in its template: `summary`, `start` and `api_prefix`, besides `stack`.
+
+**The human gate.** A step with `confirm_input: true` (the spec step of `web-app`) returns `questions`: what the agent needs and neither the brief nor the interface file gives. If the list is empty the run goes on to the step's ordinary checkpoint. If not, the run saves the draft and stops at `<step>:input` with the status `awaiting`. A person answers with `factory approve --name NAME --changes "the answers"` (the agent redrafts the spec) or `factory approve --name NAME` (the spec already has what the build needs). `--yes` approves checkpoints in advance but never this gate.
+
 ### Templates
 
-A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library) and `fastapi` (FastAPI, pytest, uv). In a full-stack app, the web dev server proxies `/api` to the backend.
+A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library) and `fastapi` (FastAPI, pytest, uv). In a full-stack app, the web dev server proxies the backend's `api_prefix` (`/api/` for `react-vite`) to the backend. A web-app run picks its templates with the inputs `frontend_template` and `backend_template`.
 
 ### Web search
 

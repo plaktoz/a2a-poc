@@ -1,68 +1,99 @@
 # Build a web app: a browser frontend, an HTTP API backend, or both.
 #
+# Nothing about the app or its stack is fixed here. The values come from the user:
+#   --brief       what the app is for
+#   --input       the runbook's inputs below (stack templates, size of the spec, rules for the spec)
+#   --interface   a file with interface details: API paths and prefix, ports, auth, schemas, data
+#                 formats. The agents read it as context; no runbook holds it.
+# The conventions of a stack (file layout, test tools, how to start it) live in its template under
+# templates/, so another stack is another template and no change to this file.
+#
 # Traits pick the shape: frontend only (the default), backend only, or full stack, where an
 # API designer agrees the contract between them before either is built. Each surface is its own
 # scaffold directory with its own tests, so the tester, developer and verifier work per surface,
 # in parallel.
+#
+# A person confirms the spec before anything is built. If the spec still has open questions, the
+# run stops until a person answers them or confirms that the spec has the input the build needs.
 name: web-app
 title: Build a web app
 description: >
-  Specifies, tests, builds and verifies a web app from a brief: a React frontend, a FastAPI
-  backend, or both connected by an agreed API contract.
+  Specifies, tests, builds and verifies a web app from a brief: a browser frontend, an HTTP API
+  backend, or both connected by an agreed API contract. The stack templates and the rules for the
+  spec are inputs, and the interface details are supplied separately.
 use_when: >
   The request asks for software to be built: a web page or app, a UI, a service or an API.
 traits:
   frontend: {description: "has a user interface in the browser", default: true}
   backend: {description: "has a server with an HTTP API (data shared between users or devices, or a service for other programs)", default: false}
 
+inputs:
+  frontend_template:
+    description: "the template in templates/ for the frontend surface"
+    default: react-vite
+  backend_template:
+    description: "the template in templates/ for the backend surface"
+    default: fastapi
+  criteria_count:
+    description: "how many acceptance criteria the spec should have, as a range"
+    default: "6 to 14"
+  edge_cases:
+    description: "edge cases the spec must cover"
+    default: "empty input, duplicates, not-found and persistence"
+  spec_rules:
+    description: "extra rules the spec and the build must follow"
+    default: "Drag and drop must not be the only way to do something."
+
 scaffolds:
   web:
-    template: react-vite
+    template: "{{ inputs.frontend_template }}"
     when: frontend
     notes:
-      backend: |
-        - The backend in ../api serves the API in ../API.json. Call it with fetch and relative
-          URLs such as fetch('/api/items'); the Vite dev server proxies /api to it.
-        - Tests must not need a server: mock fetch with vi.spyOn(globalThis, 'fetch') returning
-          responses that follow the contract, and wait for the UI with findBy queries.
       not backend: |
         - There is no backend. Keep state in the browser (localStorage) when it must persist.
   api:
-    template: fastapi
+    template: "{{ inputs.backend_template }}"
     when: backend
 
 steps:
   - id: spec
     role: analyst
+    reads: [interface]
     instructions: |
       Turn the user's brief into a spec for the app.
 
       The brief:
       {{ brief }}
 
-      The app has these surfaces (scaffold directories): {{ surfaces }}. "web" is the React UI,
-      tested with React Testing Library in jsdom; "api" is the HTTP API, tested with pytest.
+      The app has these surfaces (scaffold directories):
+      {{ surface_summaries }}
       Give every acceptance criterion the surface whose tests will check it, and give every
-      surface at least one criterion. A criterion is one behaviour a user (web) or a caller
-      (api) can observe. Drag and drop must not be the only way to do something.
-      Ids are AC1, AC2, ... in order. Cover the whole brief, usually 6 to 14 criteria, with edge
-      cases such as empty input, duplicates, not-found and persistence.
+      surface at least one criterion. A criterion is one behaviour a user (a UI surface) or a
+      caller (an API surface) can observe. {{ inputs.spec_rules }}
+      Ids are AC1, AC2, ... in order. Cover the whole brief, usually {{ inputs.criteria_count }}
+      criteria, with edge cases such as {{ inputs.edge_cases }}.
       If this directory already has a SPEC.json, the brief extends that app: keep each existing
       behaviour as a criterion of its own, because the app is rebuilt from this spec alone.
+
+      Do not guess. Put each thing that you need and that neither the brief nor the interface
+      details give you (a value, a rule, a name, a limit) in `questions`, one question for each.
+      A person answers them before anything is built. Leave `questions` empty only when the
+      brief and the interface details are enough to build from. If interface details are given,
+      follow them exactly.
     output: spec
+    confirm_input: true
     checkpoint: true
     save: SPEC.json
 
   - id: contract
     role: architect
     when: frontend and backend
-    reads: [spec]
+    reads: [spec, interface]
     instructions: |
-      Design the HTTP API between the web frontend and the api backend: every endpoint the UI
-      needs for the web criteria, and every endpoint the api criteria name. The frontend and
-      the backend are built separately from this contract, so be exact about paths, bodies,
-      field names and status codes. Every path starts with /api/, because the web dev server
-      proxies /api to the backend.
+      Design the HTTP API between the frontend and the backend: every endpoint the UI needs for
+      its criteria, and every endpoint the backend criteria name. The frontend and the backend
+      are built separately from this contract, so be exact about paths, bodies, field names and
+      status codes. Where interface details are given, they win over your own choices.
     output: api_contract
     checkpoint: true
     save: API.json
@@ -71,14 +102,15 @@ steps:
     role: tester
     for_each: surfaces
     parallel: true
-    reads: [spec, contract]
+    reads: [spec, contract, interface]
     writes: tests
     instructions: |
       Write the acceptance tests for the {{ item.surface }} surface, before it is built, in
       files matching {{ test_files }}. Write at least one test for every acceptance criterion
       whose surface is {{ item.surface }}, and no tests for other surfaces. The code does not
       exist yet, so choose plain, conventional names (accessible names, routes, fields) and
-      follow the API contract exactly when there is one. The developer builds to your tests.
+      follow the API contract and the interface details exactly when there are any. The
+      developer builds to your tests.
       Run `{{ test_command }}` once to check the tests load, then stop.
     gates: [secrets_clean, tests_named, tests_red]
 
@@ -89,22 +121,19 @@ steps:
         role: developer
         for_each: surfaces
         parallel: true
-        reads: [spec, contract]
+        reads: [spec, contract, interface]
         writes: source
         instructions: |
           Build the {{ item.surface }} surface so that every test passes. Read the tests first
           ({{ test_files }}), and implement every acceptance criterion whose surface is
-          {{ item.surface }}, following the API contract exactly when there is one.
+          {{ item.surface }}, following the API contract and the interface details exactly
+          when there are any. {{ inputs.spec_rules }}
           Create or edit only files matching {{ source_files }}.
           You may change a test only if it is wrong (a query that matches two elements, an
           expectation that contradicts the spec); never weaken, remove or skip a check. Say
           which test you changed and why in test_change, or leave it empty. The tester reviews
           every such change.
-          For a UI: App.jsx only composes; one component per file under src/components/, state
-          in a custom hook under src/hooks/; semantic, labelled, keyboard-friendly controls; a
-          polished look with all styles in src/App.css using CSS custom properties.
-          For an API: routers under app/routers/, pydantic models in app/models.py, state in a
-          store object created by create_app().
+          Follow the conventions of the stack, which you have in the stack notes.
           Check your work with {{ check_commands }}.
         output: dev_result
         gates: [secrets_clean, packages_exist, lint_clean, tests_green, serves]
@@ -123,12 +152,6 @@ steps:
         gates: [counts_match, criteria_covered]
 
 finish:
-  - when: frontend and not backend
-    text: "Run it: cd {{ workspace }}/web && npm run dev"
-  - when: backend and not frontend
-    text: "Run it: cd {{ workspace }}/api && .venv/bin/uvicorn app.main:create_app --factory --reload  (docs at /docs)"
-  - when: frontend and backend
-    text: |
-      Run it, in two terminals:
-        cd {{ workspace }}/api && .venv/bin/uvicorn app.main:create_app --factory --port 8000
-        cd {{ workspace }}/web && npm run dev
+  - text: |
+      Run it, one command for each surface (use a terminal for each):
+      {{ start_commands }}

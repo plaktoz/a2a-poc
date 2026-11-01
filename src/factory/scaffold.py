@@ -48,6 +48,9 @@ class Template:
     test_files: tuple[str, ...]
     source_files: tuple[str, ...]
     protected: tuple[str, ...]
+    summary: str = ""  # one line for the spec writer: what the surface is and how it is tested
+    api_prefix: str = ""  # the path prefix its dev server proxies to a backend; every API path starts with it
+    start: str = ""  # the command that runs the surface, for the "Run it" lines at the end of a run
 
 
 def read_template(name: str, templates_dir: Path = TEMPLATES_DIR) -> Template:
@@ -61,6 +64,8 @@ def read_template(name: str, templates_dir: Path = TEMPLATES_DIR) -> Template:
             suite=m["suite"], serve=m.get("serve"), commands=dict(m.get("commands", {})),
             test_files=tuple(m["test_files"]), source_files=tuple(m["source_files"]),
             protected=tuple(m.get("protected", [])),
+            summary=str(m.get("summary", "")).strip(), api_prefix=str(m.get("api_prefix", "")).strip(),
+            start=str(m.get("start", "")).strip(),
         )
     except KeyError as e:
         raise ConfigError(f"template {name!r}: {meta_file.name} has no {e.args[0]!r}") from None

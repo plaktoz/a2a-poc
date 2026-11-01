@@ -38,11 +38,10 @@ from . import repo
 from .tasks import TaskList, has_subtasks
 from .paths import ROOT
 from .roles import ROLES
-from .runbook import LoopDef, Plan, Runbook, StepDef, describe_catalog, fill, holds
+from .runbook import INTERFACE, LoopDef, Plan, Runbook, StepDef, describe_catalog, fill, holds
 from .scaffold import IGNORED, Template, matches, place, reset
 
 Send = Callable[[str, Json, Callable[[Json], Json] | None], Json]
-API_PREFIX = "/api/"
 
 
 class Stop(Exception):
@@ -258,8 +257,10 @@ class Engine:
                  earlier_usage: list[Json] | None = None, run_id: str | None = None,
                  resume: bool = False, send_fallback: Send | None = None,
                  worktree: repo.Worktree | None = None, test_command: str | None = None,
-                 repos: list[Path] | None = None, pr: bool = False, approved: bool = False) -> None:
+                 repos: list[Path] | None = None, pr: bool = False, approved: bool = False,
+                 interface: str = "") -> None:
         self.plan, self.cfg, self.ws, self.send = plan, cfg, workspace, send
+        self.interface = interface  # interface details the user supplied (--interface); never from a runbook
         self.send_fallback = send_fallback
         self.run_id = run_id or new_run_id()
         self.brief, self.name, self.target = brief, name, target
@@ -293,6 +294,8 @@ class Engine:
             self.log.data["repos"] = [str(r) for r in self.repos]  # the folders read in place (impact-analysis)
         if resume:
             self._resume()
+        if plan.inputs or interface:  # after _resume, which reads the old record: `--resume` and approve read these
+            self.log.update(inputs=plan.inputs, interface=interface)
         if resume:
             self.tasks.load(self._done)  # first: `plan` writes the file, and keeps the entries it has
         self.tasks.plan(plan)
@@ -318,6 +321,8 @@ class Engine:
         # A person asked for changes at a checkpoint: that step runs again, with the changes as feedback.
         decisions = {a["point"]: a["decision"] for a in previous.get("approvals", [])}
         self._done -= {(s.id, None) for s in self.plan.steps() if s.checkpoint and decisions.get(s.id) == "changes"}
+        self._done -= {(s.id, None) for s in self.plan.steps()
+                       if s.confirm_input and decisions.get(f"{s.id}:input") == "changes"}
         writes = {s.id: s.writes for s in self.plan.steps()}
         # Code that an accepted step wrote must stay: the scaffolds are reset only if none was accepted.
         self._scaffolds_reset = any(writes.get(step, "none") != "none" for step, _ in self._done)
@@ -451,9 +456,27 @@ class Engine:
         by = self._approve(s.id, waiting, by_default=not self.wait_at_checkpoints)
         self.say(f"  {s.id}: approved by {by}")
 
+    def _confirm_input(self, s: StepDef) -> None:
+        """Open questions are left in the step's result: a person confirms the spec holds the input the build
+        needs, or asks for changes. --yes does not answer this one (a person must), and nothing waits when the
+        result has no open question."""
+        questions = [str(q) for q in (self.artifacts[s.id] or {}).get("questions") or []]
+        if not questions:
+            return
+        listed = "\n".join(f"- {q}" for q in questions)
+        waiting = (f"the result of {s.id} still has open questions, so a person must confirm that it holds the "
+                   f"input the build needs.\n\nOpen questions:\n{listed}\n\n"
+                   f"To answer them, run: {self.approve_command()} --changes \"<the answers>\"\n"
+                   "To confirm that the result already has what the build needs, approve it.")
+        by = self._approve(f"{s.id}:input", waiting, by_default=False)
+        self.say(f"  {s.id}: input confirmed by {by}")
+
     def _changes_asked(self, s: StepDef) -> str:
         """The changes a person asked for in the step's last draft, as feedback for the next one."""
         latest = self._approval(s.id) if s.checkpoint else None
+        asked = self._approval(f"{s.id}:input") if s.confirm_input else None
+        if asked and asked["decision"] == "changes" and (not latest or asked["at"] >= latest["at"]):
+            latest = asked
         if not latest or latest["decision"] != "changes" or s.id not in self.artifacts:
             return ""
         return (f"A person reviewed your previous draft and asked for these changes:\n{latest['changes']}\n\n"
@@ -581,6 +604,8 @@ class Engine:
             raise RoundFailed(failures)
         if s.save:
             self._save(s)
+        if s.confirm_input:  # first: answers to the open questions change the draft, which is then reviewed
+            self._confirm_input(s)
         if s.checkpoint:
             self._checkpoint(s)
 
@@ -701,11 +726,14 @@ class Engine:
         tpl = self.plan.templates.get(item.surface) if item and item.surface else None
         commands = self._commands(item)
         return {
-            "brief": self.brief, "name": self.name, "workspace": str(self.ws),
+            "brief": self.brief, "name": self.name, "workspace": str(self.ws), "inputs": self.plan.inputs,
             "target": str(self.target) if self.target else "",
             "traits": self.plan.traits, "surfaces": self.plan.surfaces,
             "repos": [r.name for r in self.repos],
             "item": item.data if item else {},
+            "surface_summaries": "\n".join(f"- {d}: {t.summary or t.surface}" for d, t in self.plan.templates.items()),
+            "start_commands": "\n".join(f"cd {self.ws}/{d} && {t.start}" for d, t in self.plan.templates.items()
+                                        if t.start),
             "test_files": list(tpl.test_files) if tpl else [],
             "source_files": list(tpl.source_files) if tpl else [],
             "test_command": commands.get("test", ""),
@@ -713,6 +741,9 @@ class Engine:
         }
 
     def _context(self, ref: str) -> Json | None:
+        if ref == INTERFACE:  # supplied by the user for this run; absent means the step gets no interface text
+            return {"title": "Interface details (supplied by the user)", "body": self.interface} \
+                if self.interface else None
         if ref not in self.artifacts:
             return None  # its step did not run for these traits
         data, out_name = self.artifacts[ref], self._output_of(ref)
@@ -725,8 +756,11 @@ class Engine:
     def _schema_ctx(self, s: StepDef) -> Json:
         if s.output == "spec":
             return {"surfaces": self.plan.surfaces}
-        if s.output == "api_contract" and {"web", "api"} <= set(self.plan.surfaces):
-            return {"api_prefix": API_PREFIX}  # the web dev server proxies /api to the backend
+        if s.output == "api_contract":
+            # A frontend's dev server proxies this prefix to the backend, so every path must start with it.
+            prefixes = {t.api_prefix for t in self.plan.templates.values() if t.api_prefix}
+            if prefixes and len(self.plan.templates) > 1:
+                return {"api_prefix": sorted(prefixes)[0]}
         return {}
 
     # --- checks
@@ -863,6 +897,8 @@ class Engine:
             return [Item(p.name, {"name": p.name, "path": str(p)}) for p in self.repos]
         if isinstance(fe, list):
             return [Item(str(x), {"name": x}) for x in fe]
+        if fe.startswith("inputs."):
+            return [Item(str(x), {"name": x}) for x in self.plan.inputs[fe[7:]]]
         src, attr = fe.split(".", 1)
         values = (self.artifacts.get(src) or {}).get(attr) or []
         if not values:

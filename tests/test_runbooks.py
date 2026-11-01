@@ -58,7 +58,8 @@ def test_full_stack_adds_the_contract_and_both_scaffolds(cfg, staff):
     plan = plan_for("web-app", cfg, staff, backend=True)
     assert plan.surfaces == ["web", "api"]
     assert ids(plan) == ["spec", "contract", "tests", "develop", "verify"]
-    assert "mock fetch" in plan.notes["web"]
+    assert "mock fetch" in plan.templates["web"].stack  # the rule lives in the template, not in the runbook
+    assert "localStorage" not in plan.notes["web"]  # that note is only for an app without a backend
     assert {"analyst", "architect", "tester", "developer", "verifier"} == set(plan.roles())
 
 

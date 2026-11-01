@@ -45,7 +45,7 @@ from .paths import APPS_DIR, LLM_CONFIG, ROOT, RUNBOOKS_DIR
 from . import check, out, repo, runs, tasks
 from .check import check_all
 from .runbook import (LoopDef, Runbook, StaffDef, catalog, load_staff, mermaid,
-                      outline, resolve)
+                      outline, resolve, resolve_inputs)
 from .schemas import NO_RUNBOOK, render
 
 AGENTS_FILE = ROOT / "agents.yaml"
@@ -62,6 +62,30 @@ def parse_traits(pairs: list[str]) -> dict[str, bool]:
             raise UsageError(f"--trait {p!r}: use NAME=yes or NAME=no")
         out[key.strip()] = value.lower() in YES
     return out
+
+
+def parse_inputs(pairs: list[str]) -> dict[str, str]:
+    """--input NAME=VALUE, once for each input. The runbook says which names it has."""
+    out = {}
+    for p in pairs:
+        key, sep, value = p.partition("=")
+        if not sep or not key.strip() or not value.strip():
+            raise UsageError(f"--input {p!r}: use NAME=VALUE")
+        out[key.strip()] = value.strip()
+    return out
+
+
+def read_interface(path: Path | None) -> str:
+    """The interface details the user supplied in a file. They are never part of a runbook."""
+    if path is None:
+        return ""
+    try:
+        text = path.read_text()
+    except (OSError, UnicodeDecodeError) as e:
+        raise UsageError(f"--interface {path}: cannot read it as text ({e.__class__.__name__})") from None
+    if not text.strip():
+        raise UsageError(f"--interface {path} is empty")
+    return text
 
 
 def parse_staff(pairs: list[str]) -> dict[str, StaffDef]:
@@ -183,9 +207,11 @@ def cmd_runs(args) -> int:
     return 0
 
 
-def _plan(args, cfg, rb: Runbook, traits: dict[str, bool]):
+def _plan(args, cfg, rb: Runbook, traits: dict[str, bool], inputs: dict[str, str] | None = None,
+          require_inputs: bool = True):
     staff = load_staff(args.agents, cfg, {**rb.staff, **parse_staff(args.staff)})
-    return resolve(rb, traits, staff, cfg)
+    values = resolve_inputs(rb, inputs or {}, require=require_inputs)
+    return resolve(rb, traits, staff, cfg, inputs=values)
 
 
 def cmd_check(args) -> int:
@@ -203,7 +229,8 @@ def cmd_plan(args) -> int:
     books = catalog(args.runbooks)
     if args.runbook not in books:
         raise UsageError(f"no runbook {args.runbook!r}; runbooks are {', '.join(books)}")
-    plan = _plan(args, cfg, books[args.runbook], parse_traits(args.trait))
+    plan = _plan(args, cfg, books[args.runbook], parse_traits(args.trait), parse_inputs(args.input),
+                 require_inputs=False)
     if args.mermaid:
         print(mermaid(plan))
     else:
@@ -315,6 +342,8 @@ def cmd_run(args) -> int:
     if args.resume:
         return _resume(args, cfg, books)
     traits = parse_traits(args.trait)
+    inputs = parse_inputs(args.input)
+    interface = read_interface(args.interface)
     target = str(Path(args.target).resolve()) if args.target else None
 
     run_id = new_run_id()  # one ID for triage and the run, in every request and agent log line
@@ -344,11 +373,12 @@ def cmd_run(args) -> int:
     _check_repo_args(args, rb)
     workdir, top = _workdir(args, rb)
     repos = _read_repos(args) if rb.needs_repos else []
-    plan = _plan(args, cfg, rb, traits)
+    plan = _plan(args, cfg, rb, traits, inputs)
     print(outline(plan))
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=name, brief=args.brief,
                      run_id=run_id, earlier_usage=triage_usage,
-                     target=target, resume=False, rebuild=args.rebuild, record=None, repos=repos)
+                     target=target, resume=False, rebuild=args.rebuild, record=None, repos=repos,
+                     interface=interface)
 
 
 def _next_steps(engine) -> list[str]:
@@ -365,7 +395,7 @@ def _next_steps(engine) -> list[str]:
 
 def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, brief: str,
               run_id: str, earlier_usage: list | None, target: str | None,
-              resume: bool, rebuild: bool, record: Json | None, repos: list[Path]) -> int:
+              resume: bool, rebuild: bool, record: Json | None, repos: list[Path], interface: str = "") -> int:
     """Lock <workdir>/<name>, make the repo worktree when the plan changes a repo, and run the engine.
     `repos` are the repos a read-only runbook reads in place; no worktree is made for them."""
     ws, lock = open_workspace(workdir, name, rebuild)  # the lock comes first: one run per feature
@@ -383,7 +413,7 @@ def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, br
                             earlier_usage=earlier_usage, run_id=run_id, resume=resume,
                             send_fallback=fleet.send_fallback, worktree=worktree,
                             test_command=args.test_command, repos=repos, pr=args.pr,
-                            approved=bool(args.yes))
+                            approved=bool(args.yes), interface=interface)
             accepted = engine.run()
             print("\n" + out.toon({"help": _next_steps(engine)}))
             return 0 if accepted else 1
@@ -404,14 +434,18 @@ def _resume(args, cfg, books) -> int:
         raise ConfigError(f"run {args.name} is in {_shown(home)}, but runbook {rb.name} works in {_shown(workdir)}")
     repos = _read_repos(args) if rb.needs_repos else []
     traits = {k: bool(v) for k, v in record.get("traits", {}).items()}
-    plan = _plan(args, cfg, rb, traits)
+    if args.input:
+        raise UsageError("--input does not apply to --resume: the run keeps the inputs it started with")
+    # The inputs and the interface details come from the run record. A new --interface file replaces the old text.
+    plan = _plan(args, cfg, rb, traits, record.get("inputs") or {})
+    interface = read_interface(args.interface) or record.get("interface") or ""
     print(f"Resuming run {record['run_id']} in {_shown(workdir / args.name)}")
     print(outline(plan))
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=args.name, brief=record["brief"],
                      run_id=record["run_id"], earlier_usage=None,
                      target=record.get("target"), resume=True, rebuild=True,
                      record=record if top is not None else None,  # accepted runs were refused above
-                     repos=repos)
+                     repos=repos, interface=interface)
 
 
 def cmd_approve(args) -> int:
@@ -433,7 +467,8 @@ def cmd_approve(args) -> int:
                     "by": "person"}))
     cont = argparse.Namespace(**{**vars(args), "resume": True, "yes": False, "pr": bool(record.get("pr")),
                                  "test_command": record.get("test_command"), "base": None, "target": None,
-                                 "trait": [], "brief": record.get("brief", ""), "runbook": None, "rebuild": False})
+                                 "trait": [], "brief": record.get("brief", ""), "runbook": None, "rebuild": False,
+                                 "input": [], "interface": None})
     return cmd_run(cont)
 
 
@@ -480,6 +515,7 @@ def main(argv: list[str] | None = None) -> int:
     p = command("plan", "show what a run would do, without running it", "factory plan web-app --trait backend=yes")
     p.add_argument("runbook")
     p.add_argument("--trait", action="append", default=[], metavar="NAME=yes|no")
+    p.add_argument("--input", action="append", default=[], metavar="NAME=VALUE")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
     p.add_argument("--mermaid", action="store_true", help="print a Mermaid flowchart")
     p.set_defaults(fn=cmd_plan)
@@ -497,6 +533,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--brief", required=True, help="what you want, in your own words")
     p.add_argument("--runbook", help="skip triage and use this runbook")
     p.add_argument("--trait", action="append", default=[], metavar="NAME=yes|no")
+    p.add_argument("--input", action="append", default=[], metavar="NAME=VALUE",
+                   help="a value for one of the runbook's inputs (repeatable; see `factory plan <runbook>`)")
+    p.add_argument("--interface", type=Path, metavar="FILE",
+                   help="a file with interface details (API paths, schemas, ports); read by the agents, never in a runbook")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]",
                    help="who plays a role in this run")
     p.add_argument("--name", help="work in apps/<name> (default: chosen from the brief)")

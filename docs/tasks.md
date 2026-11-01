@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 343 passed.
+Suite at the last check: 419 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -57,6 +57,7 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | `37a6a49` |
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | committed | see `git log` |
 | Leftovers | C3, S4, S6, lint: done. S5, S8, S3: deferred, see Leftovers | none | committed | see `git log` |
+| Inputs | Runbook `inputs:`, `--input`, `--interface`, `confirm_input` human gate; no hardcoded values in the runbooks | none | committed | see `git log` |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
 | P18 | Windows | | not built (deferred) | |
@@ -255,4 +256,18 @@ Decided by the owner (2026-10-31):
 - [x] Evidence gate `link_verified`: each link cites a file and a line that the engine checks (like `evidence_verified`).
 - [x] The repos are read in place. A change or a commit that a reader makes is put back (`_check_repo`).
 - [x] Tests with fakes, plus a run on two small fake git repos (`tests/test_impact.py`, 23 tests).
+- [x] README and test count. Commit.
+
+### Inputs: runbooks take their values from the user
+
+Goal: no runbook holds a value that belongs to one job, or interface details. Found by reviewing every runbook.
+
+- Status: committed. The suite passes (419). Lint (`ruff --select F --ignore F811`) is clean. Only fake agents ran; no real LLM run is verified.
+- Files: `src/factory/runbook.py` (`InputDef`, `resolve_inputs`), `engine.py` (inputs, interface context, `_confirm_input`), `scaffold.py` (template `summary`, `start`, `api_prefix`), `cli.py` (`--input`, `--interface`), `runbooks/web-app.yaml`, `code-audit.yaml`, `impact-analysis.yaml`, `research.yaml`, `templates/react-vite.yaml`, `templates/fastapi.yaml`, `tests/test_inputs.py`, `README.md`.
+- Review: `web-app` named the stacks, the `/api/` prefix, the Vite proxy, fetch and mock rules, the file layout, run commands and the criteria range. `code-audit` fixed the lenses, their guidance, the finding cap and the ignored paths. `impact-analysis` fixed the ignored paths. `research` fixed the sub-question range, findings range, minimum sources and rounds. `change-request`, `bug-fix` and `api-design`: nothing to change.
+- [x] `inputs:` in the runbook model, with types and a default or required.
+- [x] `--input` on `plan` and `run`; `--interface FILE` on `run`; both kept in `run.json`.
+- [x] `confirm_input` gate: stops at `<step>:input` while the spec has open questions; `--yes` does not skip it.
+- [x] Stack conventions moved into the templates.
+- [x] A test that fails when a runbook holds a stack name, a fixed count or an interface detail.
 - [x] README and test count. Commit.

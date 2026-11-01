@@ -11,10 +11,30 @@ use_when: >
   The request asks to review, audit or assess existing code, or to find its bugs, risks or
   technical debt, without changing it.
 needs_target: true
+inputs:
+  lenses:
+    description: "the lenses to audit through, comma-separated; one auditor for each"
+    type: list
+    default: [security, correctness, maintainability, tests]
+  lens_guidance:
+    description: "what each lens looks for; name every lens in --input lenses"
+    default: |
+      - security: injection, unsafe input handling, secrets in code, authn/authz gaps, unsafe
+        dependencies or defaults.
+      - correctness: logic errors, unhandled errors and edge cases, races, wrong assumptions.
+      - maintainability: duplication, unclear structure or names, dead code, oversized modules.
+      - tests: important behaviour without tests, weak or brittle assertions, skipped tests.
+  max_findings:
+    description: "the most findings one lens may report"
+    type: number
+    default: 10
+  ignore_paths:
+    description: "folders and files the audit skips"
+    default: "node_modules, .venv, dist and other generated files"
 steps:
   - id: audit
     role: auditor
-    for_each: [security, correctness, maintainability, tests]
+    for_each: inputs.lenses
     parallel: true
     cwd: target
     instructions: |
@@ -22,13 +42,9 @@ steps:
       {{ brief }}
 
       Lens guidance:
-      - security: injection, unsafe input handling, secrets in code, authn/authz gaps, unsafe
-        dependencies or defaults.
-      - correctness: logic errors, unhandled errors and edge cases, races, wrong assumptions.
-      - maintainability: duplication, unclear structure or names, dead code, oversized modules.
-      - tests: important behaviour without tests, weak or brittle assertions, skipped tests.
-      Report at most 10 findings, most severe first. Paths are relative to the current
-      directory. Skip node_modules, .venv, dist and other generated files.
+      {{ inputs.lens_guidance }}
+      Report at most {{ inputs.max_findings }} findings, most severe first. Paths are relative to
+      the current directory. Skip {{ inputs.ignore_paths }}.
     output: audit_findings
     gates: [evidence_verified]
 
