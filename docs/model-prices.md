@@ -67,6 +67,6 @@ The engine reads this block. `feed_id` names the feed row when it differs from t
   },
   "source": "https://www.llm-prices.com/current-v1.json",
   "feed_updated_at": "2026-10-26",
-  "fetched_on": "2026-10-31"
+  "fetched_on": "2026-11-01"
 }
 ```
