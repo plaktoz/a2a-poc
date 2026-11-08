@@ -63,11 +63,11 @@ def test_research_plan_ids():
 
 
 def test_triage_checks_runbook_traits_and_name():
-    ctx = {"runbooks": {"web-app": ["frontend", "backend"], "research": []}}
-    ok = {"runbook": "web-app", "traits": {"backend": True}, "name": "shop-list", "rationale": "r"}
-    assert validate("triage", ok, ctx)["traits"] == {"backend": True}
+    ctx = {"runbooks": {"app-build": ["review"], "research": ["review"]}}
+    ok = {"runbook": "app-build", "traits": {"review": True}, "name": "shop-list", "rationale": "r"}
+    assert validate("triage", ok, ctx)["traits"] == {"review": True}
     for bad, msg in [({"runbook": "poem"}, "not one of"), ({"traits": {"mobile": True}}, "no trait"),
-                     ({"traits": {"backend": "yes"}}, "true or false"), ({"name": "My App"}, "lowercase")]:
+                     ({"traits": {"review": "yes"}}, "true or false"), ({"name": "My App"}, "lowercase")]:
         with pytest.raises(ValueError, match=msg):
             validate("triage", {**ok, **bad}, ctx)
 
@@ -92,7 +92,7 @@ def test_render_shows_the_content(name, data):
 
 
 def test_triage_can_answer_that_no_runbook_fits():
-    ctx = {"runbooks": {"web-app": ["frontend"], "research": []}}
+    ctx = {"runbooks": {"app-build": [], "research": []}}
     out = validate("triage", {"runbook": "none", "rationale": "a health question needs a doctor"}, ctx)
     assert out["runbook"] == "none" and out["name"] == ""
     assert render("triage", out) == "Runbook: none\nWhy: a health question needs a doctor"

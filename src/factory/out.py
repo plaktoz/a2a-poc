@@ -5,7 +5,7 @@ TOON (Token-Optimized Object Notation) is YAML-like text that names the keys of 
     total: 2
     runbooks[2]{name,traits}:
       research,review
-      web-app,frontend backend
+      app-build,frontend backend
 
 This module has no dependency. It encodes the subset the factory prints: objects, lists, and scalars.
 """

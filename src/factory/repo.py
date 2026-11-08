@@ -297,6 +297,15 @@ def create_pr(tree: Path, branch: str, base: str, title: str, body: str) -> str:
     return urls[-1] if urls else r.stdout.strip()
 
 
+def default_branches(top: Path) -> set[str]:
+    """main and master, and the branch origin says is its default."""
+    names = {"main", "master"}
+    r = _git(top, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", check=False)
+    if r.returncode == 0 and r.stdout.strip():
+        names.add(r.stdout.strip().removeprefix("origin/"))
+    return names
+
+
 def current_branch(top: Path) -> str | None:
     """The branch the original checkout is on, or None when HEAD is detached."""
     r = _git(top, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)

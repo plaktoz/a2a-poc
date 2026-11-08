@@ -14,14 +14,17 @@ review in advance. Examples:
 
   factory run --brief "a kanban board where I can add tickets and columns"
   factory run --brief "a shared shopping list for my family" --trait backend=yes
-  factory run --runbook web-app --trait frontend=no --trait backend=yes --brief "a URL shortener API"
+  factory run --runbook app-build --trait frontend=no --trait backend=yes --brief "a URL shortener API"
   factory run --brief "which vector database fits a 10M-document RAG system?"
   factory run --runbook code-audit --target apps/kanban-react/web --brief "is this ready to ship?"
   factory run --runbook change-request --repo ~/code/shop --test-command "npm test" --brief "add a cart"
   factory run --runbook bug-fix --repo ~/code/shop --test-command "npm test" --brief "the cart total ignores removed items"
 
 Work happens in apps/<name>/ (--name, or chosen from the brief), with the run log, the
-artifacts and every agent's log in apps/<name>/.factory/.
+artifacts and every agent's log in apps/<name>/.factory/. With --into REPO it happens in
+REPO/<name>/ instead, in a repo that is on a branch (the run commits nothing; .factory/ is not tracked):
+
+  factory run --runbook app-build --into ~/code/hcc --name hcc --input surfaces=web=react-vite,app=fastify --brief "..."
 
 A change request or a bug fix works on a git repo (--repo) in its own worktree, under FACTORY_SCRATCH
 (default ~/factory-scratch): <scratch>/<repo>/<feature>/tree, on the branch factory/<feature>.
@@ -45,7 +48,7 @@ from .paths import APPS_DIR, LLM_CONFIG, ROOT, RUNBOOKS_DIR
 from . import check, out, repo, runs, tasks
 from .check import check_all
 from .runbook import (LoopDef, Runbook, StaffDef, catalog, load_staff, mermaid,
-                      outline, resolve)
+                      outline, resolve, resolve_inputs)
 from .schemas import NO_RUNBOOK, render
 
 AGENTS_FILE = ROOT / "agents.yaml"
@@ -62,6 +65,30 @@ def parse_traits(pairs: list[str]) -> dict[str, bool]:
             raise UsageError(f"--trait {p!r}: use NAME=yes or NAME=no")
         out[key.strip()] = value.lower() in YES
     return out
+
+
+def parse_inputs(pairs: list[str]) -> dict[str, str]:
+    """--input NAME=VALUE, once for each input. The runbook says which names it has."""
+    out = {}
+    for p in pairs:
+        key, sep, value = p.partition("=")
+        if not sep or not key.strip() or not value.strip():
+            raise UsageError(f"--input {p!r}: use NAME=VALUE")
+        out[key.strip()] = value.strip()
+    return out
+
+
+def read_interface(path: Path | None) -> str:
+    """The interface details the user supplied in a file. They are never part of a runbook."""
+    if path is None:
+        return ""
+    try:
+        text = path.read_text()
+    except (OSError, UnicodeDecodeError) as e:
+        raise UsageError(f"--interface {path}: cannot read it as text ({e.__class__.__name__})") from None
+    if not text.strip():
+        raise UsageError(f"--interface {path} is empty")
+    return text
 
 
 def parse_staff(pairs: list[str]) -> dict[str, StaffDef]:
@@ -183,9 +210,11 @@ def cmd_runs(args) -> int:
     return 0
 
 
-def _plan(args, cfg, rb: Runbook, traits: dict[str, bool]):
+def _plan(args, cfg, rb: Runbook, traits: dict[str, bool], inputs: dict[str, str] | None = None,
+          require_inputs: bool = True):
     staff = load_staff(args.agents, cfg, {**rb.staff, **parse_staff(args.staff)})
-    return resolve(rb, traits, staff, cfg)
+    values = resolve_inputs(rb, inputs or {}, require=require_inputs)
+    return resolve(rb, traits, staff, cfg, inputs=values)
 
 
 def cmd_check(args) -> int:
@@ -203,7 +232,8 @@ def cmd_plan(args) -> int:
     books = catalog(args.runbooks)
     if args.runbook not in books:
         raise UsageError(f"no runbook {args.runbook!r}; runbooks are {', '.join(books)}")
-    plan = _plan(args, cfg, books[args.runbook], parse_traits(args.trait))
+    plan = _plan(args, cfg, books[args.runbook], parse_traits(args.trait), parse_inputs(args.input),
+                 require_inputs=False)
     if args.mermaid:
         print(mermaid(plan))
     else:
@@ -272,9 +302,36 @@ def _read_repos(args) -> list[Path]:
     return paths
 
 
+def _into(args) -> Path | None:
+    """The git repo --into names, or None. The run builds in <repo>/<name>/, so the code lands in that repo.
+    The repo must be on a branch; a default branch (main, master) needs --allow-main."""
+    if not getattr(args, "into", None):
+        if getattr(args, "at_root", False):
+            raise UsageError("--at-root needs --into REPO: it builds at the top of that repo")
+        return None
+    if args.repo:
+        raise UsageError("--into and --repo do not go together: --repo works in a worktree of a repo, "
+                         "--into builds in the repo itself")
+    given = Path(args.into).expanduser().resolve()
+    top = repo.toplevel(given)
+    if top != given:
+        raise ConfigError(f"--into {args.into!r} must be the top folder of a git repo, not a folder inside one")
+    branch = repo.current_branch(top)
+    if branch is None:
+        raise ConfigError(f"--into {args.into!r} is on a detached HEAD. Check out a branch first.")
+    if branch in repo.default_branches(top) and not args.allow_main:
+        raise ConfigError(f"--into {args.into!r} is on {branch}, the default branch. Build on a feature branch, "
+                          "or pass --allow-main to build on it (a person decides; it is recorded).")
+    return top
+
+
 def _workdir(args, rb: Runbook | None = None) -> tuple[Path, Path | None]:
     """Where a run's folders go: apps/ for a plain run and for a read-only runbook, <scratch>/<repo>/ for a
-    runbook that changes a git repo (P10). Also the repo's top folder, or None."""
+    runbook that changes a git repo (P10), <repo>/ for --into. Also the repo's top folder, or None."""
+    if (into := _into(args)) is not None:
+        if rb is not None and (_changes_repo(rb) or rb.needs_repos):
+            raise UsageError(f"--into is for a runbook that builds new code (such as app-build), not {rb.name}")
+        return into, None
     if not args.repo or (rb is not None and not _changes_repo(rb)):
         return APPS_DIR, None
     top = repo.toplevel(args.repo[0])
@@ -283,29 +340,36 @@ def _workdir(args, rb: Runbook | None = None) -> tuple[Path, Path | None]:
     return workdir, top
 
 
+def _run_dir(args, home: Path) -> Path:
+    """The folder of the run: the home itself with --at-root, else <home>/<name>."""
+    return home if getattr(args, "at_root", False) else home / args.name
+
+
 def _find_home(args) -> Path:
     """The folder of the run --resume continues. A change lives in its repo's scratch folder, and a plain run
     or a read-only runbook lives in apps/. The first folder that holds the run wins."""
     if not args.name:
         raise UsageError("--resume needs --name, the folder of the run to continue")
-    homes = [*([_workdir(args)[0]] if args.repo else []), APPS_DIR]
+    homes = [*([_workdir(args)[0]] if args.repo or getattr(args, "into", None) else []), APPS_DIR]
     for home in homes:
-        if (home / args.name / ".factory" / "run.json").exists():
+        if (_run_dir(args, home) / ".factory" / "run.json").exists():
             return home
     raise ConfigError(f"no run to {'approve' if args.cmd == 'approve' else 'resume'}: {args.name} has no run record in "
                       f"{', '.join(_shown(h) for h in homes)}")
 
 
 def resume_record(args, workdir: Path) -> Json:
-    """The run record of <workdir>/<name>, for --resume. Refuses a run that is accepted or missing."""
+    """The run record of the run folder, for --resume. Refuses a run that is accepted or missing."""
     if not args.name:
         raise UsageError("--resume needs --name, the folder of the run to continue")
-    path = workdir / args.name / ".factory" / "run.json"
+    run = _run_dir(args, workdir)
+    path = run / ".factory" / "run.json"
+    shown = _shown(run)
     if not path.exists():
-        raise ConfigError(f"nothing to resume: {workdir.name}/{args.name} has no run record")
+        raise ConfigError(f"nothing to resume: {shown} has no run record")
     record = json.loads(path.read_text())
     if record.get("status") == "accepted":
-        raise ConfigError(f"{workdir.name}/{args.name} is already accepted; there is nothing to resume")
+        raise ConfigError(f"{shown} is already accepted; there is nothing to resume")
     return record
 
 
@@ -315,6 +379,8 @@ def cmd_run(args) -> int:
     if args.resume:
         return _resume(args, cfg, books)
     traits = parse_traits(args.trait)
+    inputs = parse_inputs(args.input)
+    interface = read_interface(args.interface)
     target = str(Path(args.target).resolve()) if args.target else None
 
     run_id = new_run_id()  # one ID for triage and the run, in every request and agent log line
@@ -338,17 +404,20 @@ def cmd_run(args) -> int:
             return 1
         rb = books[choice["runbook"]]
         traits = {**choice["traits"], **traits}  # traits given on the command line win
+        inputs = {**{k: ",".join(v) if isinstance(v, list) else str(v) for k, v in choice["inputs"].items()},
+                  **inputs}  # so do inputs
         name = args.name or choice["name"]
         target = target or (str(Path(choice["target"]).resolve()) if choice.get("target") else None)
 
     _check_repo_args(args, rb)
     workdir, top = _workdir(args, rb)
     repos = _read_repos(args) if rb.needs_repos else []
-    plan = _plan(args, cfg, rb, traits)
+    plan = _plan(args, cfg, rb, traits, inputs)
     print(outline(plan))
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=name, brief=args.brief,
                      run_id=run_id, earlier_usage=triage_usage,
-                     target=target, resume=False, rebuild=args.rebuild, record=None, repos=repos)
+                     target=target, resume=False, rebuild=args.rebuild, record=None, repos=repos,
+                     interface=interface)
 
 
 def _next_steps(engine) -> list[str]:
@@ -365,12 +434,18 @@ def _next_steps(engine) -> list[str]:
 
 def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, brief: str,
               run_id: str, earlier_usage: list | None, target: str | None,
-              resume: bool, rebuild: bool, record: Json | None, repos: list[Path]) -> int:
+              resume: bool, rebuild: bool, record: Json | None, repos: list[Path], interface: str = "") -> int:
     """Lock <workdir>/<name>, make the repo worktree when the plan changes a repo, and run the engine.
     `repos` are the repos a read-only runbook reads in place; no worktree is made for them."""
-    ws, lock = open_workspace(workdir, name, rebuild)  # the lock comes first: one run per feature
+    at_root = bool(getattr(args, "at_root", False))
+    ws, lock = open_workspace(workdir, name, rebuild, at_root=at_root)  # the lock comes first: one run per feature
     try:
         print(f"\nWorking in {_shown(ws)}")
+        if at_root and not resume and not (ws / ".factory" / "run.json").exists():
+            taken = [d for d in plan.surfaces if (ws / d).exists()]
+            if taken:  # at the root, a folder with a surface's name is not ours to overwrite
+                raise ConfigError(f"--at-root: {', '.join(d + '/' for d in taken)} already exists in {_shown(ws)}. "
+                                  "Choose other surface folder names, or move the folders away")
         worktree = None
         if top is not None:
             worktree = (repo.reuse_worktree(record) if record
@@ -383,7 +458,7 @@ def _run_plan(args, cfg, plan, *, workdir: Path, top: Path | None, name: str, br
                             earlier_usage=earlier_usage, run_id=run_id, resume=resume,
                             send_fallback=fleet.send_fallback, worktree=worktree,
                             test_command=args.test_command, repos=repos, pr=args.pr,
-                            approved=bool(args.yes))
+                            approved=bool(args.yes), interface=interface)
             accepted = engine.run()
             print("\n" + out.toon({"help": _next_steps(engine)}))
             return 0 if accepted else 1
@@ -404,21 +479,25 @@ def _resume(args, cfg, books) -> int:
         raise ConfigError(f"run {args.name} is in {_shown(home)}, but runbook {rb.name} works in {_shown(workdir)}")
     repos = _read_repos(args) if rb.needs_repos else []
     traits = {k: bool(v) for k, v in record.get("traits", {}).items()}
-    plan = _plan(args, cfg, rb, traits)
-    print(f"Resuming run {record['run_id']} in {_shown(workdir / args.name)}")
+    if args.input:
+        raise UsageError("--input does not apply to --resume: the run keeps the inputs it started with")
+    # The inputs and the interface details come from the run record. A new --interface file replaces the old text.
+    plan = _plan(args, cfg, rb, traits, record.get("inputs") or {})
+    interface = read_interface(args.interface) or record.get("interface") or ""
+    print(f"Resuming run {record['run_id']} in {_shown(_run_dir(args, workdir))}")
     print(outline(plan))
     return _run_plan(args, cfg, plan, workdir=workdir, top=top, name=args.name, brief=record["brief"],
                      run_id=record["run_id"], earlier_usage=None,
                      target=record.get("target"), resume=True, rebuild=True,
                      record=record if top is not None else None,  # accepted runs were refused above
-                     repos=repos)
+                     repos=repos, interface=interface)
 
 
 def cmd_approve(args) -> int:
     """Answer a run that waits at `awaiting: approval`: record the decision, then continue the run.
     A person runs this; the record says `person`. --changes sends a checkpoint's draft back."""
     home = _find_home(args)
-    path = home / args.name / ".factory" / "run.json"
+    path = _run_dir(args, home) / ".factory" / "run.json"
     record = json.loads(path.read_text())
     if record.get("status") != "awaiting" or not record.get("awaiting"):
         raise ConfigError(f"{args.name} is {record.get('status')}, not awaiting approval; there is nothing to approve")
@@ -433,7 +512,8 @@ def cmd_approve(args) -> int:
                     "by": "person"}))
     cont = argparse.Namespace(**{**vars(args), "resume": True, "yes": False, "pr": bool(record.get("pr")),
                                  "test_command": record.get("test_command"), "base": None, "target": None,
-                                 "trait": [], "brief": record.get("brief", ""), "runbook": None, "rebuild": False})
+                                 "trait": [], "brief": record.get("brief", ""), "runbook": None, "rebuild": False,
+                                 "input": [], "interface": None})
     return cmd_run(cont)
 
 
@@ -477,9 +557,10 @@ def main(argv: list[str] | None = None) -> int:
     out.add_flags(p, fields=True, full=True)
     p.set_defaults(fn=cmd_check)
 
-    p = command("plan", "show what a run would do, without running it", "factory plan web-app --trait backend=yes")
+    p = command("plan", "show what a run would do, without running it", "factory plan app-build --trait backend=yes")
     p.add_argument("runbook")
     p.add_argument("--trait", action="append", default=[], metavar="NAME=yes|no")
+    p.add_argument("--input", action="append", default=[], metavar="NAME=VALUE")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
     p.add_argument("--mermaid", action="store_true", help="print a Mermaid flowchart")
     p.set_defaults(fn=cmd_plan)
@@ -497,9 +578,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--brief", required=True, help="what you want, in your own words")
     p.add_argument("--runbook", help="skip triage and use this runbook")
     p.add_argument("--trait", action="append", default=[], metavar="NAME=yes|no")
+    p.add_argument("--input", action="append", default=[], metavar="NAME=VALUE",
+                   help="a value for one of the runbook's inputs (repeatable; see `factory plan <runbook>`)")
+    p.add_argument("--interface", type=Path, metavar="FILE",
+                   help="a file with interface details (API paths, schemas, ports); read by the agents, never in a runbook")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]",
                    help="who plays a role in this run")
-    p.add_argument("--name", help="work in apps/<name> (default: chosen from the brief)")
+    p.add_argument("--name", help="work in apps/<name>, or <into>/<name> (default: chosen from the brief)")
+    p.add_argument("--into", metavar="REPO",
+                   help="build in this git repo, in <REPO>/<name>/, instead of in apps/. It must be on a "
+                        "branch; the factory commits nothing")
+    p.add_argument("--allow-main", action="store_true",
+                   help="let --into build on the default branch (main, master). A person decides this")
+    p.add_argument("--at-root", action="store_true",
+                   help="with --into: build at the top of the repo (REPO/web, REPO/app, ...), not in REPO/<name>/. "
+                        "Refused if a surface folder is already there")
     p.add_argument("--target", help="existing code to work on (code-audit)")
     p.add_argument("--repo", action="append", default=[], metavar="PATH",
                    help="git repo: change-request and bug-fix change one (work happens in a worktree of it); "
@@ -522,6 +615,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--name", required=True, help="the run that waits")
     p.add_argument("--repo", action="append", default=[], metavar="PATH",
                    help="the repo of a change-request or bug-fix run (where its scratch folder is)")
+    p.add_argument("--into", metavar="REPO", help="the repo of a run started with --into")
+    p.add_argument("--allow-main", action="store_true", help="as for run")
+    p.add_argument("--at-root", action="store_true", help="the run was started with --at-root")
     p.add_argument("--changes", metavar="TEXT", help="ask for changes to a checkpoint's draft instead of approving")
     p.add_argument("--staff", action="append", default=[], metavar="ROLE=WORKER[:MODEL]")
     p.set_defaults(fn=cmd_approve)

@@ -1,5 +1,8 @@
 # How the factory works with templates/react-vite/ (see src/factory/scaffold.py).
 surface: frontend
+summary: the React UI in the browser, tested with React Testing Library in jsdom
+start: npm run dev
+api_prefix: /api/
 suite: vitest
 serve: vite
 commands:
@@ -15,3 +18,13 @@ stack: |
     matchers. src/setupTests.js clears localStorage before each test and cleans up after it.
   - Name every test with its criterion id and a colon: it('AC3: ...').
   - No new dependencies: package.json is fixed.
+  - Layout: App.jsx only composes; one component per file under src/components/; state in a custom
+    hook under src/hooks/; semantic, labelled, keyboard-friendly controls; all styles in
+    src/App.css using CSS custom properties.
+  - Drag and drop must not be the only way to do something: give every drag action a keyboard
+    or button alternative.
+  - If the app has no other surface, keep state in the browser (localStorage) when it must persist.
+  - With a backend: vite.config.js proxies /api to the backend on 127.0.0.1:8000, so call it with
+    fetch and relative URLs. Tests must not need a server: mock fetch with
+    vi.spyOn(globalThis, 'fetch') returning responses that follow the API contract, and wait for
+    the UI with findBy queries.

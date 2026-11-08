@@ -34,7 +34,7 @@ Status values:
 
 ## 3. Status
 
-Suite at the last check: 343 passed.
+Suite at the last check: 424 passed.
 
 Note: the tasks marked `committed` with "see note" were built together in the working tree and share hunks in `engine.py`, `cli.py`, `gates.py`, `runbook.py`, `config.py`, `llm.yaml` and the tests. They went into one commit ("Build the P-series ..."), because a split could not be verified. From the next task on, commit one task at a time.
 
@@ -57,6 +57,11 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 | P10 slice 2 | `--pr`: push and `gh pr create`, with approval | P10 slice 1, P6 | committed | `37a6a49` |
 | AXI | FR-20 to FR-29: `factory approve`, approver record, TOON output, `help[]` lines | P12 | committed | see `git log` |
 | Leftovers | C3, S4, S6, lint: done. S5, S8, S3: deferred, see Leftovers | none | committed | see `git log` |
+| Inputs | Runbook `inputs:`, `--input`, `--interface`, `confirm_input` human gate; no hardcoded values in the runbooks | none | committed | see `git log` |
+| Rename | `web-app` becomes `app-build`; step 1 of making it work for more than web apps | Inputs | committed | `94bb46c` |
+| Surfaces | `app-build` takes its parts from the `surfaces` input; `frontend` and `backend` traits are gone; triage sets inputs; step 2 | Rename | committed | see `git log` |
+| Templates | `fastify` API and `bullmq-worker` templates, and the `node` serve check | Surfaces | committed | see `git log` |
+| Into | `--into REPO`: build in an existing git repo on a branch; `--allow-main` for a default branch | Templates | committed | see `git log` |
 | P13 | A2A direct-call adapter | | not built | |
 | P8 | Risk fields | | not built | |
 | P18 | Windows | | not built (deferred) | |
@@ -74,8 +79,8 @@ Note: the tasks marked `committed` with "see note" were built together in the wo
 
 ### P6: three new gates
 
-- Files: `src/factory/gates.py`, `runbooks/web-app.yaml`, `tests/test_gates_p6.py`.
-- Verify: full suite. `factory plan web-app` lists the new gates.
+- Files: `src/factory/gates.py`, `runbooks/app-build.yaml`, `tests/test_gates_p6.py`.
+- Verify: full suite. `factory plan app-build` lists the new gates.
 - [x] `secrets_clean`, `lint_clean`, `packages_exist`.
 - [x] README: the gate list.
 - [ ] PRD section 8.4 notes.
@@ -256,3 +261,78 @@ Decided by the owner (2026-10-31):
 - [x] The repos are read in place. A change or a commit that a reader makes is put back (`_check_repo`).
 - [x] Tests with fakes, plus a run on two small fake git repos (`tests/test_impact.py`, 23 tests).
 - [x] README and test count. Commit.
+
+### Inputs: runbooks take their values from the user
+
+Goal: no runbook holds a value that belongs to one job, or interface details. Found by reviewing every runbook.
+
+- Status: committed. The suite passes (419 at that commit). Lint (`ruff --select F --ignore F811`) is clean. Only fake agents ran; no real LLM run is verified.
+- Files: `src/factory/runbook.py` (`InputDef`, `resolve_inputs`), `engine.py` (inputs, interface context, `_confirm_input`), `scaffold.py` (template `summary`, `start`, `api_prefix`), `cli.py` (`--input`, `--interface`), `runbooks/app-build.yaml`, `code-audit.yaml`, `impact-analysis.yaml`, `research.yaml`, `templates/react-vite.yaml`, `templates/fastapi.yaml`, `tests/test_inputs.py`, `README.md`.
+- Review: `app-build` named the stacks, the `/api/` prefix, the Vite proxy, fetch and mock rules, the file layout, run commands and the criteria range. `code-audit` fixed the lenses, their guidance, the finding cap and the ignored paths. `impact-analysis` fixed the ignored paths. `research` fixed the sub-question range, findings range, minimum sources and rounds. `change-request`, `bug-fix` and `api-design`: nothing to change.
+- [x] `inputs:` in the runbook model, with types and a default or required.
+- [x] `--input` on `plan` and `run`; `--interface FILE` on `run`; both kept in `run.json`.
+- [x] `confirm_input` gate: stops at `<step>:input` while the spec has open questions; `--yes` does not skip it.
+- [x] Stack conventions moved into the templates.
+- [x] A test that fails when a runbook holds a stack name, a fixed count or an interface detail.
+- [x] README and test count. Commit.
+
+### Surfaces: `app-build` is not only for web apps
+
+Goal: the app's parts are chosen by the user, not named by the runbook. A CLI, a worker or a library is another template.
+
+- Status: committed. The suite passed (424) at that commit. Lint is clean. Only fake agents ran.
+- Decided by the owner (2026-11-01): name `app-build`; option A for the parts: a list input, with no `frontend` or `backend` trait.
+- Files: `src/factory/runbook.py` (`scaffolds_from`, `min_surfaces`, `parse_surfaces`, per-surface notes), `schemas.py` and `engine.py` (triage sets inputs), `cli.py`, `runbooks/app-build.yaml`, `templates/react-vite.yaml`, tests, `README.md`.
+- [x] Rename `web-app` to `app-build`.
+- [x] Input `surfaces`: `directory=template` pairs. Default `web=react-vite`.
+- [x] The contract step runs for two or more surfaces (`min_surfaces`). Input `contract_kind` says what the parts talk through.
+- [x] Rules about a UI (drag and drop, localStorage) moved into the `react-vite` template. Each surface is told what the other surfaces are.
+- [x] Triage can set inputs, checked against their types, so a shared app still gets a server.
+- [x] Templates for the missing stacks: see Templates below.
+
+### Templates: a Fastify API and a BullMQ worker
+
+Goal: `--input surfaces=web=react-vite,app=fastify,worker=bullmq-worker` plans and builds with no change to a runbook or the engine.
+
+- Status: committed. The suite passes (437). Lint is clean. A tester-style test passed and the server answered `/api/health` on a scratch copy of `fastify`. Only fake agents ran; no real LLM built anything with these templates.
+- Files: `templates/fastify{,.yaml}`, `templates/bullmq-worker{,.yaml}`, `serve_node` in `gates.py`, `Serve` in `scaffold.py`, `tests/test_templates.py`.
+- [x] `fastify`: `buildApp()` in `src/app.ts`, fixed `src/server.ts`, `GET /api/health`, Vitest through `app.inject`, `tsc --noEmit` as the lint command, port 8000 (the port `react-vite` proxies).
+- [x] `bullmq-worker`: handlers in `src/handlers.ts` (no Redis in tests), fixed `src/worker.ts`. `serve: null`, because the gate cannot start it without Redis.
+- [x] New `serve: node` check: type-check, start on a free port, `GET /api/health` answers `{"status": "ok"}`.
+- [ ] Not covered: the worker is not run against a real Redis, and MongoDB and Redis are not surfaces (they would be containers).
+- [ ] Next: decide where the HCC code is built, then turn the approved HCC spec into an `app-build` run.
+
+### Into: build directly in an existing repo
+
+Goal: a run builds in `<repo>/<name>/` instead of `apps/<name>/`, so the HCC code lands in the HCC repo.
+
+- Status: committed. The suite passes (447). Lint is clean. Only fake agents ran. `--at-root` is the next task below.
+- Decided by the owner (2026-11-01): build directly in the HCC repo; the repo must be on a branch; on `main`, ask for approval first (`--allow-main`). The live run uses HCC.
+- Files: `cli.py` (`--into`, `--allow-main`, `_into`), `repo.py` (`default_branches`), `engine.py` (`.factory/.gitignore`), `tests/test_into.py`, `README.md`.
+- [x] Refuses a detached HEAD, a folder that is not the top of a repo, `main`/`master`/the origin default without `--allow-main`, and `--into` with `--repo`.
+- [x] The factory commits nothing in the repo; `.factory/` ignores itself.
+- [ ] Next: the live `app-build` run for HCC with `--into /Users/tianhonglee/orca/workspaces/human-cheat-code/review-requirements` (branch `feat-hcc-react-ts-webapp`). Needs the owner's go-ahead: real models, real cost.
+
+### At root: build at the top of the repo
+
+Goal: the first live HCC run stopped after 2 develop rounds, and the code sits in `review-requirements/hcc/`. AC62 puts `compose.yaml` at the repo root, so the surfaces belong there too. Two template faults also made the build fail: the fixed `server.ts` listened on `127.0.0.1` (AC66 needs `0.0.0.0`), and the fixed `worker.ts` hard-coded the concurrency (AC7 needs `SEQUENTIAL` to set it to 1).
+
+- Status: committed. The suite passes (453). Lint is clean. Only fake agents ran.
+- Decided by the owner (2026-11-01): "do it", after the question whether the repo root is better.
+- Files: `cli.py` (`--at-root`, `_run_dir`), `engine.py` (`open_workspace(at_root=)`), `templates/fastify/src/server.ts` (`HOST`), `templates/bullmq-worker/src/{worker,settings}.ts`, the two template `.yaml` files, `tests/test_into.py`, `tests/test_templates.py`, `README.md`.
+- [x] `--into REPO --at-root`: the workspace is the repo itself; `approve` and `--resume` find the run there; a surface folder that already exists is refused.
+- [x] `server.ts` reads `HOST` (default `0.0.0.0`); the worker takes concurrency and queue from `settings.ts`, which the developer may change.
+- [x] Next: move the HCC run from `review-requirements/hcc/` to the repo root and resume it (`--resume --at-root`). Done: the build was accepted (27 calls, $9.55). Then the containers were added in the HCC repo (see the next section).
+
+### Container stack and seed for HCC
+
+Goal: the HCC app runs as a Podman Compose stack (web, app, worker, db, queue), loads the 11 seed files on first start, and keeps its data across `down` and `up`. The factory's own templates had two gaps that the live stack showed.
+
+- Status: committed. The HCC repo has the stack and the wired app (commits `54eaf6b`, `896df0e`); this factory change adds the template fixes (`d621a21`). The stack was checked live: all services healthy, the seed processed (11 sources, 84 insights), data unchanged after `down` and `up`.
+- Decided by the owner (2026-11-01): "approval is given. you can plan and implement without asking me".
+- Found while running it: BullMQ 6 needs `ioredis` installed (the worker crashed without it), and `tsx`, the start command, was a dev dependency, so `npm ci --omit=dev` removed it. Both templates now keep `tsx` as a runtime dependency; the worker template adds `ioredis`.
+- [x] Templates: `tsx` is a runtime dependency in `fastify` and `bullmq-worker`; `bullmq-worker` has `ioredis`. Test added (`test_the_start_command_runs_on_the_production_install`). Suite passes (454).
+- [x] Committed as `14640a1` on its own. Not pushed.
+- Open in the HCC repo, not in this task: a burst of raw files (946 for 11 sources) appeared in one early run and did not come back on a clean start. The cause is not confirmed; a seed id is now derived from the file name, so a repeat seed overwrites instead of adding.
+- Open: a Claude key was once in this shell's environment and was echoed by `podman compose config`. Rotate it.
+

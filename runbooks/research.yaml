@@ -14,6 +14,22 @@ use_when: >
 traits:
   review: {description: "an independent reviewer must approve the report", default: true}
 
+inputs:
+  sub_questions:
+    description: "how many sub-questions to break the request into, as a range (at most 8)"
+    default: "2 to 6"
+  findings_per_question:
+    description: "how many findings one researcher returns, as a range"
+    default: "3 to 8"
+  min_sources:
+    description: "the fewest different sources one sub-question must use"
+    type: number
+    default: 2
+  write_rounds:
+    description: "how many times the writer may redo the report"
+    type: number
+    default: 3
+
 steps:
   - id: plan
     role: analyst
@@ -23,7 +39,7 @@ steps:
       The request:
       {{ brief }}
 
-      Break it into 2 to 6 sub-questions (ids Q1, Q2, ...) that together answer it, each one
+      Break it into {{ inputs.sub_questions }} sub-questions (ids Q1, Q2, ...) that together answer it, each one
       answerable from public web sources by one researcher. Say who the report is for and what
       it should deliver (for example a recommendation, a comparison table, or a summary).
     output: research_plan
@@ -40,13 +56,13 @@ steps:
       Research sub-question {{ item.id }}: {{ item.question }}
       ({{ item.why }})
 
-      Find 3 to 8 findings from at least 2 different sources. Search first, then open each page
+      Find {{ inputs.findings_per_question }} findings from at least {{ inputs.min_sources }} different sources. Search first, then open each page
       you cite and copy its quote from the page itself.
     output: findings
     gates: [citations_verified]
 
   - loop: write
-    rounds: 3
+    rounds: inputs.write_rounds
     steps:
       - id: report
         role: writer

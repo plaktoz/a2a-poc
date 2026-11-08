@@ -4,7 +4,7 @@ Describe what you want in your own words. The factory picks a plan, hands each s
 
 The factory can:
 
-- build a web app (a React frontend, a FastAPI backend, or both),
+- build an app from one or more parts: a React UI, a FastAPI or Fastify server, a BullMQ worker, or any mix of them,
 - answer a research question in a report where every quote is checked against its source,
 - audit existing code and write a prioritized report,
 - design an HTTP API,
@@ -18,8 +18,8 @@ You need Python 3.11 or later, `uv`, and the `codex` and `claude` commands on yo
 
 ```bash
 uv sync
-uv run pytest                  # prints "384 passed"; no LLM is called
-uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and web-app
+uv run pytest                  # prints "454 passed"; no LLM is called
+uv run factory runbooks        # lists api-design, bug-fix, change-request, code-audit, impact-analysis, research and app-build
 ```
 
 Set the environment variables that `llm.yaml` names before a real run:
@@ -35,7 +35,7 @@ Then start a run. It calls the LLMs and takes minutes.
 
 ```bash
 uv run factory check                                    # one short prompt to each model: are they reachable?
-uv run factory plan web-app --trait backend=yes     # show what a run would do; nothing runs
+uv run factory plan app-build --input surfaces=web=react-vite,api=fastapi   # show what a run would do; nothing runs
 uv run factory run --brief "a shared shopping list for my family"
 ```
 
@@ -45,21 +45,25 @@ The factory shows its plan and starts. It never asks a question. When a run need
 
 | Runbook | Use it to | Steps | You get |
 |---|---|---|---|
-| `web-app` | Build a frontend, a backend or both. Traits: `frontend` (default yes), `backend` (default no). | spec, API contract (full stack only), tests for each surface, then a build loop | `SPEC.json`, `API.json`, `web/`, `api/` |
-| `research` | Answer a question from public sources. Trait: `review` (default yes). | plan, investigate each sub-question in parallel, then a write loop | `PLAN.json`, `REPORT.md` |
-| `code-audit` | Review code without changing it. Needs `--target`. | audit through 4 lenses in parallel (security, correctness, maintainability, tests), then a write loop | `AUDIT.md` |
+| `app-build` | Build an app from one or more parts (surfaces), such as a UI and a server. Inputs: `surfaces` (the parts, as `directory=template` pairs; default `web=react-vite`), `contract_kind`, the size of the spec, edge cases, extra rules. Interface details come with `--interface FILE`. | spec (a person confirms it while it has open questions), contract between the surfaces (two or more surfaces only), tests for each surface, then a build loop | `SPEC.json`, `API.json` (two or more surfaces), one folder for each surface |
+| `research` | Answer a question from public sources. Trait: `review` (default yes). Inputs: `sub_questions`, `findings_per_question`, `min_sources`, `write_rounds`. | plan, investigate each sub-question in parallel, then a write loop | `PLAN.json`, `REPORT.md` |
+| `code-audit` | Review code without changing it. Needs `--target`. Inputs: `lenses`, `lens_guidance`, `max_findings`, `ignore_paths`. | audit through the lenses in parallel (default: security, correctness, maintainability, tests), then a write loop | `AUDIT.md` |
 | `api-design` | Turn a brief into a spec and an HTTP API contract. | spec, then a contract loop | `SPEC.json`, `API.json` |
 | `bug-fix` | Fix a bug, an error, a crash or a regression in an existing git repo. Needs `--repo` and `--test-command`. | spec (the bug report; you approve it), a tester writes one test that fails because of the bug and the factory runs your tests to prove it fails, then a fix loop: a developer fixes the cause, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
 | `change-request` | Add a feature to, or deliberately change, code in an existing git repo. Not for bugs: use `bug-fix`. Needs `--repo` and `--test-command`. | spec (you approve it), then a build loop: a developer changes the code in a worktree, the factory runs your tests, a reviewer reads the diff. One commit on a new branch. | `SPEC.json` and a commit on `factory/<name>` |
-| `impact-analysis` | Find which services a new feature or a change would affect, across one or more repos (for example the services of a microservice system). Needs one `--repo` for each repo. Changes nothing. | one auditor per repo reads it in place and lists its links to other services, each checked against the cited line; then a writer works out the impact and a reviewer checks it | `IMPACT.md` |
+| `impact-analysis` | Find which services a new feature or a change would affect, across one or more repos (for example the services of a microservice system). Needs one `--repo` for each repo. Input: `ignore_paths`. Changes nothing. | one auditor per repo reads it in place and lists its links to other services, each checked against the cited line; then a writer works out the impact and a reviewer checks it | `IMPACT.md` |
 
 Examples:
 
 ```bash
-uv run factory run --brief "a kanban board with tickets and columns"        # frontend only
-uv run factory run --brief "a family shopping list" --trait backend=yes     # full stack
-uv run factory run --brief "a URL shortener API" --runbook web-app \
-    --trait frontend=no --trait backend=yes                                  # backend only
+uv run factory run --brief "a kanban board with tickets and columns"        # one surface: a UI
+uv run factory run --brief "a family shopping list" \
+    --input surfaces=web=react-vite,api=fastapi                               # two surfaces
+uv run factory run --brief "a URL shortener API" --runbook app-build \
+    --input surfaces=api=fastapi                                             # a server only
+uv run factory run --runbook app-build --into ~/code/hcc --name hcc \
+    --input surfaces=web=react-vite,app=fastify,worker=bullmq-worker \
+    --brief "..."                                                            # builds in ~/code/hcc/hcc/, no commit
 uv run factory run --brief "which vector database fits a 10M-document RAG system?"
 uv run factory run --runbook code-audit --target apps/kanban-react --brief "is it ready to ship?"
 uv run factory run --runbook change-request --repo ~/code/shop --test-command "npm test" \
@@ -71,7 +75,7 @@ uv run factory run --runbook impact-analysis --repo ~/code/orders --repo ~/code/
 uv run factory run --brief "..." --staff writer=codex-gpt --staff verifier=codex-gemini
 ```
 
-Without `--runbook`, a triage agent reads the brief and chooses the runbook and its traits. The option `--trait` overrides its choice. If no runbook fits the request, triage answers `none`. The factory then prints the reason, makes no folder and exits with code 1.
+Without `--runbook`, a triage agent reads the brief and chooses the runbook, its traits and the inputs that the brief decides (for `app-build`, the surfaces). The options `--trait` and `--input` override its choice. If no runbook fits the request, triage answers `none`. The factory then prints the reason, makes no folder and exits with code 1.
 
 ## What happens in a run
 
@@ -104,11 +108,15 @@ uv run factory approve --name kanban                                   # accept 
 uv run factory approve --name kanban --changes "add a question on cost" # send the draft back with your words
 ```
 
-`factory approve` writes your decision to `approvals` in `run.json`, then resumes the run. After `--changes`, the agent writes a new draft from your words and the run waits again. `--changes` applies to a checkpoint only. The push (see "Open a pull request") takes an approval only. An agent that runs the factory can pass `--yes` to approve every checkpoint and the push in advance. Each entry in `approvals` names who approved: `person` or `--yes`. The analyst does not ask questions during a run, because nobody is there to answer.
+`factory approve` writes your decision to `approvals` in `run.json`, then resumes the run. After `--changes`, the agent writes a new draft from your words and the run waits again. `--changes` applies to a checkpoint only. The push (see "Open a pull request") takes an approval only. An agent that runs the factory can pass `--yes` to approve every checkpoint and the push in advance. Each entry in `approvals` names who approved: `person` or `--yes`. The analyst does not ask a question mid-step, because nobody is there to answer. A runbook step with `confirm_input` is the exception: see "Runbook inputs".
 
 ### Where the results go
 
 Each run works in `apps/<name>/`. Use `--name` to choose the name, or let the factory choose it from the brief. Runs with different names do not share files or ports.
+
+**Building in a repo you already have (`--into`).** `--into REPO` makes the run work in `REPO/<name>/` instead of `apps/<name>/`, so the code lands in that repo, ready for you to review and commit. The factory commits nothing there. The run's own records (`.factory/`) stay in `REPO/<name>/.factory/`, which holds a `.gitignore` of its own, so they never show up as changes. `REPO` must be the top folder of a git repo and must be on a branch (not a detached HEAD). If the branch is `main`, `master` or the branch `origin` calls its default, the factory refuses; a person who accepts that passes `--allow-main`. `--into` is for a runbook that builds new code (`app-build`); it does not go with `--repo`. To approve or resume the run, pass the same `--into REPO` and `--name`. Pass `--name` as well, because the folder it names is added to the repo.
+
+**Building at the top of the repo (`--at-root`).** When the repo holds only this app, the extra `<name>/` folder is in the way: a `compose.yaml` at the root would have to say `./hcc/app`. Add `--at-root` to `--into` and the surfaces go straight into the repo (`REPO/web`, `REPO/app`, `REPO/worker`), together with `SPEC.json` and `API.json`. The run's records stay in `REPO/.factory/`, which ignores itself. The factory refuses the first run if the repo already has a folder with a surface's name, so it never writes over your files. `factory approve` and `--resume` need `--at-root` too, with the same `--into` and `--name`. Nothing is committed.
 
 | Path in `apps/<name>/` | Content |
 |---|---|
@@ -275,11 +283,16 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 | `factory check [--worker NAME] [--fields seconds,tokens,cost_usd]` | Sends one short prompt to each enabled worker and model, in parallel, and prints ok or FAIL for each with the reply or error. It spends a few tokens per model and prints the cost, with Codex calls priced from the table. Exit code 0 only when every model answers. Run it before a long job. |
 | `factory runs [--json]` | Sums the runs in `apps/`, totals first: runs by status, how often a step was accepted on its first attempt, rounds per loop, and the cost of each model. It only reads `run.json` files. |
 | `factory run --brief TEXT` | Runs the factory. `--brief` is required. |
+| `--input NAME=VALUE` | `plan` and `run`. Sets an input of the runbook. Repeat it for more. A list input takes comma-separated values. A runbook with no value for an input uses its default, or refuses to start when the input is required. See "Runbook inputs". |
+| `--interface FILE` | `run`. A file of interface details (API paths and prefix, ports, auth, data formats). The agents read it as context. No runbook holds these. The run record keeps it, so `--resume` and `approve` use the same file. |
 | `factory approve --name NAME [--changes TEXT]` | Answers a run with the status `awaiting`. Records you as the approver, then resumes the run. `--changes` sends a checkpoint's draft back. |
 | `--runbook NAME` | Skips triage |
 | `--trait NAME=yes\|no` | Sets a trait. Repeat it for more traits. |
 | `--staff ROLE=WORKER[:MODEL]` | Sets who plays a role in this run |
-| `--name NAME` | Works in `apps/NAME` |
+| `--name NAME` | Works in `apps/NAME` (or `REPO/NAME` with `--into`) |
+| `--into REPO` | Builds in `REPO/NAME` in an existing git repo that is on a branch. Nothing is committed. |
+| `--allow-main` | Lets `--into` build on `main`, `master` or the default branch. A person decides this. |
+| `--at-root` | With `--into`: the surfaces go in the top folder of the repo, not in `REPO/NAME`. Also for `approve` and `--resume`. |
 | `--target PATH` | The code to audit |
 | `--repo PATH` | Repeatable. For `change-request` or `bug-fix`, the one git repo that changes; the work happens in a worktree. For `impact-analysis`, each repo that is read in place. |
 | `--base REF` | The commit that the new branch starts from. Default `HEAD`. |
@@ -296,7 +309,7 @@ The factory logs the cost. It does not limit it by default. A cap is optional: s
 total: 7
 runbooks[7]{name,title,traits}:
   api-design,API design,none
-  web-app,Build a web app,frontend backend
+  app-build,Build an app,none
 ```
 
 - `--json` prints JSON instead.
@@ -322,7 +335,7 @@ The engine never trusts a claim from an agent. It runs the tests itself and comp
 | `tests_named` | Each criterion of the surface has a test named after it. No test is skipped, focused or marked todo. | retry the step |
 | `tests_red` | The new tests load and at least one fails. | retry the step |
 | `tests_green` | The suite loads and no test fails. | new round |
-| `serves` | The build serves: `vite build` and preview, or uvicorn answering `/openapi.json`. | new round |
+| `serves` | The build serves: `vite build` and preview, uvicorn answering `/openapi.json`, or a Node API that type-checks, starts and answers `/api/health`. | new round |
 | `counts_match` | The verifier's counts equal the counts of the engine's own run. | retry the step |
 | `criteria_covered` | Every criterion has a verdict that starts with `PASS`. | stop the run |
 | `citations_verified` | Each finding quote is on the page that it cites. The gate drops the others. | retry the step |
@@ -455,25 +468,41 @@ A runbook is a YAML file in `runbooks/`. To add a kind of work, add a file. The 
 |---|---|---|
 | `role` | required | The role that does the step |
 | `instructions` | required | The task, with `{{ brief }}`, `{{ item.* }}`, `{{ surfaces }}`, `{{ test_files }}` and similar variables |
-| `when` | always | A trait condition such as `frontend and backend` |
-| `for_each` | none | `surfaces`, a list, or `<step>.<field>` |
+| `when` | always | A trait condition such as `review and not quick` |
+| `min_surfaces` | `0` | The step runs only when the app has at least this many surfaces |
+| `for_each` | none | `surfaces`, `inputs.<list>`, a list, or `<step>.<field>` |
 | `parallel` | `false` | Runs the items together, at most 6 at a time |
 | `reads` | none | The earlier results that the agent gets as context |
 | `output` | none | The schema that the reply must match. A wrong reply goes back to the agent. |
 | `gates` | none | The checks that the engine runs |
 | `checkpoint` | `false` | You review the result |
+| `confirm_input` | `false` | The step's result has a `questions` list. While it is not empty, the run stops at the point `<step>:input` until a person answers. `--yes` does not skip it. |
 | `save` | none | The file that receives the result |
 | `retries` | `1` | The extra attempts after a failure |
 | `cwd` | `surface` or `workspace` | The folder where the agent works. `target` is also allowed. |
 | `writes` | `none` | `none`, `tests` or `source` |
 
-A `loop` has `rounds` (default `budget`) and its own `gates`. `scaffolds` places a template in a surface folder when its trait condition holds.
+A `loop` has `rounds` (default `budget`, or `inputs.<number>`) and its own `gates`. `scaffolds` places a template in a surface folder when its trait condition holds. `scaffolds_from: NAME` names a list input of `directory=template` pairs instead, so the user chooses the surfaces.
 
 Try a runbook before you run it: `uv run factory plan <runbook> --trait ...`. Check the models first with `uv run factory check`.
 
+### Runbook inputs
+
+A runbook holds no value that belongs to one job. A value that varies is an **input**: the runbook declares it under `inputs:` with a `description`, a `type` (`text`, `number` or `list`) and either a `default` or `required: true`. Steps use it as `{{ inputs.name }}`, `for_each: inputs.name` (a list) or `rounds: inputs.name` (a number). The person gives it with `--input name=value`. `factory plan RUNBOOK` shows the values the run would use.
+
+```bash
+uv run factory run --runbook code-audit --target ./svc --brief "audit" \
+  --input lenses=security,performance --input max_findings=20 --input ignore_paths=vendor,dist
+uv run factory run --runbook app-build --trait backend=yes --brief "..." --interface api-notes.md
+```
+
+Interface details (paths, prefix, ports, auth, schemas) are not inputs and not in a runbook. They come in a file with `--interface`, and the steps that list `interface` under `reads` get it as context. The conventions of a stack (layout, proxy, how to start it) live in its template: `summary`, `start` and `api_prefix`, besides `stack`.
+
+**The human gate.** A step with `confirm_input: true` (the spec step of `app-build`) returns `questions`: what the agent needs and neither the brief nor the interface file gives. If the list is empty the run goes on to the step's ordinary checkpoint. If not, the run saves the draft and stops at `<step>:input` with the status `awaiting`. A person answers with `factory approve --name NAME --changes "the answers"` (the agent redrafts the spec) or `factory approve --name NAME` (the spec already has what the build needs). `--yes` approves checkpoints in advance but never this gate.
+
 ### Templates
 
-A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library) and `fastapi` (FastAPI, pytest, uv). In a full-stack app, the web dev server proxies `/api` to the backend.
+A template is a scaffold folder `templates/<name>/` with its metadata in `templates/<name>.yaml`. The metadata gives the stack notes, the test command and suite, how to serve it, and which files are tests, source or protected. The shipped templates are `react-vite` (React, Vitest, Testing Library), `fastapi` (FastAPI, pytest, uv), `fastify` (Fastify, TypeScript, Vitest; its `serve: node` check starts it and calls `GET /api/health`) and `bullmq-worker` (a BullMQ worker in TypeScript, Vitest; job logic is in handlers that tests call without Redis, so it has no `serve` check). A template ships no test: the tester writes them. The Fastify API listens on port 8000, where the web dev server proxies `/api`. With a server surface, the web dev server proxies the `api_prefix` (`/api/` for `react-vite`) to it. Each surface is told what the other surfaces are, so a template can give a rule for the case where it stands alone and for the case where it has a server. An `app-build` run picks its templates with the `surfaces` input, and a new kind of surface is a new template, with no change to the runbook.
 
 ### Web search
 
@@ -528,6 +557,9 @@ Run the tests with `uv run pytest`. The engine tests use fake agents, so no test
 | `test_repo.py` | 24 | Worktrees, the write guard, the test gate and the commit work on real git repos, and the original checkout stays unchanged. |
 | `test_tasks.py` | 13 | The task list is written at the start, a stop mid-item keeps the done sub-tasks, a resume sends only the open ones, a reverted attempt marks none, and every stop prints the `--resume` command. |
 | `test_resume.py` | 5 | A resumed run keeps its accepted items, and `--resume` refuses a missing or accepted run. |
+| `test_into.py` | 14 | `--into` builds in a git repo that is on a branch, refuses a default branch without `--allow-main` and a detached HEAD, finds the run again on resume, and keeps `.factory/` out of the repo's changes. `--at-root` builds in the top folder, finds its run on resume and approve, and refuses a surface folder that already exists. |
+| `test_templates.py` | 16 | Each shipped template has the files its metadata names and no starter test, the Node templates are locked and type-checked, and the `node` serve check works with the processes replaced. The API listens on `HOST` (default `0.0.0.0`), and the worker reads its settings from `src/settings.ts`, which the developer may change. Both Node templates keep `tsx` (the start command) and the worker keeps `ioredis` (BullMQ's Redis client) as runtime dependencies, so a production install runs. |
+| `test_inputs.py` | 40 | Runbook inputs and the human gate: types, defaults, `--input`, `--interface`, surfaces, triage inputs, and a check that no shipped runbook holds a stack name, a fixed count or an interface detail. |
 | `test_roles.py` | 17 | `roles.yaml` loads, rejects bad files with a reason, and can be replaced with `FACTORY_ROLES`. |
 | `test_runbooks.py` | 37 | The shipped runbooks load, traits resolve, conditions are safe, and bad runbooks are refused. The reviewer must not share the developer's model. With only Claude enabled, every runbook plans and warns. |
 | `test_runs.py` | 5 | `factory runs` sums the run records and changes nothing. |
@@ -612,9 +644,9 @@ Fixed constants: an agent card wait of 30 seconds (`START_TIMEOUT`), 900 seconds
 | Staff | The map from each role to a worker and a model. |
 | Worktree | A second working folder of a git repo, on its own branch. `change-request` and `bug-fix` work in one. |
 | Step | One task for one role, with an output and gates. |
-| Surface | A part of a web app: `web` (frontend) or `api` (backend). |
+| Surface | One part of an app, in its own folder with its own template and tests, such as `web` (a UI) or `api` (a server). The `surfaces` input of `app-build` lists them. |
 | Template | A scaffold folder with its metadata in `templates/<name>.yaml`. |
-| Trait | A yes-or-no choice that changes a runbook, such as `backend`. |
+| Trait | A yes-or-no choice that changes a runbook, such as `review` in `research`. |
 | Triage | The choice of a runbook and its traits for a brief. |
 | Worker | An entry in `llm.yaml`: a plugin that runs it, an endpoint and a list of models. |
 | Workspace | The folder `apps/<name>/` of one run. |

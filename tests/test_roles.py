@@ -29,7 +29,7 @@ def test_the_shipped_roles_load():
 
 def test_the_shipped_runbooks_load_against_the_shipped_roles():
     # Runbook validation refuses a step whose role is not in ROLES.
-    assert {"web-app", "research", "code-audit", "api-design"} <= set(catalog())
+    assert {"app-build", "research", "code-audit", "api-design"} <= set(catalog())
 
 
 def test_search_placeholder_is_filled():

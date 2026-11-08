@@ -9,7 +9,7 @@ from factory import load_config
 from factory.engine import Engine, open_workspace, triage
 from factory.gates import GATES, Failure, quote_on_page, strip_html
 from factory.paths import ROOT
-from factory.runbook import catalog, load_staff, resolve
+from factory.runbook import catalog, load_staff, resolve, resolve_inputs
 from test_config import ENV, base, write
 
 PAGE = "<html><body><p>Postgres supports <b>JSONB</b> columns.[1] It is widely used.</p></body></html>"
@@ -181,8 +181,9 @@ def no_suites(monkeypatch):
         monkeypatch.setitem(GATES, g, lambda ctx, out: None)
 
 
-def build_engine(cfg, staff, tmp_path, develop, tester_review=None, **traits):
-    plan = resolve(catalog()["web-app"], traits, staff, cfg)
+def build_engine(cfg, staff, tmp_path, develop, tester_review=None, surfaces="web=react-vite", **traits):
+    rb = catalog()["app-build"]
+    plan = resolve(rb, traits, staff, cfg, inputs=resolve_inputs(rb, {"surfaces": surfaces}))
 
     def tests(req):
         write_files(req["cwd"], {"src/App.test.jsx": "it('AC1: works', () => {})\n"})
@@ -266,7 +267,7 @@ def test_tests_must_be_named_after_criteria(cfg, staff, tmp_path, no_suites):
 
 
 def test_full_stack_runs_each_surface_in_its_own_directory(cfg, staff, tmp_path, no_suites):
-    plan = resolve(catalog()["web-app"], {"backend": True}, staff, cfg)
+    plan = resolve(catalog()["app-build"], {}, staff, cfg, inputs=resolve_inputs(catalog()["app-build"], {"surfaces": "web=react-vite,api=fastapi"}))
     spec = {**SPEC, "acceptance_criteria": [{"id": "AC1", "text": "ui", "surface": "web"},
                                             {"id": "AC2", "text": "api", "surface": "api"}]}
     contract = {"endpoints": [{"method": "GET", "path": "/api/items", "response": []}]}
@@ -296,7 +297,7 @@ def test_full_stack_runs_each_surface_in_its_own_directory(cfg, staff, tmp_path,
 
 
 def test_only_failed_surfaces_are_rebuilt(cfg, staff, tmp_path, no_suites, monkeypatch):
-    plan = resolve(catalog()["web-app"], {"backend": True}, staff, cfg)
+    plan = resolve(catalog()["app-build"], {}, staff, cfg, inputs=resolve_inputs(catalog()["app-build"], {"surfaces": "web=react-vite,api=fastapi"}))
     spec = {**SPEC, "acceptance_criteria": [{"id": "AC1", "text": "ui", "surface": "web"},
                                             {"id": "AC2", "text": "api", "surface": "api"}]}
     green = {"web": [False, True], "api": [True]}
@@ -372,9 +373,10 @@ def test_agents_that_may_not_write_have_stray_files_reverted(cfg, staff, tmp_pat
 def test_triage_returns_a_checked_choice(tmp_path):
     books = catalog()
     send = Agents({("triage", "triage"): [
-        {"runbook": "web-app", "traits": {"backend": True}, "name": "family-list", "rationale": "shared"}]})
+        {"runbook": "app-build", "traits": {}, "inputs": {"surfaces": ["web=react-vite", "api=fastapi"]},
+         "name": "family-list", "rationale": "shared"}]})
     out = triage(send, "a shared shopping list", books, target=None, on_input=None, cwd=tmp_path)
-    assert out["runbook"] == "web-app" and out["traits"] == {"backend": True}
+    assert out["runbook"] == "app-build" and out["inputs"] == {"surfaces": ["web=react-vite", "api=fastapi"]}
     req = send.requests[0][1]
     assert "research" in req["context"][1]["body"] and req["output"] == "triage"
 

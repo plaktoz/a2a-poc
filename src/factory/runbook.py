@@ -32,7 +32,10 @@ from .scaffold import Template, read_template
 
 ID = r"^[a-z][a-z0-9_-]*$"
 TEMPLATE_VARS = {"brief", "name", "target", "traits", "surfaces", "repos", "item", "test_files",
-                 "source_files", "test_command", "check_commands", "workspace"}
+                 "source_files", "test_command", "check_commands", "workspace", "inputs",
+                 "surface_summaries", "start_commands"}
+INTERFACE = "interface"  # a name `reads` accepts: the interface details the user supplied with --interface
+INPUT_REF = r"inputs\.([a-z][a-z0-9_-]*)"
 _VAR = re.compile(r"\{\{\s*([A-Za-z_][\w.]*)\s*\}\}")
 
 
@@ -85,6 +88,11 @@ def template_vars(text: str) -> set[str]:
     return {m.split(".")[0] for m in _VAR.findall(text)}
 
 
+def input_refs(text: str) -> set[str]:
+    """The names of the inputs a text refers to, as {{ inputs.name }}."""
+    return {m.split(".")[1] for m in _VAR.findall(text) if m.startswith("inputs.")}
+
+
 def fill(text: str, values: dict[str, Any]) -> str:
     """Replace each {{ name.path }} with its value. Lists are joined with commas."""
 
@@ -112,6 +120,47 @@ class TraitDef(_Strict):
     default: bool = False
 
 
+class InputDef(_Strict):
+    """A value the user supplies for a run (`factory run --input NAME=VALUE`) instead of the runbook fixing it.
+    A `text` input is one string, a `number` input is a whole number, and a `list` input is comma-separated
+    and can drive `for_each: inputs.<name>`. An input has a default or is required, not both."""
+    description: str
+    type: Literal["text", "number", "list"] = "text"
+    default: str | int | list[str] | None = None
+    required: bool = False
+
+    @model_validator(mode="after")
+    def _check(self) -> InputDef:
+        if self.required and self.default is not None:
+            raise ValueError("an input is required or has a default, not both")
+        if not self.required and self.default is None:
+            raise ValueError("an input needs a default, or required: true")
+        if not self.required:
+            parse_input(self, self.default)  # the default must fit the type
+        return self
+
+
+def parse_input(definition: InputDef, raw: Any) -> str | int | list[str]:
+    """The value of an input as its type holds it: a string, an int, or a list of strings."""
+    if definition.type == "number":
+        try:
+            value = int(str(raw).strip())
+        except ValueError:
+            raise ValueError(f"{raw!r} is not a whole number") from None
+        if value < 1:
+            raise ValueError(f"{value} is not at least 1")
+        return value
+    if definition.type == "list":
+        items = raw if isinstance(raw, list) else str(raw).split(",")
+        values = [x.strip() for x in map(str, items) if x.strip()]
+        if not values:
+            raise ValueError("a list input needs at least one value")
+        return values
+    if isinstance(raw, list):
+        raise ValueError("a text input is one value, not a list")
+    return str(raw).strip()
+
+
 class ScaffoldDef(_Strict):
     template: str
     when: str | None = None
@@ -133,12 +182,14 @@ class StepDef(_Strict):
     role: str
     instructions: str
     when: str | None = None
+    min_surfaces: int = Field(default=0, ge=0)  # the step runs only when the app has at least this many surfaces
     for_each: str | list[str] | None = None  # "surfaces", "repos", "<step>.<field>", or a list of names
     parallel: bool = False
     reads: list[str] = []
     output: str | None = None
     gates: list[str] = []
     checkpoint: bool = False
+    confirm_input: bool = False  # stop for a person while the output's `questions` are not empty (--yes does not skip it)
     save: str | None = None
     retries: int = Field(default=1, ge=0)
     cwd: Literal["workspace", "surface", "target", "repo"] | None = None  # repo: the item's own repo
@@ -158,10 +209,17 @@ class FinishDef(_Strict):
 
 class LoopDef(_Strict):
     loop: str = Field(pattern=ID)
-    rounds: int | Literal["budget"] = "budget"  # "budget": 1 + budgets.max_retries
+    rounds: int | str = "budget"  # "budget": 1 + budgets.max_retries; "inputs.<name>": a number input
     when: str | None = None
     steps: list[StepDef] = Field(min_length=1)
     gates: list[str] = []  # run after every step of a round has passed
+
+
+    @model_validator(mode="after")
+    def _rounds(self) -> LoopDef:
+        if isinstance(self.rounds, str) and self.rounds != "budget" and not re.fullmatch(INPUT_REF, self.rounds):
+            raise ValueError(f"loop {self.loop}: rounds is a number, 'budget' or 'inputs.<name>'")
+        return self
 
 
 Node = StepDef | LoopDef
@@ -175,7 +233,9 @@ class Runbook(_Strict):
     needs_target: bool = False
     needs_repos: bool = False  # one or more git repos to read, from --repo (impact-analysis)
     traits: dict[str, TraitDef] = {}
+    inputs: dict[str, InputDef] = {}
     scaffolds: dict[str, ScaffoldDef] = {}
+    scaffolds_from: str | None = None  # a list input of `directory=template` pairs: the user chooses the surfaces
     staff: dict[str, StaffDef] = {}
     steps: list[Node] = Field(min_length=1)
     finish: list[FinishDef] = []
@@ -188,7 +248,22 @@ class Runbook(_Strict):
             if expr is not None and (unknown := names_in(expr) - traits):
                 raise ValueError(f"{where}: unknown trait {', '.join(sorted(unknown))}")
 
+        for n in self.inputs:
+            if not re.match(ID, n):
+                raise ValueError(f"inputs.{n}: input names are lowercase words")
+        declared = set(self.inputs)
+
+        def uses_inputs(text: str, where: str) -> None:
+            if bad := input_refs(text) - declared:
+                raise ValueError(f"{where}: {{{{ inputs.{sorted(bad)[0]} }}}} is not a declared input")
+
+        if self.scaffolds_from is not None:
+            if self.scaffolds:
+                raise ValueError("scaffolds_from and scaffolds are two ways to place surfaces; use one")
+            if self.scaffolds_from not in self.inputs or self.inputs[self.scaffolds_from].type != "list":
+                raise ValueError(f"scaffolds_from {self.scaffolds_from} needs a declared input of type list")
         for d, s in self.scaffolds.items():
+            uses_inputs(s.template + "".join(s.notes.values()), f"scaffolds.{d}")
             if not re.match(ID, d):
                 raise ValueError(f"scaffolds.{d}: directory names are lowercase words")
             condition(s.when, f"scaffolds.{d}.when")
@@ -199,10 +274,14 @@ class Runbook(_Strict):
                 raise ValueError(f"staff.{role}: unknown role")
         for f in self.finish:
             condition(f.when, "finish.when")
+            uses_inputs(f.text, "finish")
 
         seen: set[str] = set()
         for node in self.steps:
             if isinstance(node, LoopDef):
+                if (m := re.fullmatch(INPUT_REF, str(node.rounds))) and (
+                        m[1] not in self.inputs or self.inputs[m[1]].type != "number"):
+                    raise ValueError(f"loop {node.loop}: rounds {node.rounds} needs a declared input of type number")
                 condition(node.when, f"loop {node.loop}")
                 for g in node.gates:
                     if g not in GATES:
@@ -211,6 +290,7 @@ class Runbook(_Strict):
                     raise ValueError(f"duplicate id {node.loop!r}")
                 seen.add(node.loop)
             for step in node.steps if isinstance(node, LoopDef) else [node]:
+                uses_inputs(step.instructions + (step.save or ""), f"step {step.id}")
                 self._check_step(step, seen, condition)
                 seen.add(step.id)
         return self
@@ -225,16 +305,20 @@ class Runbook(_Strict):
             raise ValueError(f"{where}: unknown output {s.output!r}; outputs are {', '.join(schemas.SCHEMAS)}")
         if bad := [g for g in s.gates if g not in GATES]:
             raise ValueError(f"{where}: unknown gate {', '.join(bad)}; gates are {', '.join(GATES)}")
-        if bad := [r for r in s.reads if r not in seen]:
+        if bad := [r for r in s.reads if r not in seen and r != INTERFACE]:
             raise ValueError(f"{where}: reads {', '.join(bad)}, which no earlier step produces")
         condition(s.when, where)
-        if isinstance(s.for_each, str) and s.for_each not in ("surfaces", "repos"):
+        if isinstance(s.for_each, str) and s.for_each.startswith("inputs."):
+            name = s.for_each.split(".", 1)[1]
+            if name not in self.inputs or self.inputs[name].type != "list":
+                raise ValueError(f"{where}: for_each {s.for_each} needs a declared input of type list")
+        elif isinstance(s.for_each, str) and s.for_each not in ("surfaces", "repos"):
             src = s.for_each.split(".")[0]
             if "." not in s.for_each or src not in seen:
-                raise ValueError(f"{where}: for_each must be 'surfaces', 'repos', a list, or "
-                                 "'<earlier step>.<field>'")
-        if s.for_each == "surfaces" and not self.scaffolds:
-            raise ValueError(f"{where}: for_each surfaces, but the runbook has no scaffolds")
+                raise ValueError(f"{where}: for_each must be 'surfaces', 'repos', 'inputs.<list input>', a list, "
+                                 "or '<earlier step>.<field>'")
+        if (s.for_each == "surfaces" or s.min_surfaces) and not (self.scaffolds or self.scaffolds_from):
+            raise ValueError(f"{where}: for_each surfaces and min_surfaces need scaffolds or scaffolds_from")
         if s.for_each == "repos" and not self.needs_repos:
             raise ValueError(f"{where}: for_each repos needs needs_repos: true")
         if s.for_each == "repos" and s.cwd != "repo":
@@ -249,6 +333,9 @@ class Runbook(_Strict):
             raise ValueError(f"{where}: writes target needs cwd: target")
         if s.writes in ("tests", "source") and s.cwd != "surface":
             raise ValueError(f"{where}: only a step working in a surface may write files")
+        if s.confirm_input and (s.output not in ("spec", "research_plan") or s.parallel or s.for_each):
+            raise ValueError(f"{where}: confirm_input needs one (not parallel) step that returns a spec or a "
+                             "research_plan, which carry `questions`")
         if s.checkpoint and s.parallel:
             raise ValueError(f"{where}: a checkpoint step cannot run in parallel")
         if s.writes != "none" and not ROLES[s.role].edit:
@@ -288,6 +375,8 @@ def describe_catalog(books: dict[str, Runbook]) -> str:
             out.append("  Needs one or more git repos to read: the paths, given with --repo.")
         for t, d in rb.traits.items():
             out.append(f"  trait {t} (default {str(d.default).lower()}): {d.description}")
+        for n, i in rb.inputs.items():
+            out.append(f"  input {n} ({'required' if i.required else 'default ' + str(i.default)}): {i.description}")
     return "\n".join(out)
 
 
@@ -338,6 +427,29 @@ def load_staff(path: Path, cfg: Config, overrides: dict[str, StaffDef] | None = 
 # --- plans ------------------------------------------------------------------
 
 
+def resolve_inputs(rb: Runbook, given: dict[str, str], *, require: bool = True) -> dict[str, Any]:
+    """The values of the runbook's inputs: what the user gave, else the default. A required input with no
+    value is an error, unless `require` is off (`factory plan` shows the plan without values)."""
+    if unknown := set(given) - set(rb.inputs):
+        raise ConfigError(f"runbook {rb.name} has no input {', '.join(sorted(unknown))}; "
+                          f"its inputs are {', '.join(rb.inputs) or 'none'}")
+    values: dict[str, Any] = {}
+    for name, d in rb.inputs.items():
+        if name in given:
+            try:
+                values[name] = parse_input(d, given[name])
+            except ValueError as e:
+                raise ConfigError(f"--input {name}: {e}") from None
+        elif d.required:
+            if require:
+                raise ConfigError(f"runbook {rb.name} needs the input {name} ({d.description}): "
+                                  f"pass --input {name}=VALUE")
+            values[name] = [f"<{name}>"] if d.type == "list" else f"<{name}>"
+        else:
+            values[name] = parse_input(d, d.default)
+    return values
+
+
 @dataclass
 class Plan:
     runbook: Runbook
@@ -346,6 +458,7 @@ class Plan:
     nodes: list[Node]
     staff: dict[str, Staff]
     notes: dict[str, str] = field(default_factory=dict)  # surface -> extra stack text
+    inputs: dict[str, Any] = field(default_factory=dict)  # the user's values for the runbook's inputs
     warnings: list[str] = field(default_factory=list)  # shown before the run, e.g. a one-model checker
 
     @property
@@ -362,33 +475,63 @@ class Plan:
         return [r for r in ROLES if r in used]
 
 
+def parse_surfaces(items: list[str]) -> dict[str, str]:
+    """The `directory=template` pairs of a surfaces input, as {directory: template name}."""
+    out: dict[str, str] = {}
+    for item in items:
+        d, sep, t = (x.strip() for x in item.partition("="))
+        if not sep or not d or not t:
+            raise ConfigError(f"surface {item!r}: use directory=template, such as web=react-vite")
+        if not re.fullmatch(ID, d):
+            raise ConfigError(f"surface {d!r}: directory names are lowercase words")
+        if d in out:
+            raise ConfigError(f"surface {d!r} is listed twice")
+        out[d] = t
+    return out
+
+
 def resolve(rb: Runbook, traits: dict[str, Any], staff: dict[str, Staff], cfg: Config,
-            templates_dir: Path = TEMPLATES_DIR) -> Plan:
+            templates_dir: Path = TEMPLATES_DIR, inputs: dict[str, Any] | None = None) -> Plan:
+    values = resolve_inputs(rb, {}, require=False) if inputs is None else inputs
     if unknown := set(traits) - set(rb.traits):
         raise ConfigError(f"runbook {rb.name} has no trait {', '.join(sorted(unknown))}; "
                           f"its traits are {', '.join(rb.traits) or 'none'}")
     final = {t: bool(traits.get(t, d.default)) for t, d in rb.traits.items()}
     templates, notes = {}, {}
+    if rb.scaffolds_from:
+        for d, name in parse_surfaces(values[rb.scaffolds_from]).items():
+            templates[d] = read_template(name, templates_dir)
     for d, s in rb.scaffolds.items():
         if holds(s.when, final):
-            templates[d] = read_template(s.template, templates_dir)
-            notes[d] = "\n".join(text.strip() for c, text in s.notes.items() if holds(c, final))
+            templates[d] = read_template(fill(s.template, {"inputs": values}), templates_dir)
+            notes[d] = "\n".join(fill(text, {"inputs": values}).strip()
+                                 for c, text in s.notes.items() if holds(c, final))
+    for d in templates:  # each surface is told what else is in the app, so a template can give rules for both cases
+        others = [f"{o} ({t.name}: {t.summary or t.surface})" for o, t in templates.items() if o != d]
+        about = ("- The app's other surfaces: " + "; ".join(others) + "." if others
+                 else "- This is the only surface of the app: it has no backend or other part to call.")
+        notes[d] = "\n".join(x for x in (notes.get(d, ""), about) if x)
+
+    def applies(step: Node) -> bool:
+        return holds(step.when, final) and (not isinstance(step, StepDef) or len(templates) >= step.min_surfaces)
+
     nodes: list[Node] = []
     for n in rb.steps:
-        if not holds(n.when, final):
+        if not applies(n):
             continue
         if isinstance(n, LoopDef):
-            inner = [s for s in n.steps if holds(s.when, final)]
+            inner = [s for s in n.steps if applies(s)]
             if inner:
-                nodes.append(n.model_copy(update={"steps": inner}))
+                rounds = values[m[1]] if (m := re.fullmatch(INPUT_REF, str(n.rounds))) else n.rounds
+                nodes.append(n.model_copy(update={"steps": inner, "rounds": rounds}))
         else:
             nodes.append(n)
     needs_surfaces = any(s.for_each == "surfaces" for n in nodes
                          for s in (n.steps if isinstance(n, LoopDef) else [n]))
     if needs_surfaces and not templates:
-        raise ConfigError(f"runbook {rb.name}: these traits switch on no scaffold, so there is "
-                          "nothing to build. Turn on at least one surface trait.")
-    plan = Plan(rb, final, templates, nodes, {**staff}, notes)
+        raise ConfigError(f"runbook {rb.name}: no scaffold applies, so there is nothing to build. "
+                          "Turn on a surface trait or give the surfaces input.")
+    plan = Plan(rb, final, templates, nodes, {**staff}, notes, values)
     _check_independence(plan, cfg)
     return plan
 
@@ -437,6 +580,10 @@ def outline(plan: Plan) -> str:
         lines.append("Traits: " + ", ".join(f"{t}={'yes' if v else 'no'}" for t, v in plan.traits.items()))
     if plan.templates:
         lines.append("Scaffolds: " + ", ".join(f"{d}/ ({t.name})" for d, t in plan.templates.items()))
+    for name, value in plan.inputs.items():
+        shown = ", ".join(map(str, value)) if isinstance(value, list) else " ".join(str(value).split())
+        shown = shown if len(shown) <= 100 else shown[:97] + "..."
+        lines.append(f"Input {name}: {shown}")
     lines += [f"Warning: {w}" for w in plan.warnings]
     lines.append("")
     n = 0
@@ -502,5 +649,7 @@ def _each(for_each: str | list, plan: Plan) -> str:
         return f"surface ({', '.join(plan.surfaces)})"
     if for_each == "repos":
         return "repo"
+    if for_each.startswith("inputs."):
+        return "of " + ", ".join(map(str, plan.inputs.get(for_each[7:], [])))
     step, _, field = for_each.partition(".")
     return f"item of {step}.{field}"

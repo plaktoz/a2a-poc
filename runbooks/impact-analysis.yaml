@@ -15,6 +15,10 @@ use_when: >
   services depend on a piece of code or contract, or what breaks if something changes. It needs
   the repo paths, one --repo for each repo. It does not change code.
 needs_repos: true
+inputs:
+  ignore_paths:
+    description: "folders and files the analysis skips"
+    default: "node_modules, .venv, dist and other generated files"
 steps:
   - id: links
     role: auditor
@@ -41,7 +45,7 @@ steps:
       otherwise by the name the code uses for it. Give `file` relative to the current directory,
       and `line`. Copy `evidence` exactly from that line or the lines around it. Report only links
       you can point to. A service with no links is a valid result: say so in `summary`. Skip
-      node_modules, .venv, dist and other generated files.
+      {{ inputs.ignore_paths }}.
     output: service_links
     gates: [link_verified]
 
